@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function DashboardPage() {
   const [warranties, setWarranties] = useState<any[]>([]);
@@ -37,9 +38,12 @@ export default function DashboardPage() {
     else setGreeting('Boa noite');
   }, []);
 
+  // Efeito de carrossel para os bens
   useEffect(() => {
     if (warranties.length > 1) {
-      const timer = setInterval(() => setCurrentAssetIndex((prev) => (prev + 1) % warranties.length), 5000);
+      const timer = setInterval(() => {
+        setCurrentAssetIndex((prev) => (prev + 1) % warranties.length);
+      }, 5000);
       return () => clearInterval(timer);
     }
   }, [warranties.length]);
@@ -60,6 +64,13 @@ export default function DashboardPage() {
     setLoading(false);
   };
 
+  const getDepreciatedValue = (item: any) => {
+    const price = Number(item.price || 0);
+    const purchaseDate = new Date(item.purchase_date);
+    const yearsOwned = (new Date().getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
+    return price * 0.9 * Math.pow(0.85, yearsOwned);
+  };
+
   useEffect(() => {
     let result = warranties;
     if (selectedCategory !== 'all') result = result.filter(w => w.category === selectedCategory);
@@ -71,14 +82,17 @@ export default function DashboardPage() {
     setFilteredWarranties(result);
   }, [selectedCategory, selectedFolder, searchQuery, warranties]);
 
-  // Cálculos de Patrimônio Líquido
-  const totalDebt = warranties.reduce((acc, curr) => acc + ((curr.total_installments - curr.paid_installments) * Number(curr.installment_value || 0)), 0);
-  const totalOriginalValue = warranties.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
+  const totalOriginalValue = filteredWarranties.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
+  const totalDebt = filteredWarranties.reduce((acc, curr) => acc + ((curr.total_installments - curr.paid_installments) * Number(curr.installment_value || 0)), 0);
   const netWorth = totalOriginalValue - totalDebt;
 
-  const toggleSelect = (id: string) => {
-    if (!profile?.is_premium && selectedItems.length >= 2) { toast.error('Selecione ilimitado no Plano Pro!'); return; }
-    setSelectedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  const exportPDF = (items = filteredWarranties) => {
+    const doc = new jsPDF();
+    doc.setFontSize(22); doc.setTextColor(5, 150, 105); doc.text('Guardião - Inventário de Bens', 14, 20);
+    const tableData = items.map(w => [w.name, w.store || '---', formatDate(w.purchase_date), `R$ ${Number(w.price || 0).toLocaleString('pt-BR')}`]);
+    autoTable(doc, { startY: 40, head: [['Produto', 'Loja', 'Compra', 'Valor']], body: tableData, headStyles: { fillColor: [5, 150, 105] } });
+    doc.save(`inventario-guardiao.pdf`);
+    toast.success('Dossiê exportado!');
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-600"></div></div>;
@@ -87,15 +101,54 @@ export default function DashboardPage() {
     <div className="space-y-10 pb-32">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tight text-slate-900">{greeting}, <span className="text-emerald-600">{profile?.full_name?.split(' ')[0] || 'Guardião'}</span>!</h1>
-          <p className="text-slate-500 font-medium">Você tem <span className="text-slate-900 font-black">R$ {netWorth.toLocaleString('pt-BR')}</span> em patrimônio quitado.</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl font-black tracking-tight text-slate-900">{greeting}, <span className="text-emerald-600">{profile?.full_name?.split(' ')[0] || 'Guardião'}</span>!</h1>
+            {profile?.is_premium && <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-black uppercase border border-amber-200">Pro</span>}
+          </div>
+          <p className="text-slate-500 font-medium">Seu patrimônio líquido atual é <span className="text-slate-900 font-black">R$ {netWorth.toLocaleString('pt-BR')}</span>.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" onClick={() => exportPDF()} className="gap-2 border-emerald-100 text-emerald-700 font-bold shadow-sm">
+            <FileDown className="h-4 w-4" /> Exportar Inventário
+          </Button>
           <Link href="/products/new"><Button size="lg" className="shadow-2xl shadow-emerald-200 font-bold"><Plus className="h-5 w-5 mr-2" /> Nova Nota</Button></Link>
         </div>
       </header>
 
-      {/* Widget de Patrimônio Líquido (Fintech Style) */}
+      {/* Carrossel de Oportunidades de Venda (ROI) */}
+      {warranties.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative group">
+          <div className="bg-slate-900 text-white rounded-[40px] p-8 overflow-hidden relative shadow-2xl">
+            <div className="absolute right-0 top-0 h-full w-1/3 bg-emerald-500/10 -skew-x-12 translate-x-20" />
+            <AnimatePresence mode="wait">
+              <motion.div 
+                key={currentAssetIndex}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10"
+              >
+                <div className="space-y-4 text-center md:text-left">
+                  <div className="flex items-center justify-center md:justify-start gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest">
+                    <TrendingUp className="h-4 w-4" /> Insight de Patrimônio
+                  </div>
+                  <h3 className="text-3xl font-black leading-tight max-w-lg">
+                    Seu <span className="text-emerald-400">{warranties[currentAssetIndex].name}</span> vale R$ {getDepreciatedValue(warranties[currentAssetIndex]).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} hoje.
+                  </h3>
+                  <p className="text-slate-400 text-sm font-medium">Você sabia? Este bem já desvalorizou {Math.round((1 - (getDepreciatedValue(warranties[currentAssetIndex]) / Number(warranties[currentAssetIndex].price || 1))) * 100)}% desde a compra.</p>
+                </div>
+                <div className="flex gap-4">
+                  <Link href={`/products/${warranties[currentAssetIndex].id}`}>
+                    <Button variant="ghost" className="text-white hover:bg-white/10 font-bold border border-white/10 px-8 h-14 rounded-2xl uppercase text-[10px] tracking-widest">Ver Detalhes</Button>
+                  </Link>
+                  <Button className="bg-emerald-500 hover:bg-emerald-400 font-bold px-8 h-14 rounded-2xl uppercase text-[10px] tracking-widest">Vender Agora</Button>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </motion.div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="md:col-span-2 bg-slate-900 text-white border-none overflow-hidden relative shadow-2xl">
           <CardContent className="p-8 space-y-8 relative z-10">
@@ -103,16 +156,11 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Landmark className="h-3 w-3 text-emerald-500" /> Balanço Patrimonial</p>
                 <div className="text-5xl font-black text-white">R$ {netWorth.toLocaleString('pt-BR')}</div>
-                <p className="text-xs text-slate-400 font-medium">Valor total dos seus bens (menos parcelas pendentes)</p>
+                <p className="text-xs text-slate-400 font-medium">Valor real dos seus bens (Patrimônio Líquido)</p>
               </div>
               <div className="h-24 w-24 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={[{ value: netWorth }, { value: totalDebt }]} innerRadius={30} outerRadius={40} dataKey="value">
-                      <Cell fill="#059669" />
-                      <Cell fill="#334155" />
-                    </Pie>
-                  </PieChart>
+                  <PieChart><Pie data={[{ value: netWorth }, { value: totalDebt }]} innerRadius={30} outerRadius={40} dataKey="value"><Cell fill="#059669" /><Cell fill="#334155" /></Pie></PieChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -123,7 +171,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 rounded-lg bg-slate-700 flex items-center justify-center text-slate-400"><CreditCard className="h-4 w-4" /></div>
-                <div><p className="text-[9px] font-black uppercase text-slate-500">Dívida Ativa</p><p className="text-sm font-bold">R$ {totalDebt.toLocaleString('pt-BR')}</p></div>
+                <div><p className="text-[9px] font-black uppercase text-slate-500">Dívida</p><p className="text-sm font-bold">R$ {totalDebt.toLocaleString('pt-BR')}</p></div>
               </div>
             </div>
           </CardContent>
@@ -132,12 +180,12 @@ export default function DashboardPage() {
         <Card className="border-teal-100 bg-white shadow-xl flex flex-col justify-between p-8">
           <div className="space-y-4">
             <div className="p-3 bg-emerald-50 rounded-2xl w-fit text-emerald-600"><TrendingUp className="h-6 w-6" /></div>
-            <h3 className="text-xl font-black text-slate-900 leading-tight">Insight Financeiro</h3>
+            <h3 className="text-xl font-black text-slate-900 leading-tight">Insight Patrimonial</h3>
             <p className="text-sm text-slate-500 font-medium leading-relaxed">
-              {totalDebt > 0 ? `Você ainda possui R$ ${totalDebt.toLocaleString('pt-BR')} em parcelas. Mantenha os pagamentos em dia para valorizar seu patrimônio.` : 'Excelente! Seu patrimônio está 100% quitado e sob custódia.'}
+              Você tem um investimento acumulado de R$ {totalOriginalValue.toLocaleString('pt-BR')} em bens duráveis. O Guardião protege este capital.
             </p>
           </div>
-          <Button variant="ghost" className="w-full text-emerald-600 font-black text-[10px] uppercase tracking-widest mt-6">Ver Fluxo de Caixa</Button>
+          <Button variant="ghost" className="w-full text-emerald-600 font-black text-[10px] uppercase tracking-widest mt-6">Análise de Investimento</Button>
         </Card>
       </div>
 
@@ -153,7 +201,8 @@ export default function DashboardPage() {
       </div>
 
       <AnimatePresence mode="popLayout"><motion.div layout className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-        {filteredWarranties.map((w) => (<div key={w.id} className="relative group"><button onClick={() => toggleSelect(w.id)} className={`absolute -top-2 -left-2 z-20 h-6 w-6 rounded-full border-2 transition-all flex items-center justify-center ${selectedItems.includes(w.id) ? 'bg-emerald-600 border-emerald-600 scale-110 shadow-lg' : 'bg-white border-slate-200 opacity-0 group-hover:opacity-100'}`}>{selectedItems.includes(w.id) && <CheckCircle2 className="h-4 w-4 text-white" />}</button><WarrantyCard warranty={w} /></div>))}
+        {filteredWarranties.map((w) => (<div key={w.id} className="relative group"><button onClick={() => toast.info('Seleção rápida disponível no Modo de Viagem.')} className={`absolute -top-2 -left-2 z-20 h-6 w-6 rounded-full border-2 bg-white border-slate-200 opacity-0 group-hover:opacity-100 transition-all`} />
+        <WarrantyCard warranty={w} /></div>))}
       </motion.div></AnimatePresence>
     </div>
   );
