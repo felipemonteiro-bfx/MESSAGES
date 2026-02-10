@@ -5,24 +5,23 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ShieldCheck, Calendar, Store, DollarSign, ExternalLink, Package, Clock, Sparkles, NotebookPen, HeartHandshake, ArrowLeft, Pencil, History, Plus, Loader2, Trash2, Umbrella, Scale, CalendarPlus, TrendingDown, Wrench, CheckCircle2, AlertTriangle, Key, Globe, CreditCard, Hash, ShieldAlert, Fingerprint, ListChecks, ShieldQuestion } from 'lucide-react';
+import { ShieldCheck, Calendar, Store, DollarSign, ExternalLink, Package, Clock, Sparkles, NotebookPen, HeartHandshake, ArrowLeft, Pencil, History, Plus, Loader2, Trash2, Umbrella, Scale, CalendarPlus, TrendingDown, Wrench, CheckCircle2, AlertTriangle, Key, Globe, CreditCard, Hash, ShieldAlert, Fingerprint, MailSearch, Copy, X } from 'lucide-react';
 import { formatDate, calculateExpirationDate, getDaysRemaining, generateICalLink } from '@/lib/utils/date-utils';
 import Link from 'next/navigation';
 import { notFound, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { addMonths, parseISO, isAfter } from 'date-fns';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [verifying, setVerifying] = useState(false);
+  const [writingEmail, setWritingEmail] = useState(false);
   const [warranty, setWarranty] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [generatedEmail, setGeneratedEmail] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -43,93 +42,112 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   };
 
-  const verifyIntegrity = () => {
-    setVerifying(true);
-    toast.info('Validando selo de integridade digital...');
-    setTimeout(() => {
-      setVerifying(false);
-      toast.success('Documento auditado e 100% autêntico!');
-    }, 2000);
+  const generateClaimEmail = async () => {
+    if (!profile?.is_premium) {
+      toast.error('O Gerador de E-mail IA é exclusivo para membros Pro!');
+      router.push('/plans');
+      return;
+    }
+    setWritingEmail(true);
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const logSummary = logs.map(l => `- ${l.description} em ${formatDate(l.date)}`).join('\n');
+      const prompt = `Escreva um e-mail formal de reclamação para o fabricante do produto "${warranty.name}".
+      O produto apresentou defeito. Dados para o e-mail:
+      - Comprado em: ${formatDate(warranty.purchase_date)} na loja ${warranty.store}.
+      - Valor: R$ ${warranty.price}.
+      - Chave NF-e: ${warranty.nfe_key || 'Anexa ao e-mail'}.
+      - Histórico de Cuidado: ${logSummary || 'O produto está em perfeito estado de conservação'}.
+      Baseie-se no Código de Defesa do Consumidor (CDC) exigindo o reparo ou troca conforme o prazo legal. 
+      Assine como ${profile?.full_name || 'Consumidor'}.`;
+
+      const result = await model.generateContent(prompt);
+      setGeneratedEmail(result.response.text());
+      toast.success('E-mail de reclamação gerado pela IA!');
+    } catch (err) {
+      toast.error('Erro ao gerar e-mail.');
+    } finally {
+      setWritingEmail(false);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-12 w-12 animate-spin text-emerald-600" /></div>;
   if (!warranty) notFound();
 
-  // Cálculo do Score de Segurança do Item
-  const securityChecks = [
-    { label: 'Nota Fiscal Digitalizada', active: !!warranty.invoice_url, weight: 30 },
-    { label: 'Número de Série Registrado', active: !!warranty.serial_number, weight: 20 },
-    { label: 'Selo de Integridade Gerado', active: true, weight: 10 }, // Automático
-    { label: 'Seguro Ativo ou Simulado', active: !!warranty.insurance_policy, weight: 20 },
-    { label: 'Manutenção em Dia', active: logs.length > 0, weight: 20 },
-  ];
-
-  const itemSecurityScore = securityChecks.reduce((acc, curr) => curr.active ? acc + curr.weight : acc, 0);
-
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20 px-4 md:px-0">
       <div className="flex justify-between items-center">
         <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-500 font-bold hover:text-emerald-600 transition-all"><ArrowLeft className="h-4 w-4" /> Voltar</button>
-        <div className="flex gap-2">
-          <Link href={`/products/edit/${warranty.id}`}><Button variant="outline" size="sm" className="gap-2 border-teal-100 font-bold text-teal-700">Editar Ativo</Button></Link>
-        </div>
+        <Link href={`/products/edit/${warranty.id}`}><Button variant="outline" size="sm" className="gap-2 border-teal-100 font-bold text-teal-700">Editar Dados</Button></Link>
       </div>
 
-      <header className="flex flex-col md:flex-row justify-between items-end gap-6">
-        <div className="space-y-2">
-          <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-slate-900 leading-none">{warranty.name}</h1>
-          <p className="text-xl text-slate-500 font-medium">{warranty.category || 'Geral'} • {warranty.folder}</p>
-        </div>
-        <motion.div whileHover={{ scale: 1.02 }} onClick={verifyIntegrity} className="cursor-pointer px-6 py-4 bg-white rounded-[24px] border border-teal-100 flex items-center gap-4 shadow-xl">
-          <div className={`h-12 w-12 rounded-full flex items-center justify-center ${verifying ? 'bg-slate-100' : 'bg-emerald-50 text-emerald-600'}`}>{verifying ? <Loader2 className="h-6 w-6 animate-spin" /> : <Fingerprint className="h-6 w-6" />}</div>
-          <div>
-            <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest leading-none">Auditado por IA</p>
-            <p className="text-sm font-black text-slate-900 mt-1">Selo de Integridade</p>
+      {/* Modal de E-mail IA */}
+      <AnimatePresence>
+        {generatedEmail && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/90 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[40px] p-10 max-w-2xl w-full text-left space-y-6 shadow-2xl relative">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="bg-emerald-50 p-2 rounded-xl text-emerald-600"><MailSearch className="h-5 w-5" /></div>
+                  <h3 className="text-xl font-black text-slate-900">E-mail de Reclamação Pronto</h3>
+                </div>
+                <button onClick={() => setGeneratedEmail(null)} className="p-2 bg-slate-50 rounded-full"><X className="h-5 w-5 text-slate-400" /></button>
+              </div>
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 max-h-[350px] overflow-y-auto no-scrollbar font-medium text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+                {generatedEmail}
+              </div>
+              <div className="flex gap-4">
+                <Button 
+                  onClick={() => { navigator.clipboard.writeText(generatedEmail); toast.success('E-mail copiado!'); }}
+                  className="flex-1 h-14 gap-2 font-black uppercase text-xs tracking-widest"
+                >
+                  <Copy className="h-4 w-4" /> Copiar Texto
+                </Button>
+                <Button variant="outline" onClick={() => setGeneratedEmail(null)} className="flex-1 h-14 font-black uppercase text-xs tracking-widest border-slate-200">Fechar</Button>
+              </div>
+            </motion.div>
           </div>
-        </motion.div>
+        )}
+      </AnimatePresence>
+
+      <header className="space-y-2">
+        <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-slate-900 leading-none">{warranty.name}</h1>
+        <p className="text-xl text-slate-500 font-medium">{warranty.category || 'Geral'} • {warranty.folder}</p>
       </header>
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-8">
-          {/* NOVO: Checklist de Segurança Patrimonial (Killer Feature) */}
-          <Card className="border-none shadow-xl bg-white overflow-hidden relative">
-            <div className="absolute top-0 right-0 p-8 opacity-5"><ListChecks className="h-32 w-32 text-emerald-600 rotate-12" /></div>
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-8">
-              <div className="flex justify-between items-center">
-                <div className="space-y-1">
-                  <CardTitle className="text-xl font-black flex items-center gap-2 text-slate-900"><ShieldCheck className="h-5 w-5 text-emerald-600" /> Auditoria de Segurança</CardTitle>
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-widest">Status de proteção individual do bem</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-black text-emerald-600">{itemSecurityScore}%</div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">Seguro</p>
-                </div>
+          {/* Card de Ação Proativa */}
+          <div className="p-8 rounded-[40px] bg-slate-900 text-white shadow-xl relative overflow-hidden group">
+            <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-700"><Scale className="h-48 w-48 text-white rotate-12" /></div>
+            <div className="relative z-10 space-y-6">
+              <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest">
+                <Sparkles className="h-4 w-4" /> Inteligência de Suporte
               </div>
-            </CardHeader>
-            <CardContent className="p-8 space-y-6">
-              <div className="grid sm:grid-cols-2 gap-4">
-                {securityChecks.map((check, i) => (
-                  <div key={i} className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${check.active ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                    {check.active ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <ShieldQuestion className="h-5 w-5 text-slate-300" />}
-                    <span className={`text-xs font-bold ${check.active ? 'text-emerald-900' : 'text-slate-400'}`}>{check.label}</span>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                <h3 className="text-3xl font-black">O produto deu <span className="text-red-500">Defeito?</span></h3>
+                <p className="text-slate-400 text-sm font-medium leading-relaxed">Não perca tempo com burocracia. Nossa IA redige o e-mail formal de reclamação perfeito para você enviar ao fabricante agora mesmo.</p>
               </div>
-              {!profile?.is_premium && itemSecurityScore < 100 && (
-                <div className="mt-4 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center">
-                  <p className="text-[10px] font-black text-amber-700 uppercase leading-relaxed">Dica: Adicione o seguro e manutenções para atingir 100% de proteção e valorizar o bem.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <Button 
+                onClick={generateClaimEmail} 
+                disabled={writingEmail}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest h-14 px-10 rounded-2xl shadow-xl shadow-emerald-500/20 gap-2"
+              >
+                {writingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailSearch className="h-4 w-4" />}
+                {writingEmail ? 'Redigindo Reclamação...' : 'Gerar E-mail de Reclamação'}
+              </Button>
+            </div>
+          </div>
 
           <Card className="border-none shadow-xl bg-white p-8">
-            <CardHeader className="p-0 mb-8"><CardTitle className="text-sm font-black uppercase text-slate-400 flex items-center gap-2"><History className="h-5 w-5 text-emerald-600" /> Jornada do Ativo</CardTitle></CardHeader>
+            <CardHeader className="p-0 mb-8"><CardTitle className="text-sm font-black uppercase text-slate-400 flex items-center gap-2"><History className="h-5 w-5 text-emerald-600" /> Histórico do Bem</CardTitle></CardHeader>
             <div className="space-y-6">
               {logs.map((log, i) => (
                 <div key={i} className="flex gap-4 items-start">
-                  <div className="h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0"><Wrench className="h-4 w-4" /></div>
-                  <div><p className="text-sm font-black text-slate-900">{log.description}</p><p className="text-[10px] font-bold text-slate-400 uppercase">{formatDate(log.date)} • R$ {Number(log.cost).toLocaleString('pt-BR')}</p></div>
+                  <div className="h-8 w-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0"><CheckCircle2 className="h-4 w-4" /></div>
+                  <div className="pt-1"><p className="text-sm font-black text-slate-900">{log.description}</p><p className="text-[10px] font-bold text-slate-400 uppercase">{formatDate(log.date)} • R$ {Number(log.cost).toLocaleString('pt-BR')}</p></div>
                 </div>
               ))}
             </div>
@@ -137,16 +155,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="space-y-6">
-          <Card className="bg-slate-900 text-white border-none p-8 relative overflow-hidden shadow-2xl group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-600 to-cyan-600 rounded-2xl blur opacity-0 group-hover:opacity-20 transition duration-1000"></div>
-            <TrendingDown className="h-8 w-8 text-emerald-400 mb-4" /><p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Valor Real Hoje</p>
-            <div className="text-4xl font-black text-white mt-1">R$ {(Number(warranty.price || 0) * 0.85).toLocaleString('pt-BR')}</div>
-            <Button className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 font-black text-[10px] uppercase py-4 rounded-xl gap-2"><Plus className="h-4 w-4" /> Registrar Valorização</Button>
+          <Card className="bg-white border-teal-50 shadow-xl p-8 relative overflow-hidden">
+            <TrendingDown className="h-8 w-8 text-red-100 mb-4" /><p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Valor de Mercado</p><div className="text-4xl font-black text-slate-900 mt-1">R$ {(Number(warranty.price || 0) * 0.85).toLocaleString('pt-BR')}</div>
           </Card>
           
           <div className="p-8 rounded-[40px] bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xl space-y-4">
-            <ShieldCheck className="h-8 w-8 opacity-20" /><h4 className="text-xl font-black leading-tight text-white uppercase tracking-tighter">Certificado Digital</h4><p className="text-xs font-medium text-emerald-100">Gere um documento de autenticidade reconhecido para venda ou seguro.</p>
-            <Button variant="ghost" className="w-full bg-white text-emerald-700 font-black text-[10px] uppercase py-4 shadow-lg">Emitir Certificado</Button>
+            <Umbrella className="h-8 w-8 opacity-20" /><h4 className="text-xl font-black leading-tight text-white uppercase tracking-tighter">Proteção Ativa</h4><p className="text-xs font-medium text-emerald-100 leading-relaxed">Simule um seguro residencial para proteger este e outros bens da sua casa.</p>
+            <Link href={`/insurance/simulator/${warranty.id}`} className="block"><Button variant="ghost" className="w-full bg-white text-emerald-700 font-black text-[10px] uppercase py-4 shadow-lg">Simular Seguro</Button></Link>
           </div>
         </div>
       </div>
