@@ -75,6 +75,11 @@ export const Navbar = () => {
               <BarChart3 className="h-4 w-4 text-emerald-600" /> Análises
             </Button>
           </Link>
+          <Link href="/support" className="hidden md:block">
+            <Button variant="ghost" size="sm" className="gap-2 font-bold text-slate-600">
+              <Scale className="h-4 w-4 text-emerald-600" /> Suporte
+            </Button>
+          </Link>
           
           <div className="relative">
             <Button 
