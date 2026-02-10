@@ -3,17 +3,19 @@
 import { createClient } from '@/lib/supabase/client';
 import { WarrantyCard } from '@/components/warranties/WarrantyCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Package, AlertCircle, ShieldCheck, Plus, Search, Filter, Wallet, FileDown, TrendingUp, X, Trophy, Share2, MessageCircle, Clock, BellRing, PieChart as ChartIcon, CheckCircle2, HeartHandshake, FolderOpen, BarChart3, Plane, QrCode, Lock, ArrowDownRight, ArrowUpRight, Calculator, Landmark, CreditCard, Sparkles, RefreshCcw, Zap, BrainCircuit, Loader2, SendHorizonal, DownloadCloud, Fingerprint, Users } from 'lucide-react';
+import { Package, AlertCircle, ShieldCheck, Plus, Search, Filter, Wallet, FileDown, TrendingUp, X, Trophy, Share2, MessageCircle, Clock, BellRing, PieChart as ChartIcon, CheckCircle2, HeartHandshake, FolderOpen, BarChart3, Plane, QrCode, Lock, ArrowDownRight, ArrowUpRight, Calculator, Landmark, CreditCard, Sparkles, RefreshCcw, Zap, BrainCircuit, Loader2, SendHorizonal, DownloadCloud, Fingerprint, Cloud, ListChecks, ArrowRight, ShieldAlert, Calendar } from 'lucide-react';
 import { calculateExpirationDate, getDaysRemaining, formatDate } from '@/lib/utils/date-utils';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function DashboardPage() {
   const [warranties, setWarranties] = useState<any[]>([]);
-  const [filteredWarranties, setFilteredWarranties] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [greeting, setGreeting] = useState('');
@@ -32,38 +34,23 @@ export default function DashboardPage() {
     if (user) {
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setProfile(profileData || { full_name: user.user_metadata?.full_name, is_premium: false });
-      
-      // BUSCA COMPLEXA: Meus itens + Itens de pastas compartilhadas comigo
-      const { data: myItems } = await supabase.from('warranties').select('*').eq('user_id', user.id);
-      
-      const { data: shares } = await supabase.from('folder_shares').select('folder_name, owner_id').eq('shared_with_email', user.email);
-      
-      let allItems = [...(myItems || [])];
-
-      if (shares && shares.length > 0) {
-        for (const share of shares) {
-          const { data: sharedItems } = await supabase
-            .from('warranties')
-            .select('*')
-            .eq('user_id', share.owner_id)
-            .eq('folder', share.folder_name);
-          
-          if (sharedItems) {
-            // Marcar como compartilhado para UI
-            const processedShared = sharedItems.map(item => ({ ...item, is_shared: true }));
-            allItems = [...allItems, ...processedShared];
-          }
-        }
-      }
-
-      setWarranties(allItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-      setFilteredWarranties(allItems);
+      const { data: warrantyData } = await supabase.from('warranties').select('*').order('created_at', { ascending: false });
+      if (warrantyData) setWarranties(warrantyData);
     }
     setLoading(false);
   };
 
-  const totalValue = warranties.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
-  const sharedCount = warranties.filter(w => w.is_shared).length;
+  // Lógica de Parcelas: Filtrar itens que ainda possuem parcelas a pagar
+  const installmentItems = warranties
+    .filter(w => w.total_installments > w.paid_installments)
+    .map(w => ({
+      ...w,
+      remainingAmount: (w.total_installments - w.paid_installments) * Number(w.installment_value || 0),
+      remainingCount: w.total_installments - w.paid_installments
+    }))
+    .sort((a, b) => b.remainingAmount - a.marketValue);
+
+  const totalMonthlyInstallment = installmentItems.reduce((acc, curr) => acc + Number(curr.installment_value || 0), 0);
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-600"></div></div>;
 
@@ -72,49 +59,74 @@ export default function DashboardPage() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
           <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white">{greeting}, <span className="text-emerald-600">{profile?.full_name?.split(' ')[0] || 'Guardião'}</span>!</h1>
-          <p className="text-slate-500 font-medium text-sm flex items-center gap-2">
-            {sharedCount > 0 ? <><Users className="h-4 w-4 text-emerald-600" /> Você possui {sharedCount} itens compartilhados pela família.</> : 'Seu patrimônio está auditado e seguro.'}
-          </p>
+          <p className="text-slate-500 font-medium">Sua saúde patrimonial está monitorada.</p>
         </div>
-        <Link href="/products/new"><Button size="lg" className="shadow-2xl shadow-emerald-200 font-bold h-12 rounded-2xl"><Plus className="h-5 w-5 mr-2" /> Nova Nota</Button></Link>
+        <Link href="/products/new"><Button size="lg" className="shadow-2xl shadow-emerald-200 dark:shadow-none font-bold h-12 rounded-2xl"><Plus className="h-5 w-5 mr-2" /> Nova Nota</Button></Link>
       </header>
 
-      {/* Stats Cards com Contexto de Família */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="border-none bg-white dark:bg-slate-900 shadow-xl p-8 flex flex-col justify-center relative overflow-hidden group">
-          <div className="absolute right-0 top-0 h-full w-1.5 bg-emerald-500" />
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 flex items-center gap-2">Patrimônio Consolidado</p>
-          <div className="text-4xl font-black text-slate-900 dark:text-white">R$ {totalValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-          <p className="text-[9px] text-slate-400 font-bold uppercase mt-2">Soma de todos os itens do grupo</p>
-        </Card>
+      <div className="grid gap-8 lg:grid-cols-3">
+        {/* Principal: Ativos */}
+        <div className="lg:col-span-2 space-y-8">
+          <Card className="bg-slate-900 text-white border-none p-8 relative overflow-hidden shadow-2xl">
+            <div className="absolute right-0 top-0 h-full w-1/3 bg-emerald-500/10 skew-x-12 translate-x-10" />
+            <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
+              <div className="space-y-4 text-center md:text-left">
+                <h3 className="text-xl font-bold flex items-center justify-center md:justify-start gap-2 text-emerald-400 uppercase tracking-widest"><ShieldCheck className="h-5 w-5" /> Patrimônio Gerido</h3>
+                <div className="text-5xl font-black">R$ {warranties.reduce((acc, curr) => acc + Number(curr.price || 0), 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+                <p className="text-xs text-slate-400 font-medium leading-relaxed max-w-sm">Valor total documentado e protegido sob sua titularidade digital.</p>
+              </div>
+            </div>
+          </Card>
 
-        <Card className="border-none bg-emerald-600 text-white shadow-xl p-8 flex flex-col justify-center shadow-emerald-500/20">
-          <p className="text-[10px] font-black uppercase text-emerald-100 tracking-widest mb-2 flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Score de Proteção</p>
-          <div className="text-4xl font-black">98%</div>
-          <p className="text-[10px] text-emerald-100 font-bold uppercase mt-2">Segurança máxima ativa</p>
-        </Card>
-
-        <Card className="border-none bg-slate-900 text-white shadow-xl p-8 flex flex-col justify-center relative overflow-hidden">
-          <div className="absolute right-[-10px] top-[-10px] opacity-10"><Users className="h-32 w-32" /></div>
-          <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-2">Itens na Rede</p>
-          <div className="text-4xl font-black">{warranties.length}</div>
-          <p className="text-[10px] text-emerald-400 font-bold uppercase mt-2">{sharedCount} compartilhados</p>
-        </Card>
-      </div>
-
-      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-        <AnimatePresence mode="popLayout">
-          {filteredWarranties.map((w) => (
-            <motion.div key={w.id} layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="relative group">
-              {w.is_shared && (
-                <div className="absolute -top-3 -right-3 z-20 bg-amber-500 text-white p-2 rounded-full shadow-lg border-4 border-white dark:border-slate-900" title="Compartilhado com você">
-                  <Users className="h-3 w-3" />
-                </div>
-              )}
-              <WarrantyCard warranty={w} />
+          <AnimatePresence mode="popLayout">
+            <motion.div layout className="grid gap-6 md:grid-cols-2">
+              {warranties.slice(0, 4).map((w) => (<WarrantyCard key={w.id} warranty={w} />))}
             </motion.div>
-          ))}
-        </AnimatePresence>
+          </AnimatePresence>
+          <div className="flex justify-center"><Link href="/vault"><Button variant="ghost" className="text-emerald-600 font-black uppercase text-[10px] tracking-widest">Ver todos os ativos no cofre</Button></Link></div>
+        </div>
+
+        {/* Sidebar: Compromissos Financeiros (Cartão de Crédito) */}
+        <div className="space-y-6">
+          <Card className="border-none shadow-xl bg-white dark:bg-slate-900 overflow-hidden group">
+            <div className="h-1.5 w-full bg-red-500" />
+            <CardHeader className="p-6 pb-2">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><CreditCard className="h-4 w-4 text-red-500" /> Compromisso Mensal</CardTitle>
+                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 px-2 py-1 rounded-md text-[10px] font-black uppercase">Fatura Ativa</div>
+              </div>
+              <div className="mt-4">
+                <p className="text-3xl font-black text-slate-900 dark:text-white">R$ {totalMonthlyInstallment.toLocaleString('pt-BR')}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Total em parcelas de ativos</p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 pt-4 space-y-4">
+              <div className="space-y-3">
+                {installmentItems.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic text-center py-4">Nenhum ativo parcelado no momento.</p>
+                ) : (
+                  installmentItems.slice(0, 3).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-black text-slate-900 dark:text-white uppercase truncate max-w-[120px]">{item.name}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">{item.remainingCount} parcelas restantes</p>
+                      </div>
+                      <p className="text-xs font-black text-red-500">R$ {Number(item.installment_value).toLocaleString('pt-BR')}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <Button variant="outline" className="w-full h-12 text-[10px] font-black uppercase tracking-widest border-slate-100 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5">Ver Cronograma Completo</Button>
+            </CardContent>
+          </Card>
+
+          <div className="p-8 rounded-[40px] bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xl space-y-4 relative overflow-hidden group">
+            <div className="absolute right-[-10px] bottom-[-10px] opacity-10 group-hover:scale-110 transition-transform duration-700"><TrendingUp className="h-32 w-32" /></div>
+            <h4 className="text-xl font-black leading-tight">Valorização Ativa</h4>
+            <p className="text-xs font-medium text-emerald-100 leading-relaxed">Você já quitou **{Math.round(((warranties.reduce((acc, curr) => acc + (curr.paid_installments * Number(curr.installment_value || 0)), 0)) / (warranties.reduce((acc, curr) => acc + Number(curr.price || 1), 0)) * 100))}%** do seu patrimônio total documentado.</p>
+            <Button variant="ghost" className="w-full bg-white text-emerald-700 font-black text-[10px] uppercase py-4 shadow-lg">Ver ROI Detalhado</Button>
+          </div>
+        </div>
       </div>
     </div>
   );
