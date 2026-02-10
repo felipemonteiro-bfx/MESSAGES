@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { Button } from '../ui/Button';
-import { Plus, LogOut, LayoutDashboard, User, Sparkles, Crown, Bell, X, Check } from 'lucide-react';
+import { Plus, LogOut, LayoutDashboard, User, Sparkles, Crown, Bell, X, Check, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -68,6 +68,11 @@ export const Navbar = () => {
           <Link href="/dashboard" className="hidden md:block">
             <Button variant="ghost" size="sm" className="gap-2 font-bold text-slate-600">
               <LayoutDashboard className="h-4 w-4 text-emerald-600" /> Painel
+            </Button>
+          </Link>
+          <Link href="/analytics" className="hidden md:block">
+            <Button variant="ghost" size="sm" className="gap-2 font-bold text-slate-600">
+              <BarChart3 className="h-4 w-4 text-emerald-600" /> Análises
             </Button>
           </Link>
           
