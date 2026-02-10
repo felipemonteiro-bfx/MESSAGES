@@ -87,6 +87,7 @@ export const Navbar = () => {
                     <MenuLink href="/vault/import" icon={<Landmark className="h-4 w-4" />} title="Importar Banco" desc="Open Finance Sync" />
                     <MenuLink href="/family" icon={<Users className="h-4 w-4" />} title="Família" desc="Gestão compartilhada" />
                     <MenuLink href="/audit" icon={<History className="h-4 w-4" />} title="Auditoria" desc="Logs de segurança" />
+                    <MenuLink href="/referral" icon={<Gift className="h-4 w-4" />} title="Indique e Ganhe" desc="Ganhe meses grátis" />
                     <MenuLink href="/travel-check" icon={<Plane className="h-4 w-4" />} title="Modo Viagem" desc="Declaração de mala" />
                     <MenuLink href="/notifications/recalls" icon={<ShieldBan className="h-4 w-4" />} title="Recall Central" desc="Alertas de fábrica" />
                   </motion.div>
