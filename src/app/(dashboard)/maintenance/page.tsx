@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Wrench, Calendar as CalendarIcon, Clock, AlertTriangle, CheckCircle2, ArrowRight, Loader2, Info, CalendarPlus, Home, Droplets, Paintbrush, Zap, ShieldCheck } from 'lucide-react';
+import { Wrench, Calendar as CalendarIcon, Clock, AlertTriangle, CheckCircle2, ArrowRight, Loader2, Info, CalendarPlus, Home, Droplets, Paintbrush, Zap, ShieldCheck, Hammer, Building2, ListChecks, FileText } from 'lucide-react';
 import { formatDate, generateICalLink } from '@/lib/utils/date-utils';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,14 +14,14 @@ import { toast } from 'sonner';
 export default function MaintenanceSchedulePage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'structural'>('all');
   const supabase = createClient();
 
-  // Mock de Tarefas Prediais (Futuro: Viria do banco)
   const structuralTasks = [
     { id: 'p1', name: 'Limpeza de Caixa d\'água', category: 'Hidráulica', frequency: 6, lastDate: '2024-10-15', icon: <Droplets className="h-5 w-5" /> },
     { id: 'p2', name: 'Revisão Elétrica (Quadro)', category: 'Elétrica', frequency: 24, lastDate: '2023-05-20', icon: <Zap className="h-5 w-5" /> },
-    { id: 'p3', name: 'Manutenção de Calhas', category: 'Estrutura', frequency: 12, lastDate: '2024-02-10', icon: <Home className="h-5 w-5" /> },
+    { id: 'p3', name: 'Pintura e Fachada', category: 'Conservação', frequency: 60, lastDate: '2021-08-10', icon: <Paintbrush className="h-5 w-5" /> },
+    { id: 'p4', name: 'Manutenção de Elevadores', category: 'Mecânica', frequency: 1, lastDate: '2025-01-30', icon: <Building2 className="h-5 w-5" /> },
   ];
 
   useEffect(() => {
@@ -29,11 +29,6 @@ export default function MaintenanceSchedulePage() {
   }, []);
 
   const fetchMaintenanceData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      setProfile(profileData);
-    }
     const { data } = await supabase.from('warranties').select('*');
     
     const assetItems = (data || []).map(item => {
@@ -53,6 +48,8 @@ export default function MaintenanceSchedulePage() {
     setLoading(false);
   };
 
+  const filteredItems = activeTab === 'all' ? items : items.filter(i => i.type === 'structural');
+
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-12 w-12 animate-spin text-emerald-600" /></div>;
 
   return (
@@ -60,79 +57,75 @@ export default function MaintenanceSchedulePage() {
       <header className="flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="space-y-1">
           <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase tracking-tighter">Gestor de <span className="text-emerald-600">Conservação</span></h1>
-          <p className="text-slate-500 font-medium">Cuide dos seus eletrônicos e da saúde da sua casa em um só lugar.</p>
+          <p className="text-slate-500 font-medium">Cronograma inteligente para ativos móveis e patrimônio predial.</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2 border-emerald-100 text-emerald-700 font-bold h-12 shadow-sm">
-            <CalendarPlus className="h-4 w-4" /> Sincronizar Agenda
+          <Button variant="outline" className="gap-2 border-emerald-100 text-emerald-700 font-black h-12 shadow-sm uppercase text-[10px] tracking-widest">
+            <FileText className="h-4 w-4" /> Laudo de Vistoria
+          </Button>
+          <Button className="gap-2 bg-slate-900 text-white font-black h-12 px-6 shadow-xl shadow-slate-900/20 uppercase text-[10px] tracking-widest">
+            <Plus className="h-4 w-4" /> Nova Tarefa
           </Button>
         </div>
       </header>
 
+      {/* Filtros de Categoria */}
+      <div className="flex gap-4 p-1 bg-white dark:bg-slate-900 border border-teal-50 dark:border-white/5 rounded-2xl w-fit">
+        <button onClick={() => setActiveTab('all')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'all' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Todos os Ativos</button>
+        <button onClick={() => setActiveTab('structural')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'structural' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Manutenção Predial</button>
+      </div>
+
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* Lado Esquerdo: Agenda de Ativos e Casa */}
-        <div className="lg:col-span-2 space-y-10">
-          
-          <section className="space-y-6">
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-emerald-600" /> Próximas Intervenções
-            </h3>
+        <div className="lg:col-span-2 space-y-8">
+          <AnimatePresence mode="popLayout">
             <div className="grid gap-4 sm:grid-cols-2">
-              {items.slice(0, 6).map((item) => (
-                <motion.div key={item.id} whileHover={{ y: -5 }}>
-                  <Card className={`border-none shadow-xl overflow-hidden bg-white dark:bg-slate-900 ${item.daysToNext < 0 ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-emerald-500'}`}>
-                    <CardContent className="p-6 space-y-4">
+              {filteredItems.map((item) => (
+                <motion.div key={item.id} layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
+                  <Card className={`border-none shadow-xl overflow-hidden bg-white dark:bg-slate-900 group ${item.daysToNext < 0 ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-emerald-500'}`}>
+                    <CardContent className="p-6 space-y-6">
                       <div className="flex justify-between items-start">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${item.type === 'structural' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                              {item.type === 'structural' ? 'Imóvel' : 'Ativo'}
-                            </span>
-                          </div>
-                          <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none">{item.name}</h4>
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${item.type === 'structural' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/20' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20'}`}>
+                            {item.type === 'structural' ? 'Imóvel' : 'Ativo Físico'}
+                          </span>
+                          <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none group-hover:text-emerald-600 transition-colors">{item.name}</h4>
                         </div>
-                        <div className="p-2 bg-slate-50 dark:bg-white/5 rounded-xl text-slate-400">
-                          {item.icon || <Wrench className="h-4 w-4" />}
+                        <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-all">
+                          {item.icon || <Wrench className="h-5 w-5" />}
                         </div>
                       </div>
-                      <div className="flex justify-between items-end">
-                        <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase">Previsão</p>
-                          <p className={`text-sm font-black ${item.daysToNext < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white'}`}>
-                            {item.nextDate.toLocaleDateString('pt-BR')}
-                          </p>
+                      
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Próxima Revisão</p>
+                          <p className={`text-md font-black ${item.daysToNext < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white'}`}>{item.nextDate.toLocaleDateString('pt-BR')}</p>
                         </div>
-                        <p className={`text-[10px] font-bold uppercase ${item.daysToNext < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                          {item.daysToNext < 0 ? 'Atrasado' : `Faltam ${item.daysToNext}d`}
-                        </p>
+                        <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${item.daysToNext < 0 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-emerald-50 text-emerald-600'}`}>
+                          {item.daysToNext < 0 ? 'Atrasado' : `Em ${item.daysToNext}d`}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
               ))}
             </div>
-          </section>
+          </AnimatePresence>
         </div>
 
-        {/* Lado Direito: Insights de Valorização Predial */}
         <div className="space-y-6">
-          <Card className="border-none shadow-xl bg-slate-900 text-white p-8 relative overflow-hidden group">
-            <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-110 transition-transform duration-700">
-              <ShieldCheck className="h-32 w-32 text-emerald-500" />
-            </div>
+          <Card className="border-none shadow-2xl bg-slate-900 text-white p-10 relative overflow-hidden group">
+            <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-700"><ListChecks className="h-48 w-48 text-emerald-500" /></div>
             <div className="relative z-10 space-y-6">
-              <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest">
-                <Home className="h-4 w-4" /> Home Health
-              </div>
-              <h3 className="text-2xl font-black leading-tight uppercase tracking-tighter">Valorize seu <span className="text-emerald-400">Imóvel.</span></h3>
-              <p className="text-slate-400 text-sm font-medium leading-relaxed">Manter um log de manutenção predial pode aumentar o valor de venda da sua casa em até 15% ao provar o cuidado estrutural.</p>
-              <Button variant="ghost" className="w-full bg-white/10 text-white font-black text-[10px] uppercase h-12 border border-white/10">Ver Checklists Casa</Button>
+              <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest"><ShieldCheck className="h-4 w-4" /> Conformidade Predial</div>
+              <h3 className="text-2xl font-black leading-tight uppercase tracking-tighter">Saúde da sua <span className="text-emerald-400">Edificação.</span></h3>
+              <p className="text-slate-400 text-sm font-medium leading-relaxed">O Guardião agora monitora itens de segurança predial. Manter esses logs em dia garante a validade do seu Seguro Residencial em caso de perícia técnica.</p>
+              <Button variant="ghost" className="w-full bg-white/10 text-white font-black text-[10px] uppercase h-14 border border-white/10 hover:bg-white/20 rounded-2xl">Gerar Laudo para Seguro</Button>
             </div>
           </Card>
 
           <div className="p-8 rounded-[40px] bg-white dark:bg-slate-900 border border-teal-50 dark:border-white/5 shadow-xl space-y-4">
-            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">< Droplets className="h-4 w-4 text-blue-500" /> Dica de Outono</h4>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-relaxed">É época de limpar as calhas. Evite infiltrações que podem depreciar seu imóvel em milhares de reais.</p>
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Hammer className="h-4 w-4 text-emerald-600" /> Dica de Auditoria</h4>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 leading-relaxed italic">"Manter o quadro elétrico revisado anualmente reduz o risco de incêndios em 85%. Registre sua última revisão hoje."</p>
           </div>
         </div>
       </div>
