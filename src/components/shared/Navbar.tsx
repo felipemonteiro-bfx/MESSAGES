@@ -144,6 +144,9 @@ export const Navbar = () => {
                       ))
                     )}
                   </div>
+                  <div className="p-3 bg-slate-50 text-center border-t border-teal-50">
+                    <Link href="/notifications" onClick={() => setShowNotifications(false)} className="text-[10px] font-black text-emerald-600 uppercase hover:underline">Ver todos os alertas</Link>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
