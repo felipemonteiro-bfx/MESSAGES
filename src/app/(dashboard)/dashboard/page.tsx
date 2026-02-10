@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { WarrantyCard } from '@/components/warranties/WarrantyCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Package, AlertCircle, ShieldCheck, Plus, Search, Filter, Wallet, FileDown, TrendingUp, X, Trophy, Share2, MessageCircle, Clock, BellRing, PieChart as ChartIcon, CheckCircle2, HeartHandshake, FolderOpen, BarChart3, Plane, QrCode, Lock, ArrowDownRight, ArrowUpRight, Calculator, Landmark, CreditCard, Sparkles, ShieldAlert, ScanSearch, Loader2, RefreshCcw, Leaf } from 'lucide-react';
+import { Package, AlertCircle, ShieldCheck, Plus, Search, Filter, Wallet, FileDown, TrendingUp, X, Trophy, Share2, MessageCircle, Clock, BellRing, PieChart as ChartIcon, CheckCircle2, HeartHandshake, FolderOpen, BarChart3, Plane, QrCode, Lock, ArrowDownRight, ArrowUpRight, Calculator, Landmark, CreditCard, Sparkles, ShieldAlert, ScanSearch, Loader2, RefreshCcw, Leaf, ShoppingBag, Stars } from 'lucide-react';
 import { calculateExpirationDate, getDaysRemaining, formatDate } from '@/lib/utils/date-utils';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
@@ -17,9 +17,6 @@ import autoTable from 'jspdf-autotable';
 export default function DashboardPage() {
   const [warranties, setWarranties] = useState<any[]>([]);
   const [filteredWarranties, setFilteredWarranties] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedFolder, setSelectedFolder] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [greeting, setGreeting] = useState('');
@@ -47,24 +44,21 @@ export default function DashboardPage() {
     setLoading(false);
   };
 
+  const getDepreciatedValue = (item: any) => {
+    const price = Number(item.price || 0);
+    const years = (new Date().getTime() - new Date(item.purchase_date).getTime()) / (1000 * 60 * 60 * 24 * 365);
+    return price * 0.9 * Math.pow(0.85, years);
+  };
+
   useEffect(() => {
     let result = warranties;
-    if (selectedCategory !== 'all') result = result.filter(w => w.category === selectedCategory);
-    if (selectedFolder !== 'all') result = result.filter(w => w.folder === selectedFolder);
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(w => w.name.toLowerCase().includes(query) || (w.category && w.category.toLowerCase().includes(query)));
-    }
-    setFilteredWarranties(result);
-  }, [selectedCategory, selectedFolder, searchQuery, warranties]);
+    if (result) setFilteredWarranties(result);
+  }, [warranties]);
 
-  const totalOriginalValue = filteredWarranties.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
-  const totalSaved = warranties.reduce((acc, curr) => acc + (Number(curr.total_saved) || 0), 0);
-  
-  // Cálculo de Impacto Ambiental (Simulação: 1 conserto evita ~2kg de CO2 e 5kg de lixo eletrônico)
-  const consertosRealizados = warranties.filter(w => Number(w.total_saved) > 0).length;
-  const co2Avoided = consertosRealizados * 2.5; // kg
-  const wasteAvoided = consertosRealizados * 5.2; // kg
+  // Lógica para o melhor item de upgrade
+  const bestTradeIn = [...warranties]
+    .filter(w => Number(w.price) > 500)
+    .sort((a, b) => (getDepreciatedValue(b) / Number(b.price || 1)) - (getDepreciatedValue(a) / Number(a.price || 1)))[0];
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-600"></div></div>;
 
@@ -73,46 +67,37 @@ export default function DashboardPage() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
           <h1 className="text-4xl font-black tracking-tight text-slate-900">{greeting}, <span className="text-emerald-600">{profile?.full_name?.split(' ')[0] || 'Guardião'}</span>!</h1>
-          <p className="text-slate-500 font-medium">Gestão inteligente e sustentável de patrimônio.</p>
+          <p className="text-slate-500 font-medium text-sm">Gestão de patrimônio e oportunidades.</p>
         </div>
         <Link href="/products/new"><Button size="lg" className="shadow-2xl shadow-emerald-200 font-bold h-12"><Plus className="h-5 w-5 mr-2" /> Nova Nota</Button></Link>
       </header>
 
-      {/* Grid de Stats Financeiras e Ecológicas */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="border-teal-100 bg-white shadow-xl p-8 flex flex-col justify-center">
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 flex items-center gap-2"><Wallet className="h-4 w-4 text-emerald-600" /> Valor Protegido</p>
-          <div className="text-4xl font-black text-slate-900">R$ {totalOriginalValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-          <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Investimento Total</p>
-        </Card>
-
-        <Card className="border-teal-100 bg-emerald-600 text-white shadow-xl p-8 flex flex-col justify-center relative overflow-hidden shadow-emerald-500/20">
-          <div className="absolute right-[-10px] top-[-10px] opacity-10"><HeartHandshake className="h-32 w-32 rotate-12" /></div>
-          <div className="relative z-10">
-            <p className="text-[10px] font-black uppercase text-emerald-100 tracking-widest mb-2 flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Economia Total</p>
-            <div className="text-4xl font-black">R$ {totalSaved.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-[10px] text-emerald-100 font-bold uppercase mt-2">Dinheiro recuperado</p>
+      {/* NOVO: Widget de Próxima Conquista (Aspiracional) */}
+      {bestTradeIn && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
+          <div className="bg-gradient-to-r from-emerald-600 to-cyan-600 rounded-[40px] p-1 shadow-2xl shadow-emerald-200">
+            <div className="bg-white rounded-[38px] p-8 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
+              <div className="absolute top-[-20px] right-[-20px] opacity-5"><ShoppingBag className="h-40 w-40 text-emerald-600" /></div>
+              <div className="flex items-center gap-6 relative z-10">
+                <div className="h-16 w-16 bg-emerald-50 rounded-2xl flex items-center justify-center shadow-lg"><Stars className="h-8 w-8 text-emerald-600 animate-pulse" /></div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Sua Próxima Conquista</p>
+                  <h3 className="text-3xl font-black text-slate-900 leading-tight">
+                    Upgrade para o novo <span className="gradient-text">Premium</span>.
+                  </h3>
+                  <p className="text-slate-500 text-sm font-medium">Use seu {bestTradeIn.name} (R$ {getDepreciatedValue(bestTradeIn).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}) como entrada.</p>
+                </div>
+              </div>
+              <div className="flex gap-4 relative z-10 shrink-0">
+                <Button variant="outline" className="border-teal-100 font-black text-[10px] uppercase h-14 px-8 rounded-2xl">Simular Troca</Button>
+                <Button className="bg-slate-900 hover:bg-black text-white font-black text-[10px] uppercase h-14 px-8 rounded-2xl shadow-xl shadow-slate-900/20">Ver Ofertas</Button>
+              </div>
+            </div>
           </div>
-        </Card>
+        </motion.div>
+      )}
 
-        {/* NOVO: Widget Eco-Score */}
-        <Card className="border-cyan-100 bg-cyan-900 text-white shadow-xl p-8 flex flex-col justify-center relative overflow-hidden shadow-cyan-500/20">
-          <div className="absolute right-[-10px] bottom-[-10px] opacity-10"><Leaf className="h-32 w-32 -rotate-12 text-cyan-400" /></div>
-          <div className="relative z-10">
-            <p className="text-[10px] font-black uppercase text-cyan-400 tracking-widest mb-2 flex items-center gap-2"><Leaf className="h-4 w-4" /> Eco-Impacto</p>
-            <div className="text-4xl font-black">{wasteAvoided.toFixed(1)} <span className="text-lg">kg</span></div>
-            <p className="text-[10px] text-cyan-200 font-bold uppercase mt-2">Resíduos evitados ao consertar</p>
-          </div>
-        </Card>
-      </div>
-
-      <div className="space-y-6">
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
-          <input type="text" placeholder="Buscar produto..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full h-14 pl-12 pr-4 bg-white border-2 border-teal-50 rounded-2xl focus:outline-none focus:border-emerald-500 transition-all font-medium text-slate-700 shadow-sm" />
-        </div>
-      </div>
-
+      {/* Grid de Cards de Produto */}
       <AnimatePresence mode="popLayout">
         <motion.div layout className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {filteredWarranties.map((w) => (<div key={w.id} className="relative group"><WarrantyCard warranty={w} /></div>))}
