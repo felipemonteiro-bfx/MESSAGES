@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { TrendingUp, BarChart3, PieChart as PieIcon, Calendar, DollarSign, Loader2, ArrowLeft, ShieldCheck, Download, TrendingDown, Activity, HeartPulse, Medal, AlertCircle, ArrowUpRight, Calculator, FileCheck, LineChart as ChartIcon, Wrench } from 'lucide-react';
+import { TrendingUp, BarChart3, PieChart as PieIcon, Calendar, DollarSign, Loader2, ArrowLeft, ShieldCheck, Download, TrendingDown, Activity, HeartPulse, Medal, AlertCircle, ArrowUpRight, Calculator, FileCheck, LineChart as ChartIcon, Wrench, Leaf, Recycle, Wind } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const supabase = createClient();
 
@@ -33,15 +34,18 @@ export default function AnalyticsPage() {
       setProfile(profileData);
       const { data: items } = await supabase.from('warranties').select('*');
       if (items) setData(items);
+      const { data: logData } = await supabase.from('maintenance_logs').select('*');
+      if (logData) setLogs(logData);
     }
     setLoading(false);
   };
 
-  // Simulação de Projeção de Manutenção (Próximos 6 meses)
-  const maintenanceForecast = [
-    { name: 'Mar', valor: 150 }, { name: 'Abr', valor: 450 }, { name: 'Mai', valor: 200 },
-    { name: 'Jun', valor: 800 }, { name: 'Jul', valor: 300 }, { name: 'Ago', valor: 120 }
-  ];
+  // Lógica Eco-Impacto: 1 manutenção = prolonga vida em 20% = evita ~2kg de CO2 e 0.5kg de lixo
+  const ecoMetrics = {
+    co2Saved: logs.length * 2.4, // kg de CO2
+    wasteAvoided: logs.length * 0.8, // kg de lixo eletrônico
+    lifeProlonged: logs.length * 6, // meses extras de vida útil somados
+  };
 
   const getDepreciatedValue = (item: any) => {
     const price = Number(item.price || 0);
@@ -61,12 +65,12 @@ export default function AnalyticsPage() {
   if (!profile?.is_premium) {
     return (
       <div className="max-w-4xl mx-auto py-20 text-center space-y-8">
-        <div className="h-24 w-24 bg-indigo-100 rounded-[40px] flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200"><TrendingUp className="h-12 w-12 text-indigo-600" /></div>
+        <div className="h-24 w-24 bg-emerald-100 rounded-[40px] flex items-center justify-center mx-auto shadow-2xl shadow-emerald-200"><Leaf className="h-12 w-12 text-emerald-600" /></div>
         <div className="space-y-4">
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Analytics <span className="text-emerald-600">Patrimonial</span></h1>
-          <p className="text-slate-500 max-w-lg mx-auto font-medium">Projeção de gastos, análise de ROI e rankings de eficiência são exclusivos para o Plano Pro.</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Eco <span className="text-emerald-600">Analytics</span></h1>
+          <p className="text-slate-500 max-w-lg mx-auto font-medium">Veja seu impacto positivo no planeta ao cuidar dos seus bens. O monitor de sustentabilidade é exclusivo Pro.</p>
         </div>
-        <Link href="/plans"><Button size="lg" className="h-16 px-12 text-lg">Liberar Inteligência Pro</Button></Link>
+        <Link href="/plans"><Button size="lg" className="h-16 px-12 text-lg">Ativar Modo Sustentável</Button></Link>
       </div>
     );
   }
@@ -75,53 +79,62 @@ export default function AnalyticsPage() {
     <div className="max-w-6xl mx-auto space-y-10 pb-20 px-4 md:px-0">
       <header className="flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tight text-slate-900">Centro de <span className="text-emerald-600">Inteligência</span></h1>
-          <p className="text-slate-500 font-medium text-sm">Previsibilidade financeira e técnica para seus bens.</p>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900">Impacto <span className="text-emerald-600">Positivo</span></h1>
+          <p className="text-slate-500 font-medium text-sm">O valor ambiental de manter seu patrimônio em dia.</p>
         </div>
-        <Button variant="outline" className="gap-2 border-teal-100 font-black text-[10px] uppercase tracking-widest h-12 px-6 shadow-sm">
-          <Download className="h-4 w-4" /> Relatório Consolidado
+        <Button variant="outline" className="gap-2 border-emerald-100 text-emerald-700 font-black text-[10px] uppercase tracking-widest h-12 px-6 shadow-sm">
+          <Recycle className="h-4 w-4" /> Certificado Eco-Guardião
         </Button>
       </header>
 
-      {/* Gráfico Principal: Projeção de Gastos */}
-      <Card className="border-none shadow-xl p-8 space-y-8 bg-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-5"><Wrench className="h-32 w-32 text-emerald-600 rotate-12" /></div>
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600"><TrendingUp className="h-6 w-6" /></div>
-          <div>
-            <CardTitle className="text-xl">Projeção de Gastos com Manutenção</CardTitle>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Estimativa de custos preventivos para os próximos 6 meses</p>
+      {/* Grid de Impacto Ambiental */}
+      <div className="grid gap-8 md:grid-cols-3">
+        <Card className="border-none shadow-xl bg-emerald-600 text-white p-8 relative overflow-hidden group">
+          <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:rotate-12 transition-transform duration-700"><Wind className="h-32 w-32" /></div>
+          <div className="relative z-10 space-y-4">
+            <p className="text-[10px] font-black uppercase text-emerald-100 tracking-widest">CO2 Evitado</p>
+            <div className="text-5xl font-black">{ecoMetrics.co2Saved.toFixed(1)} <span className="text-lg">kg</span></div>
+            <p className="text-xs text-emerald-100 font-medium">Equivalente a {Math.round(ecoMetrics.co2Saved / 0.5)} árvores plantadas.</p>
           </div>
-        </div>
-        <div className="h-[350px] w-full relative z-10">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={maintenanceForecast}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" fontSize={10} fontVariant="black" axisLine={false} tickLine={false} />
-              <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${v}`} />
-              <Tooltip 
-                cursor={{ fill: '#f8fafc' }}
-                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}
-                formatter={(v: any) => [`R$ ${v.toLocaleString('pt-BR')}`, 'Gasto Previsto']}
-              />
-              <Bar dataKey="valor" fill="#059669" radius={[10, 10, 0, 0]} barSize={40} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-500 font-bold text-xs uppercase">
-            <Info className="h-4 w-4 text-emerald-600" /> Dica IA: Junho será seu mês de maior investimento em revisões.
+        </Card>
+
+        <Card className="border-none shadow-xl bg-slate-900 text-white p-8 relative overflow-hidden group">
+          <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:-rotate-12 transition-transform duration-700"><Recycle className="h-32 w-32 text-emerald-500" /></div>
+          <div className="relative z-10 space-y-4">
+            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Lixo Eletrônico Evitado</p>
+            <div className="text-5xl font-black">{ecoMetrics.wasteAvoided.toFixed(1)} <span className="text-lg">kg</span></div>
+            <p className="text-xs text-slate-400 font-medium">Peso total de componentes que não foram para o descarte.</p>
           </div>
-          <p className="text-[10px] font-black text-emerald-600 uppercase">Total Previsto: R$ 2.020,00</p>
-        </div>
-      </Card>
+        </Card>
+
+        <Card className="border-none shadow-xl bg-white p-8 relative overflow-hidden">
+          <div className="space-y-4">
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Vida Útil Adicional</p>
+            <div className="text-5xl font-black text-slate-900">{ecoMetrics.lifeProlonged} <span className="text-lg text-slate-400">meses</span></div>
+            <p className="text-xs text-slate-500 font-medium">Tempo total que você estendeu a vida dos seus bens através do Guardião.</p>
+          </div>
+        </Card>
+      </div>
 
       <div className="grid gap-8 md:grid-cols-2">
-        {/* Distribuição por Categoria */}
+        {/* Card de ROI de Sustentabilidade */}
+        <Card className="border-none shadow-xl bg-white p-10 flex flex-col justify-center space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600"><Leaf className="h-6 w-6" /></div>
+            <CardTitle className="text-xl">Por que cuidar é sustentável?</CardTitle>
+          </div>
+          <p className="text-slate-600 font-medium leading-relaxed">Cada registro de manutenção no Guardião representa uma vitória contra a obsolescência programada. Você está economizando dinheiro e protegendo o ecossistema.</p>
+          <div className="pt-6 border-t border-slate-50 grid grid-cols-2 gap-8">
+            <div><p className="text-[10px] font-black uppercase text-slate-400">Eficiência Verde</p><p className="text-2xl font-black text-emerald-600">A+</p></div>
+            <div><p className="text-[10px] font-black uppercase text-slate-400">Status Planetário</p><p className="text-2xl font-black text-slate-900">Protetor</p></div>
+          </div>
+        </Card>
+
+        {/* Mix de Patrimônio Visual */}
         <Card className="border-none shadow-xl p-8 space-y-6">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-cyan-50 rounded-2xl text-cyan-600"><PieIcon className="h-6 w-6" /></div>
-            <CardTitle className="text-lg">Alocação de Valor</CardTitle>
+            <CardTitle className="text-lg">Alocação de Capital</CardTitle>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -132,19 +145,6 @@ export default function AnalyticsPage() {
                 <Tooltip formatter={(v: any) => `R$ ${v.toLocaleString('pt-BR')}`} />
               </PieChart>
             </ResponsiveContainer>
-          </div>
-        </Card>
-
-        {/* Card de Eficiência */}
-        <Card className="bg-slate-900 text-white border-none p-10 flex flex-col justify-center relative overflow-hidden">
-          <div className="absolute right-[-20px] bottom-[-20px] opacity-10"><ShieldCheck className="h-48 w-48 text-emerald-500" /></div>
-          <div className="relative z-10 space-y-6">
-            <h3 className="text-3xl font-black leading-tight">Patrimônio sob <span className="text-emerald-400">Auditoria.</span></h3>
-            <p className="text-slate-400 font-medium leading-relaxed">Suas notas fiscais e manutenções estão sendo validadas para garantir máxima liquidez em caso de revenda.</p>
-            <div className="pt-6 border-t border-white/5 grid grid-cols-2 gap-8">
-              <div><p className="text-[10px] font-black uppercase text-slate-500">Bens Auditados</p><p className="text-2xl font-black text-white">{data.length}</p></div>
-              <div><p className="text-[10px] font-black uppercase text-slate-500">Status IA</p><p className="text-2xl font-black text-emerald-400">Ativo</p></div>
-            </div>
           </div>
         </Card>
       </div>
