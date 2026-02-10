@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { Button } from '../ui/Button';
-import { Plus, LogOut, LayoutDashboard, User, Sparkles, Crown, Bell, X } from 'lucide-react';
+import { Plus, LogOut, LayoutDashboard, User, Sparkles, Crown, Bell, X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 export const Navbar = () => {
   const router = useRouter();
@@ -30,6 +31,18 @@ export const Navbar = () => {
         .eq('read', false)
         .order('created_at', { ascending: false });
       if (data) setNotifications(data);
+    }
+  };
+
+  const markAsRead = async (id: string) => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', id);
+    
+    if (!error) {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      toast.success('Alerta arquivado.');
     }
   };
 
@@ -80,10 +93,10 @@ export const Navbar = () => {
                   className="absolute right-0 mt-4 w-80 glass rounded-3xl shadow-2xl border border-teal-50 overflow-hidden z-50"
                 >
                   <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
-                    <span className="text-xs font-black uppercase tracking-widest">Alertas do Guardião</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-emerald-400">Notificações</span>
                     <button onClick={() => setShowNotifications(false)}><X className="h-4 w-4 text-slate-400" /></button>
                   </div>
-                  <div className="max-h-96 overflow-y-auto p-2 space-y-2 no-scrollbar">
+                  <div className="max-h-96 overflow-y-auto p-2 space-y-2 no-scrollbar bg-slate-50/50">
                     {notifications.length === 0 ? (
                       <div className="p-8 text-center text-slate-400">
                         <p className="text-xs font-bold uppercase">Tudo em dia!</p>
@@ -91,15 +104,20 @@ export const Navbar = () => {
                       </div>
                     ) : (
                       notifications.map(notif => (
-                        <div key={notif.id} className="p-3 bg-white rounded-2xl border border-teal-50 shadow-sm space-y-1">
-                          <p className="text-[10px] font-black text-emerald-600 uppercase">{notif.title}</p>
-                          <p className="text-xs font-medium text-slate-600 leading-tight">{notif.message}</p>
+                        <div key={notif.id} className="p-3 bg-white rounded-2xl border border-teal-50 shadow-sm flex items-start justify-between gap-3 group">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-black text-emerald-600 uppercase">{notif.title}</p>
+                            <p className="text-xs font-medium text-slate-600 leading-tight">{notif.message}</p>
+                          </div>
+                          <button 
+                            onClick={() => markAsRead(notif.id)}
+                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 opacity-0 group-hover:opacity-100 transition-all hover:bg-emerald-600 hover:text-white"
+                          >
+                            <Check className="h-3 w-3" />
+                          </button>
                         </div>
                       ))
                     )}
-                  </div>
-                  <div className="p-3 bg-slate-50 text-center border-t border-teal-50">
-                    <Link href="/dashboard" onClick={() => setShowNotifications(false)} className="text-[10px] font-black text-emerald-600 uppercase hover:underline">Ver tudo no Painel</Link>
                   </div>
                 </motion.div>
               )}
@@ -119,6 +137,12 @@ export const Navbar = () => {
           </Link>
 
           <div className="w-px h-6 bg-teal-100 mx-1 hidden sm:block" />
+          
+          <Link href="/profile">
+            <Button variant="ghost" size="sm" className="h-10 w-10 p-0 rounded-xl text-slate-600 hover:bg-emerald-50">
+              <User className="h-5 w-5 text-emerald-600" />
+            </Button>
+          </Link>
           
           <Button variant="ghost" size="sm" onClick={handleSignOut} className="h-10 w-10 p-0 rounded-xl text-red-500 hover:bg-red-50">
             <LogOut className="h-5 w-5" />
