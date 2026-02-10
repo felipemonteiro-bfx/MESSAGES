@@ -84,6 +84,7 @@ export const Navbar = () => {
                 {showMoreMenu && (
                   <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute right-0 mt-4 w-64 glass rounded-3xl shadow-2xl border border-teal-50 dark:border-white/5 overflow-hidden z-50 p-2 space-y-1">
                     <MenuLink href="/maintenance" icon={<Wrench className="h-4 w-4" />} title="Revisões" desc="Agenda técnica" />
+                    <MenuLink href="/vault/import" icon={<Landmark className="h-4 w-4" />} title="Importar Banco" desc="Open Finance Sync" />
                     <MenuLink href="/family" icon={<Users className="h-4 w-4" />} title="Família" desc="Gestão compartilhada" />
                     <MenuLink href="/audit" icon={<History className="h-4 w-4" />} title="Auditoria" desc="Logs de segurança" />
                     <MenuLink href="/travel-check" icon={<Plane className="h-4 w-4" />} title="Modo Viagem" desc="Declaração de mala" />
