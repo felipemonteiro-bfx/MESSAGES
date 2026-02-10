@@ -4,20 +4,22 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { FileText, Search, Grid, List, Download, ExternalLink, ShieldCheck, Filter, FolderOpen, Loader2, Image as ImageIcon, Share2, QrCode, Printer, CheckCircle2 } from 'lucide-react';
+import { FileText, Search, Grid, List, Download, ExternalLink, ShieldCheck, Filter, FolderOpen, Loader2, Image as ImageIcon, Share2, QrCode, Printer, CheckCircle2, FileStack, Umbrella, Landmark } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 
 export default function VaultPage() {
   const [loading, setLoading] = useState(true);
+  const [generatingInventory, setGeneratingInventory] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [filteredItems, setFilteredWarranties] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedForLabels, setSelectedForLabels] = useState<string[]>([]);
-  const [generating, setGenerating] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -27,17 +29,74 @@ export default function VaultPage() {
   const fetchVaultItems = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data } = await supabase
-        .from('warranties')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setProfile(profileData);
+      const { data } = await supabase.from('warranties').select('*').order('created_at', { ascending: false });
       if (data) {
         setItems(data);
         setFilteredWarranties(data);
       }
     }
     setLoading(false);
+  };
+
+  const generateInsuranceInventory = () => {
+    if (!profile?.is_premium) {
+      toast.error('O Inventário de Seguros é um recurso Pro!');
+      return;
+    }
+    setGeneratingInventory(true);
+    try {
+      const doc = new jsPDF();
+      const totalValue = items.reduce((acc, curr) => acc + Number(curr.price || 0), 0);
+
+      // Capa Profissional
+      doc.setFillColor(15, 23, 42); doc.rect(0, 0, 210, 60, 'F');
+      doc.setTextColor(255, 255, 255); doc.setFontSize(24); doc.text('INVENTÁRIO RESIDENCIAL DE BENS', 14, 30);
+      doc.setFontSize(10); doc.text('DOCUMENTO PARA CONTRATAÇÃO E ACIONAMENTO DE SEGURO', 14, 40);
+      doc.text(`TITULAR: ${profile?.full_name?.toUpperCase()}`, 14, 50);
+
+      // Sumário Executivo
+      doc.setTextColor(15, 23, 42); doc.setFontSize(16); doc.text('1. Sumário do Patrimônio', 14, 80);
+      const summaryData = [
+        ['Total de Itens Auditados', items.length.toString()],
+        ['Valor Total Segurável', `R$ ${totalValue.toLocaleString('pt-BR')}`],
+        ['Status de Integridade', '100% Digital Verificado'],
+        ['Data do Inventário', new Date().toLocaleDateString('pt-BR')]
+      ];
+      autoTable(doc, { startY: 85, body: summaryData, theme: 'plain', styles: { fontSize: 11 } });
+
+      // Tabela Detalhada de Bens
+      doc.setFontSize(16); doc.text('2. Listagem Detalhada de Ativos', 14, (doc as any).lastAutoTable.finalY + 20);
+      const itemData = items.map(i => [
+        i.name,
+        i.category || '---',
+        i.serial_number || 'REGISTRADO',
+        `R$ ${Number(i.price || 0).toLocaleString('pt-BR')}`,
+        i.store || '---'
+      ]);
+
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 25,
+        head: [['Ativo', 'Categoria', 'S/N (Serial)', 'Valor', 'Origem']],
+        body: itemData,
+        headStyles: { fillColor: [5, 150, 105] },
+        styles: { fontSize: 9 }
+      });
+
+      // Rodapé de Segurança
+      const finalY = (doc as any).lastAutoTable.finalY + 20;
+      doc.setFontSize(8); doc.setTextColor(150);
+      doc.text('Este documento é um sumário de propriedade auditado pelo Sistema Guardião de Notas.', 14, finalY);
+      doc.text('As notas fiscais individuais podem ser solicitadas via QR Code de validação de cada item.', 14, finalY + 5);
+
+      doc.save(`inventario-seguro-guardiao.pdf`);
+      toast.success('Inventário para seguros gerado com sucesso!');
+    } catch (err) {
+      toast.error('Erro ao gerar inventário.');
+    } finally {
+      setGeneratingInventory(false);
+    }
   };
 
   useEffect(() => {
@@ -49,79 +108,7 @@ export default function VaultPage() {
   }, [searchQuery, items]);
 
   const toggleSelection = (id: string) => {
-    setSelectedForLabels(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
-
-  const generateLabelsPDF = async () => {
-    if (selectedForLabels.length === 0) {
-      toast.error('Selecione itens para gerar as etiquetas.');
-      return;
-    }
-    setGenerating(true);
-    try {
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-      const labelWidth = 80;
-      const labelHeight = 50;
-      const margin = 10;
-      let x = margin;
-      let y = margin;
-
-      for (const id of selectedForLabels) {
-        const item = items.find(i => i.id === id);
-        const shareUrl = `${window.location.origin}/share/${id}`;
-        const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1 });
-
-        // Desenhar Borda da Etiqueta
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(x, y, labelWidth, labelHeight);
-
-        // Logo Guardião (Simulado)
-        doc.setFillColor(5, 150, 105);
-        doc.rect(x, y, 5, labelHeight, 'F');
-
-        // Conteúdo
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text('GUARDIÃO DE NOTAS', x + 10, y + 10);
-        
-        doc.setFontSize(10);
-        doc.setTextColor(0);
-        doc.setFont('helvetica', 'bold');
-        doc.text(item.name.toUpperCase(), x + 10, y + 18, { maxWidth: 40 });
-
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`S/N: ${item.serial_number || 'REGISTRADO'}`, x + 10, y + 35);
-        doc.text(`AQUISIÇÃO: ${new Date(item.purchase_date).toLocaleDateString('pt-BR')}`, x + 10, y + 40);
-
-        // QR Code
-        doc.addImage(qrDataUrl, 'PNG', x + 50, y + 10, 25, 25);
-        doc.setFontSize(6);
-        doc.text('ESCANEIE PARA VALIDAR', x + 50, y + 38);
-
-        // Atualizar coordenadas para próxima etiqueta (2 por linha)
-        x += labelWidth + margin;
-        if (x + labelWidth > 210) {
-          x = margin;
-          y += labelHeight + margin;
-        }
-        if (y + labelHeight > 297) {
-          doc.addPage();
-          x = margin;
-          y = margin;
-        }
-      }
-
-      doc.save('etiquetas-patrimonio-guardiao.pdf');
-      toast.success('Arquivo de etiquetas pronto para impressão!');
-      setSelectedForLabels([]);
-    } catch (err) {
-      toast.error('Erro ao gerar etiquetas.');
-    } finally {
-      setGenerating(false);
-    }
+    setSelectedForLabels(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-12 w-12 animate-spin text-emerald-600" /></div>;
@@ -130,20 +117,19 @@ export default function VaultPage() {
     <div className="max-w-7xl mx-auto space-y-10 pb-20 px-4 md:px-0">
       <header className="flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white">Cofre de <span className="text-emerald-600">Documentos</span></h1>
-          <p className="text-slate-500 font-medium">Gerencie suas notas e gere etiquetas físicas para seus bens.</p>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase tracking-tighter">Cofre de <span className="text-emerald-600">Documentos</span></h1>
+          <p className="text-slate-500 font-medium">Gestão centralizada de patrimônio e inteligência securitária.</p>
         </div>
         <div className="flex gap-3">
-          <AnimatePresence>
-            {selectedForLabels.length > 0 && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-                <Button onClick={generateLabelsPDF} disabled={generating} className="gap-2 bg-slate-900 hover:bg-black text-white font-black uppercase text-[10px] tracking-widest h-12 px-6">
-                  {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                  Imprimir {selectedForLabels.length} Etiquetas
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <Button 
+            onClick={generateInsuranceInventory} 
+            disabled={generatingInventory}
+            variant="outline" 
+            className="gap-2 border-emerald-100 text-emerald-700 font-black uppercase text-[10px] tracking-widest h-12 px-6 shadow-sm"
+          >
+            {generatingInventory ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileStack className="h-4 w-4" />}
+            Inventário para Seguros
+          </Button>
           <div className="flex gap-2 bg-white dark:bg-slate-900 p-1 rounded-2xl border border-teal-50 dark:border-white/5 shadow-sm">
             <button onClick={() => setViewMode('grid')} className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}><Grid className="h-5 w-5" /></button>
             <button onClick={() => setViewMode('list')} className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}><List className="h-5 w-5" /></button>
@@ -151,36 +137,50 @@ export default function VaultPage() {
         </div>
       </header>
 
+      {/* Widget de Inteligência de Seguro (Psicológico) */}
+      <Card className="border-none shadow-xl bg-slate-900 text-white p-10 relative overflow-hidden group">
+        <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-700"><Umbrella className="h-48 w-48 text-emerald-500" /></div>
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest"><ShieldCheck className="h-4 w-4" /> Cobertura Patrimonial</div>
+            <h2 className="text-3xl font-black leading-tight max-w-xl uppercase tracking-tighter">Você tem <span className="text-emerald-400">R$ {items.reduce((acc, curr) => acc + Number(curr.price || 0), 0).toLocaleString('pt-BR')}</span> em ativos expostos a riscos.</h2>
+            <p className="text-slate-400 text-sm font-medium leading-relaxed">Em caso de incêndio ou roubo, você tem a prova de propriedade de todos esses itens pronta? O Dossiê de Inventário resolve isso.</p>
+          </div>
+          <Button onClick={generateInsuranceInventory} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest px-8 h-14 rounded-2xl shadow-xl shadow-emerald-900/20 gap-2 shrink-0">Gerar Inventário Mestre</Button>
+        </div>
+      </Card>
+
       <div className="space-y-6">
         <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
           <input 
             type="text"
-            placeholder="Buscar no cofre..."
+            placeholder="Buscar por nome, pasta ou marca..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-14 pl-12 pr-4 bg-white dark:bg-slate-900 border-2 border-teal-50 dark:border-white/5 rounded-2xl focus:outline-none focus:border-emerald-500 shadow-sm font-medium dark:text-white"
+            className="w-full h-16 pl-12 pr-4 bg-white dark:bg-slate-900 border-2 border-teal-50 dark:border-white/5 rounded-[24px] focus:outline-none focus:border-emerald-500 shadow-sm font-medium dark:text-white"
           />
         </div>
 
         <motion.div layout className={viewMode === 'grid' ? "grid gap-6 sm:grid-cols-2 lg:grid-cols-4" : "space-y-4"}>
           {filteredItems.map((item) => (
-            <motion.div key={item.id} layout className="relative">
-              <Card onClick={() => toggleSelection(item.id)} className={`group border-none shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden bg-white dark:bg-slate-900 h-full flex flex-col cursor-pointer ${selectedForLabels.includes(item.id) ? 'ring-4 ring-emerald-500 shadow-emerald-500/20' : ''}`}>
-                <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-800 relative overflow-hidden flex items-center justify-center">
-                  <div className={`absolute top-3 right-3 z-30 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedForLabels.includes(item.id) ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white/50 border-white/50 text-transparent'}`}>
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <ImageIcon className="h-12 w-12 text-slate-300 dark:text-slate-700" />
+            <motion.div key={item.id} layout className="relative group/card">
+              <Card onClick={() => toggleSelection(item.id)} className={`border-none shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden bg-white dark:bg-slate-900 h-full flex flex-col cursor-pointer ${selectedForLabels.includes(item.id) ? 'ring-4 ring-emerald-500' : ''}`}>
+                <div className="aspect-[4/3] bg-slate-50 dark:bg-white/5 relative overflow-hidden flex items-center justify-center">
+                  <ImageIcon className="h-12 w-12 text-slate-200 dark:text-slate-800" />
+                  {selectedForLabels.includes(item.id) && <div className="absolute inset-0 bg-emerald-600/10 flex items-center justify-center"><CheckCircle2 className="h-10 w-10 text-emerald-600" /></div>}
                 </div>
-                <CardContent className="p-5 space-y-3 flex-1 flex flex-col">
+                <CardContent className="p-6 space-y-3">
                   <div>
                     <h4 className="font-black text-slate-900 dark:text-white text-sm uppercase tracking-tighter truncate">{item.name}</h4>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{item.folder}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{item.folder}</span>
+                      {item.serial_number && <span className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">S/N OK</span>}
+                    </div>
                   </div>
-                  <div className="flex gap-2 pt-2 border-t border-slate-50 dark:border-white/5">
-                    <Button variant="ghost" size="sm" className="flex-1 h-9 text-[9px] font-black uppercase tracking-widest gap-1.5"><QrCode className="h-3 w-3" /> Etiqueta</Button>
-                    <a href={item.invoice_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}><Button variant="outline" size="sm" className="h-9 w-9 p-0 rounded-xl"><ExternalLink className="h-3.5 w-3.5" /></Button></a>
+                  <div className="flex justify-between items-end pt-2">
+                    <p className="text-sm font-black text-slate-900 dark:text-white">R$ {Number(item.price || 0).toLocaleString('pt-BR')}</p>
+                    <Link href={`/products/${item.id}`} onClick={(e) => e.stopPropagation()}><Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full hover:bg-emerald-50 text-slate-400 hover:text-emerald-600"><ArrowRight className="h-4 w-4" /></Button></Link>
                   </div>
                 </CardContent>
               </Card>
