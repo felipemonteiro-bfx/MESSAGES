@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { WarrantyCard } from '@/components/warranties/WarrantyCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Package, AlertCircle, ShieldCheck, Plus, Search, Filter, Wallet, FileDown, TrendingUp, X, Trophy, Share2, MessageCircle, Clock, BellRing, PieChart as ChartIcon, CheckCircle2, HeartHandshake, FolderOpen, BarChart3, Plane, QrCode, Lock, ArrowDownRight, ArrowUpRight, Calculator, Landmark, CreditCard, Sparkles, ShieldAlert, ScanSearch, Loader2, RefreshCcw } from 'lucide-react';
+import { Package, AlertCircle, ShieldCheck, Plus, Search, Filter, Wallet, FileDown, TrendingUp, X, Trophy, Share2, MessageCircle, Clock, BellRing, PieChart as ChartIcon, CheckCircle2, HeartHandshake, FolderOpen, BarChart3, Plane, QrCode, Lock, ArrowDownRight, ArrowUpRight, Calculator, Landmark, CreditCard, Sparkles, RefreshCcw, Zap } from 'lucide-react';
 import { calculateExpirationDate, getDaysRemaining, formatDate } from '@/lib/utils/date-utils';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
@@ -17,6 +17,9 @@ import autoTable from 'jspdf-autotable';
 export default function DashboardPage() {
   const [warranties, setWarranties] = useState<any[]>([]);
   const [filteredWarranties, setFilteredWarranties] = useState<any[]>([]);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [folders, setFolders] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,9 +45,18 @@ export default function DashboardPage() {
       if (warrantyData) {
         setWarranties(warrantyData);
         setFilteredWarranties(warrantyData);
+        setCategories(Array.from(new Set(warrantyData.map(w => w.category).filter(Boolean))) as string[]);
+        setFolders(Array.from(new Set(warrantyData.map(w => w.folder).filter(Boolean))) as string[]);
       }
     }
     setLoading(false);
+  };
+
+  const getDepreciatedValue = (item: any) => {
+    const price = Number(item.price || 0);
+    const purchaseDate = new Date(item.purchase_date);
+    const yearsOwned = (new Date().getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
+    return price * 0.9 * Math.pow(0.85, yearsOwned);
   };
 
   useEffect(() => {
@@ -59,16 +71,11 @@ export default function DashboardPage() {
   }, [selectedCategory, selectedFolder, searchQuery, warranties]);
 
   const totalOriginalValue = filteredWarranties.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0);
+  const totalCurrentValue = filteredWarranties.reduce((acc, curr) => acc + getDepreciatedValue(curr), 0);
   
-  // Simulação de Custo de Reposição (Inflação de bens duráveis ~8% ao ano)
-  const calculateReplacementValue = (item: any) => {
-    const price = Number(item.price || 0);
-    const years = (new Date().getTime() - new Date(item.purchase_date).getTime()) / (1000 * 60 * 60 * 24 * 365);
-    return price * Math.pow(1.08, years); // Acréscimo de 8% ao ano
-  };
-
-  const totalReplacementValue = filteredWarranties.reduce((acc, curr) => acc + calculateReplacementValue(curr), 0);
-  const inflationImpact = totalReplacementValue - totalOriginalValue;
+  // Encontrar o melhor item para troca (menor depreciação proporcional e valor alto)
+  const bestTradeIn = [...warranties]
+    .sort((a, b) => (getDepreciatedValue(b) / Number(b.price || 1)) - (getDepreciatedValue(a) / Number(a.price || 1)))[0];
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-600"></div></div>;
 
@@ -77,47 +84,43 @@ export default function DashboardPage() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
           <h1 className="text-4xl font-black tracking-tight text-slate-900">{greeting}, <span className="text-emerald-600">{profile?.full_name?.split(' ')[0] || 'Guardião'}</span>!</h1>
-          <p className="text-slate-500 font-medium">Gestão de valor e proteção de ativos.</p>
+          <p className="text-slate-500 font-medium">Seu patrimônio hoje vale <span className="text-slate-900 font-black">R$ {totalCurrentValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>.</p>
         </div>
         <Link href="/products/new"><Button size="lg" className="shadow-2xl shadow-emerald-200 font-bold h-12"><Plus className="h-5 w-5 mr-2" /> Nova Nota</Button></Link>
       </header>
 
-      {/* Widget de Inteligência de Reposição (Killer Feature) */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="md:col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white border-none overflow-hidden relative shadow-2xl">
-          <div className="absolute top-0 right-0 p-8 opacity-10"><RefreshCcw className="h-32 w-32 text-emerald-500 rotate-12" /></div>
-          <CardContent className="p-10 space-y-8 relative z-10">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-              <div className="space-y-3">
-                <p className="text-[10px] font-black uppercase text-emerald-400 tracking-[0.2em] flex items-center gap-2">
-                  <RefreshCcw className="h-3 w-3" /> Custo de Reposição Total
-                </p>
-                <div className="text-6xl font-black text-white tracking-tighter">R$ {totalReplacementValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-                <p className="text-sm text-slate-400 font-medium max-w-sm">Quanto custaria comprar todos os seus itens selecionados **novos** hoje.</p>
+      {/* NOVO: Insight de Troca Inteligente (Trade-in) */}
+      {bestTradeIn && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
+          <Card className="bg-slate-900 text-white border-none p-1 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-900/30 p-8 rounded-[38px] flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-12 opacity-10"><RefreshCcw className="h-40 w-40 text-emerald-500 rotate-12" /></div>
+              <div className="flex items-center gap-6 relative z-10">
+                <div className="h-16 w-16 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20"><Zap className="h-8 w-8 text-white" /></div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest"><Sparkles className="h-3 w-3" /> Oportunidade de Troca</div>
+                  <h3 className="text-3xl font-black leading-tight">Venda seu <span className="text-emerald-400">{bestTradeIn.name}</span> por R$ {getDepreciatedValue(bestTradeIn).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</h3>
+                  <p className="text-slate-400 text-sm font-medium">Este item reteve {Math.round((getDepreciatedValue(bestTradeIn) / Number(bestTradeIn.price || 1)) * 100)}% do valor original. Momento ideal para o upgrade!</p>
+                </div>
               </div>
-              <div className="bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-[32px] text-center min-w-[160px]">
-                <p className="text-[10px] font-black uppercase text-emerald-500 mb-1">Impacto Inflação</p>
-                <p className="text-2xl font-black text-emerald-400">+ R$ {inflationImpact.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
-                <div className="mt-2 text-[9px] font-bold text-slate-500">Valorização de Recompra</div>
+              <div className="flex gap-4 relative z-10 shrink-0">
+                <Link href={`/products/${bestTradeIn.id}`}><Button variant="ghost" className="text-white hover:bg-white/10 font-bold border border-white/10 px-8 h-14 rounded-2xl uppercase text-[10px] tracking-widest">Análise Completa</Button></Link>
+                <Button className="bg-emerald-500 hover:bg-emerald-400 font-bold px-8 h-14 rounded-2xl uppercase text-[10px] tracking-widest shadow-emerald-500/20">Vender no Mercado</Button>
               </div>
             </div>
-            <div className="pt-6 border-t border-white/5 flex items-center justify-between">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Baseado em índices de mercado v3.0</p>
-              <Button variant="ghost" className="text-emerald-400 font-black text-[10px] uppercase gap-2 hover:bg-emerald-500/10">Ver Detalhes por Item <ArrowUpRight className="h-3 w-3" /></Button>
-            </div>
-          </CardContent>
-        </Card>
+          </Card>
+        </motion.div>
+      )}
 
-        <Card className="border-teal-100 bg-white shadow-xl flex flex-col justify-between p-8 relative overflow-hidden">
-          <div className="space-y-4 relative z-10">
-            <div className="p-3 bg-emerald-50 rounded-2xl w-fit text-emerald-600"><ShieldCheck className="h-6 w-6" /></div>
-            <h3 className="text-xl font-black text-slate-900 leading-tight">Patrimônio em Custódia</h3>
-            <p className="text-sm text-slate-500 font-medium">Você já cadastrou R$ {totalOriginalValue.toLocaleString('pt-BR')} em notas originais. O Guardião garante que esse valor não se perca no tempo.</p>
-          </div>
-          <div className="pt-6 border-t border-slate-50 relative z-10">
-            <p className="text-[10px] font-black text-emerald-600 uppercase">Segurança 100% Ativa</p>
-          </div>
+      {/* Stats Financeiras Rápidas */}
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="border-teal-100 bg-white shadow-xl p-8 flex flex-col justify-center text-center md:text-left">
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 flex items-center justify-center md:justify-start gap-2"><Wallet className="h-4 w-4 text-emerald-600" /> Patrimônio Líquido</p>
+          <div className="text-4xl font-black text-slate-900">R$ {totalCurrentValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+          <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Valor atual de mercado</p>
         </Card>
+        <Card className="border-teal-100 bg-white shadow-xl p-8 flex flex-col justify-center text-center md:text-left"><p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Economia Acumulada</p><div className="text-4xl font-black text-pink-600">R$ {warranties.reduce((a, b) => a + Number(b.total_saved || 0), 0).toLocaleString('pt-BR')}</div><p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Dinheiro recuperado</p></Card>
+        <Card className="border-teal-100 bg-emerald-600 text-white shadow-xl p-8 flex flex-col justify-center text-center md:text-left relative overflow-hidden shadow-emerald-500/20"><div className="relative z-10"><p className="text-[10px] font-black uppercase text-emerald-100 tracking-widest mb-2 flex items-center justify-center md:justify-start gap-2"><ShieldCheck className="h-4 w-4" /> Saúde de Ativos</p><div className="text-4xl font-black">100%</div><p className="text-[10px] text-emerald-100 font-bold uppercase mt-2">Proteção ativa contra perdas</p></div></Card>
       </div>
 
       <AnimatePresence mode="popLayout">
