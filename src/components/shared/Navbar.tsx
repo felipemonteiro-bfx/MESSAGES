@@ -78,6 +78,12 @@ export const Navbar = () => {
             </Button>
           </Link>
 
+          <Link href="/audit" className="hidden lg:block">
+            <Button variant="ghost" size="sm" className="gap-2 font-bold text-slate-600 dark:text-slate-300">
+              <History className="h-4 w-4 text-emerald-600" /> Auditoria
+            </Button>
+          </Link>
+
           <Link href="/travel-check" className="hidden lg:block">
             <Button variant="ghost" size="sm" className="gap-2 font-bold text-slate-600 dark:text-slate-300">
               <Plane className="h-4 w-4 text-emerald-600" /> Modo Viagem
