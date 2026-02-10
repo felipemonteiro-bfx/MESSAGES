@@ -6,7 +6,7 @@ import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Upload, Save, X, Sparkles, Loader2, Store, DollarSign, NotebookPen, FolderOpen, Wrench, Key, CreditCard } from 'lucide-react';
+import { Upload, Save, X, Sparkles, Loader2, Store, DollarSign, NotebookPen, FolderOpen, Wrench, Key, CreditCard, Hash } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -34,6 +34,7 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
     total_installments: initialData?.total_installments || 1,
     paid_installments: initialData?.paid_installments || 1,
     installment_value: initialData?.installment_value || '',
+    serial_number: initialData?.serial_number || '',
   });
   const [file, setFile] = useState<File | null>(null);
   const router = useRouter();
@@ -74,11 +75,8 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
         "warranty_months": 12,
         "price": 0.00,
         "store": "loja",
-        "care_tips": "Dica de longevidade",
-        "maintenance_frequency_months": 6,
-        "nfe_key": "Chave de 44 dígitos da NF-e sem espaços",
-        "total_installments": 1,
-        "installment_value": 0.00
+        "nfe_key": "44 dígitos",
+        "serial_number": "Número de série se houver"
       }`;
 
       const result = await model.generateContent([{ inlineData: { data: base64Data, mimeType: file.type } }, prompt]);
@@ -90,7 +88,7 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
         name: data.product_name || prev.name,
       }));
 
-      toast.success('IA: Análise completa com dados financeiros extraídos!');
+      toast.success('IA: Dados processados com sucesso!');
     } catch (err: any) {
       toast.error("Erro ao processar com IA.");
     } finally {
@@ -120,7 +118,7 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
         : await supabase.from('warranties').insert({ ...payload, user_id: user.id });
 
       if (error) throw error;
-      toast.success('Guardião: Dados salvos com sucesso!');
+      toast.success('Guardião: Nota salva com sucesso!');
       router.push('/dashboard');
       router.refresh();
     } catch (err: any) {
@@ -145,7 +143,7 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
               </div>
               <div>
                 <p className="font-bold text-slate-700">{file ? file.name : 'Clique para subir a Nota Fiscal'}</p>
-                <p className="text-xs text-slate-400 font-medium text-center">IA identificará o produto e os dados fiscais/financeiros</p>
+                <p className="text-xs text-slate-400 font-medium text-center">IA identificará o produto e os dados fiscais</p>
               </div>
               <AnimatePresence>
                 {file && (
@@ -186,14 +184,19 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
                   <Input value={formData.store} onChange={(e) => setFormData({ ...formData, store: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><DollarSign className="h-4 w-4 text-emerald-600" /> Valor Total</label>
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><DollarSign className="h-4 w-4 text-emerald-600" /> Valor Pago</label>
                   <Input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Key className="h-4 w-4 text-emerald-600" /> Chave de Acesso NF-e</label>
-                <Input placeholder="44 dígitos" value={formData.nfe_key} onChange={(e) => setFormData({ ...formData, nfe_key: e.target.value })} />
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Hash className="h-4 w-4 text-emerald-600" /> Número de Série (S/N)</label>
+                <Input placeholder="Identificação única do produto" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Key className="h-4 w-4 text-emerald-600" /> Chave NF-e (44 dígitos)</label>
+                <Input placeholder="0000..." value={formData.nfe_key} onChange={(e) => setFormData({ ...formData, nfe_key: e.target.value })} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -202,35 +205,18 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
               </div>
 
               <div className="space-y-4 md:col-span-2">
-                <h3 className="text-sm font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" /> Controle de Parcelamento
-                </h3>
+                <h3 className="text-sm font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2"><CreditCard className="h-4 w-4" /> Controle de Pagamento</h3>
                 <div className="grid md:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                  <Input label="Total de Parcelas" type="number" value={formData.total_installments} onChange={(e) => setFormData({ ...formData, total_installments: parseInt(e.target.value) })} />
-                  <Input label="Parcelas Pagas" type="number" value={formData.paid_installments} onChange={(e) => setFormData({ ...formData, paid_installments: parseInt(e.target.value) })} />
-                  <Input label="Valor da Parcela" type="number" step="0.01" value={formData.installment_value} onChange={(e) => setFormData({ ...formData, installment_value: e.target.value })} />
+                  <Input label="Total Parcelas" type="number" value={formData.total_installments} onChange={(e) => setFormData({ ...formData, total_installments: parseInt(e.target.value) })} />
+                  <Input label="Pagas" type="number" value={formData.paid_installments} onChange={(e) => setFormData({ ...formData, paid_installments: parseInt(e.target.value) })} />
+                  <Input label="Valor Parcela" type="number" value={formData.installment_value} onChange={(e) => setFormData({ ...formData, installment_value: e.target.value })} />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Wrench className="h-4 w-4 text-emerald-600" /> Revisão a cada (meses)</label>
-                <Input type="number" value={formData.maintenance_frequency_months} onChange={(e) => setFormData({ ...formData, maintenance_frequency_months: parseInt(e.target.value) })} />
-              </div>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Calendar className="h-4 w-4 text-emerald-600" /> Última Manutenção</label>
-                <Input type="date" value={formData.last_maintenance_date} onChange={(e) => setFormData({ ...formData, last_maintenance_date: e.target.value })} />
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Sparkles className="h-4 w-4 text-emerald-600" /> Dicas da IA</label>
-                <textarea className="w-full min-h-[100px] rounded-xl border-2 border-emerald-50 bg-emerald-50/20 px-4 py-3 text-sm focus:outline-none" value={formData.care_tips} onChange={(e) => setFormData({...formData, care_tips: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><NotebookPen className="h-4 w-4 text-emerald-600" /> Observações</label>
-                <textarea className="w-full min-h-[100px] rounded-xl border-2 border-teal-50 bg-white px-4 py-3 text-sm focus:outline-none" value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} />
-              </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><NotebookPen className="h-4 w-4 text-emerald-600" /> Observações</label>
+              <textarea className="w-full min-h-[100px] rounded-xl border-2 border-teal-50 bg-white px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all font-medium text-slate-700" placeholder="Acessórios inclusos, estado de conservação, etc." value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} />
             </div>
           </div>
 
