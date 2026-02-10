@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from 'sonner';
 import { BottomNav } from "@/components/shared/BottomNav";
 import { CommandPalette } from "@/components/shared/CommandPalette";
+import DisguiseProvider from "@/components/shared/DisguiseProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,9 +25,6 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Guardião",
   },
-  formatDetection: {
-    telephone: false,
-  },
 };
 
 export const viewport: Viewport = {
@@ -44,13 +42,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="light" style={{ colorScheme: 'light' }}>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-        <CommandPalette />
-        <BottomNav />
-        <Toaster position="top-center" richColors />
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <DisguiseProvider>
+          <CommandPalette />
+          {children}
+          <BottomNav />
+          <Toaster position="top-center" richColors />
+        </DisguiseProvider>
       </body>
     </html>
   );

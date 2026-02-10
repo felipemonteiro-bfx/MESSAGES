@@ -9,11 +9,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { ThemeToggle } from './ThemeToggle';
+import { useDisguise } from './DisguiseProvider';
 
 export const Navbar = () => {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
+  const { toggleDisguise } = useDisguise();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -95,6 +97,10 @@ export const Navbar = () => {
           
           <Button variant="ghost" size="sm" onClick={togglePrivacy} className="h-10 w-10 p-0 rounded-xl text-slate-400 hover:text-emerald-600" title="Alternar Modo Privacidade">
             {isPrivate ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </Button>
+
+          <Button variant="ghost" size="sm" onClick={toggleDisguise} className="h-10 w-10 p-0 rounded-xl text-slate-400 hover:text-emerald-600" title="Modo Pânico">
+            <Zap className="h-5 w-5" />
           </Button>
 
           <ThemeToggle />
