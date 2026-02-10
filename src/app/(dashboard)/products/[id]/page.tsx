@@ -134,11 +134,22 @@ export default async function ProductDetailPage({
 
           <div className="p-6 rounded-[32px] bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xl shadow-emerald-500/20 space-y-4">
             <div className="h-10 w-10 bg-white/20 rounded-xl flex items-center justify-center">
+              <Umbrella className="h-6 w-6" />
+            </div>
+            <h4 className="text-lg font-black leading-tight">Proteger este Bem?</h4>
+            <p className="text-xs font-medium text-emerald-100 leading-relaxed">Simule o valor de um seguro contra roubo e danos para este item usando nossa IA.</p>
+            <Link href={`/insurance/simulator/${warranty.id}`} className="block">
+              <Button variant="ghost" className="w-full bg-white text-emerald-700 font-black text-[10px] uppercase tracking-widest py-3">Simular Seguro Agora</Button>
+            </Link>
+          </div>
+
+          <div className="p-6 rounded-[32px] bg-slate-900 text-white shadow-xl shadow-slate-900/20 space-y-4">
+            <div className="h-10 w-10 bg-white/20 rounded-xl flex items-center justify-center">
               <HeartHandshake className="h-6 w-6" />
             </div>
-            <h4 className="text-lg font-black leading-tight">Precisa acionar a garantia?</h4>
-            <p className="text-xs font-medium text-emerald-100 leading-relaxed">Use o nosso Dossiê Jurídico para facilitar seu atendimento na assistência técnica.</p>
-            <Button variant="ghost" className="w-full bg-white text-emerald-700 font-black text-[10px] uppercase tracking-widest py-3">Gerar Dossiê do Item</Button>
+            <h4 className="text-lg font-black leading-tight">Acionar Garantia?</h4>
+            <p className="text-xs font-medium text-slate-400 leading-relaxed">Use o nosso Dossiê Jurídico para facilitar seu atendimento na assistência técnica.</p>
+            <Button variant="ghost" className="w-full bg-white/10 text-white font-black text-[10px] uppercase tracking-widest py-3">Gerar Dossiê do Item</Button>
           </div>
         </div>
       </div>

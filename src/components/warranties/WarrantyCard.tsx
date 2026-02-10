@@ -112,6 +112,11 @@ export const WarrantyCard = ({ warranty }: { warranty: Warranty }) => {
               </Button>
             )}
             {!isExpired && (
+              <Button variant="ghost" size="sm" onClick={() => router.push(`/insurance/simulator/${warranty.id}`)} className="h-8 w-8 p-0" title="Simular Seguro">
+                <Umbrella className="h-4 w-4 text-cyan-600" />
+              </Button>
+            )}
+            {!isExpired && (
               <Button variant="ghost" size="sm" onClick={handleLogSaving} className="h-8 w-8 p-0" title="Registrar Economia">
                 <HeartHandshake className="h-4 w-4 text-pink-500" />
               </Button>
