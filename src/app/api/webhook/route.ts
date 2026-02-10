@@ -3,7 +3,6 @@ import { stripe } from '@/lib/stripe';
 import { headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 
-// Usar Service Role Key para ignorar RLS ao atualizar o status premium
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -27,21 +26,21 @@ export async function POST(req: Request) {
 
   const session = event.data.object as any;
 
-  // Lógica para quando a assinatura é criada ou o pagamento é confirmado
-  if (event.type === 'checkout.session.completed' || event.type === 'customer.subscription.updated') {
+  if (event.type === 'checkout.session.completed') {
     const userId = session.metadata?.userId;
+    const customerId = session.customer;
 
     if (userId) {
       await supabaseAdmin
         .from('profiles')
-        .update({ is_premium: true })
+        .update({ 
+          is_premium: true,
+          stripe_customer_id: customerId // SALVANDO O ID DO CLIENTE
+        })
         .eq('id', userId);
-      
-      console.log(`Usuário ${userId} agora é PREMIUM.`);
     }
   }
 
-  // Lógica para quando a assinatura é cancelada
   if (event.type === 'customer.subscription.deleted') {
     const userId = session.metadata?.userId;
     if (userId) {
