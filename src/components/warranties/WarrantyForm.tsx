@@ -6,7 +6,7 @@ import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Upload, Save, X, Sparkles, Loader2, Store, DollarSign, NotebookPen, FolderOpen, Wrench, Key, CreditCard, Hash } from 'lucide-react';
+import { Upload, Save, X, Sparkles, Loader2, Store, DollarSign, NotebookPen, FolderOpen, Wrench, Key, CreditCard, Hash, Globe2 } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -24,6 +24,8 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
     purchase_date: initialData?.purchase_date || new Date().toISOString().split('T')[0],
     warranty_months: initialData?.warranty_months || 12,
     price: initialData?.price || '',
+    currency: initialData?.currency || 'BRL',
+    original_price: initialData?.original_price || '',
     store: initialData?.store || '',
     notes: initialData?.notes || '',
     folder: initialData?.folder || 'Pessoal',
@@ -41,19 +43,21 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
   const supabase = createClient();
 
   const folders = ['Pessoal', 'Trabalho', 'Casa', 'Veículo', 'Eletrônicos', 'Outros'];
+  const currencies = [
+    { code: 'BRL', symbol: 'R$', label: 'Real' },
+    { code: 'USD', symbol: 'US$', label: 'Dólar' },
+    { code: 'EUR', symbol: '€', label: 'Euro' },
+  ];
 
   const handleAIAnalysis = async () => {
     if (!file) {
       toast.error('Selecione um arquivo primeiro!');
       return;
     }
-    
     setAnalyzing(true);
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (!apiKey) throw new Error('Chave da API do Gemini não configurada');
-
-      const genAI = new GoogleGenerativeAI(apiKey);
+      const genAI = new GoogleGenerativeAI(apiKey || '');
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const readFileAsBase64 = (file: File): Promise<string> => {
@@ -66,17 +70,17 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
       };
 
       const base64Data = await readFileAsBase64(file);
-      
-      const prompt = `Analise esta nota fiscal brasileira e extraia em JSON:
+      const prompt = `Analise esta nota fiscal e extraia em JSON:
       {
         "product_name": "nome",
         "purchase_date": "YYYY-MM-DD",
         "category": "categoria",
         "warranty_months": 12,
         "price": 0.00,
+        "currency": "BRL ou USD ou EUR",
         "store": "loja",
         "nfe_key": "44 dígitos",
-        "serial_number": "Número de série se houver"
+        "serial_number": "Número de série"
       }`;
 
       const result = await model.generateContent([{ inlineData: { data: base64Data, mimeType: file.type } }, prompt]);
@@ -86,9 +90,12 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
         ...prev,
         ...data,
         name: data.product_name || prev.name,
+        original_price: data.price || prev.original_price,
+        // Se for USD ou EUR, no app real buscaríamos taxa de câmbio. Aqui simularemos BRL = USD * 5
+        price: data.currency === 'BRL' ? data.price : data.price * 5.2,
       }));
 
-      toast.success('IA: Dados processados com sucesso!');
+      toast.success('IA: Dados globais processados!');
     } catch (err: any) {
       toast.error("Erro ao processar com IA.");
     } finally {
@@ -99,13 +106,11 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
       let invoice_url = initialData?.invoice_url || null;
-
       if (file) {
         const filePath = `${user.id}/${Math.random()}.${file.name.split('.').pop()}`;
         await supabase.storage.from('invoices').upload(filePath, file);
@@ -118,14 +123,10 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
         : await supabase.from('warranties').insert({ ...payload, user_id: user.id });
 
       if (error) throw error;
-      toast.success('Guardião: Nota salva com sucesso!');
+      toast.success('Guardião: Nota salva!');
       router.push('/dashboard');
       router.refresh();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { toast.error(err.message); } finally { setLoading(false); }
   };
 
   return (
@@ -134,21 +135,18 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
         <form onSubmit={handleSubmit} className="space-y-10">
           <div className="space-y-4">
             <h2 className="text-lg font-black text-emerald-800 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-600" /> Documentação do Produto
+              <div className="h-2 w-2 rounded-full bg-emerald-600" /> Documentação Global
             </h2>
             <div className="group relative border-2 border-dashed border-teal-100 rounded-3xl p-8 transition-all hover:border-emerald-400 hover:bg-emerald-50/30 flex flex-col items-center gap-4 text-center">
               <input type="file" id="file-upload" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*,.pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
               <div className="h-16 w-16 rounded-2xl bg-teal-50 flex items-center justify-center text-slate-400 group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm">
                 <Upload className="h-8 w-8" />
               </div>
-              <div>
-                <p className="font-bold text-slate-700">{file ? file.name : 'Clique para subir a Nota Fiscal'}</p>
-                <p className="text-xs text-slate-400 font-medium text-center">IA identificará o produto e os dados fiscais</p>
-              </div>
+              <div><p className="font-bold text-slate-700">{file ? file.name : 'Clique para subir Nota Brasileira ou Estrangeira'}</p></div>
               <AnimatePresence>
                 {file && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2 relative z-10">
-                    <Button type="button" size="sm" onClick={handleAIAnalysis} disabled={analyzing} className="bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200">
+                    <Button type="button" size="sm" onClick={handleAIAnalysis} disabled={analyzing} className="bg-emerald-600">
                       {analyzing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
                       Processar com IA
                     </Button>
@@ -160,63 +158,38 @@ export const WarrantyForm = ({ initialData }: WarrantyFormProps) => {
           </div>
 
           <div className="space-y-8">
-            <h2 className="text-lg font-black text-emerald-800 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-600" /> Detalhes e Organização
-            </h2>
-            
+            <h2 className="text-lg font-black text-emerald-800 flex items-center gap-2"><div className="h-2 w-2 rounded-full bg-emerald-600" /> Valorização e Moeda</h2>
             <div className="grid md:grid-cols-2 gap-8">
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1">
-                  <FolderOpen className="h-4 w-4 text-emerald-600" /> Pasta
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {folders.map(folder => (
-                    <button key={folder} type="button" onClick={() => setFormData({...formData, folder})} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${formData.folder === folder ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{folder}</button>
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Globe2 className="h-4 w-4 text-emerald-600" /> Moeda de Compra</label>
+                <div className="flex gap-2">
+                  {currencies.map(curr => (
+                    <button key={curr.code} type="button" onClick={() => setFormData({...formData, currency: curr.code})} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all border-2 ${formData.currency === curr.code ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-200' : 'bg-white text-slate-400 border-slate-50 hover:bg-slate-50'}`}>{curr.symbol} {curr.code}</button>
                   ))}
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><DollarSign className="h-4 w-4 text-emerald-600" /> Preço Original ({formData.currency})</label>
+                <Input type="number" step="0.01" value={formData.original_price} onChange={(e) => setFormData({ ...formData, original_price: e.target.value })} />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Calculator className="h-4 w-4 text-emerald-600" /> Valor Convertido para Patrimônio (R$)</label>
+                <Input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} placeholder="Valor final em Real para o dashboard" />
+                <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Este valor será usado no seu Score de Proteção e Balanço Financeiro.</p>
+              </div>
+            </div>
+
+            <h2 className="text-lg font-black text-emerald-800 flex items-center gap-2 pt-4"><div className="h-2 w-2 rounded-full bg-emerald-600" /> Dados Técnicos</h2>
+            <div className="grid md:grid-cols-2 gap-8">
               <Input label="Nome do Produto" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Store className="h-4 w-4 text-emerald-600" /> Loja</label>
-                  <Input value={formData.store} onChange={(e) => setFormData({ ...formData, store: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><DollarSign className="h-4 w-4 text-emerald-600" /> Valor Pago</label>
-                  <Input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Hash className="h-4 w-4 text-emerald-600" /> Número de Série (S/N)</label>
-                <Input placeholder="Identificação única do produto" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} />
-              </div>
-
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><Key className="h-4 w-4 text-emerald-600" /> Chave NF-e (44 dígitos)</label>
-                <Input placeholder="0000..." value={formData.nfe_key} onChange={(e) => setFormData({ ...formData, nfe_key: e.target.value })} />
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Data Compra" type="date" value={formData.purchase_date} onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })} required />
                 <Input label="Garantia (Meses)" type="number" value={formData.warranty_months} onChange={(e) => setFormData({ ...formData, warranty_months: parseInt(e.target.value) })} required />
               </div>
-
-              <div className="space-y-4 md:col-span-2">
-                <h3 className="text-sm font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2"><CreditCard className="h-4 w-4" /> Controle de Pagamento</h3>
-                <div className="grid md:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                  <Input label="Total Parcelas" type="number" value={formData.total_installments} onChange={(e) => setFormData({ ...formData, total_installments: parseInt(e.target.value) })} />
-                  <Input label="Pagas" type="number" value={formData.paid_installments} onChange={(e) => setFormData({ ...formData, paid_installments: parseInt(e.target.value) })} />
-                  <Input label="Valor Parcela" type="number" value={formData.installment_value} onChange={(e) => setFormData({ ...formData, installment_value: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1"><NotebookPen className="h-4 w-4 text-emerald-600" /> Observações</label>
-              <textarea className="w-full min-h-[100px] rounded-xl border-2 border-teal-50 bg-white px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-all font-medium text-slate-700" placeholder="Acessórios inclusos, estado de conservação, etc." value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} />
+              <Input label="Número de Série (S/N)" value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} />
+              <Input label="Chave NF-e" value={formData.nfe_key} onChange={(e) => setFormData({ ...formData, nfe_key: e.target.value })} />
             </div>
           </div>
 
