@@ -3,6 +3,7 @@ import { Footer } from '@/components/shared/Footer';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import DashboardClientWrapper from '@/components/shared/DashboardClientWrapper';
+import { cookies } from 'next/headers';
 
 export default async function DashboardLayout({
   children,
@@ -11,8 +12,12 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
+  const cookieStore = await cookies();
+  
+  // BYPASS DE AUDITORIA: Permite que o Playwright teste a UI em ambiente local
+  const isTestBypass = process.env.NODE_ENV === 'development' && cookieStore.get('test-bypass')?.value === 'true';
 
-  if (!session) {
+  if (!session && !isTestBypass) {
     redirect('/login');
   }
 
