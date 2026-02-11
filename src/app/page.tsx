@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
-import { ShieldCheck, ArrowRight, Zap, Bell, FileText, Mail, Phone, Scale, TrendingUp, Umbrella, Smartphone, BadgeCheck, Check, Star, Globe, Users, Landmark, CreditCard, Sparkles } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ShieldCheck, ArrowRight, Zap, Bell, FileText, Mail, Phone, Scale, TrendingUp, Umbrella, Smartphone, BadgeCheck, Check, Star, Globe, Users, Landmark, CreditCard, Sparkles, BrainCircuit, Gavel } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -107,7 +108,7 @@ export default function Home() {
                 <CardTitle className="text-3xl font-black uppercase">Guardião Pro</CardTitle>
                 <p className="text-slate-500 font-medium">Ideal para profissionais e entusiastas de tecnologia.</p>
               </div>
-              <div className="text-5xl font-black">R$ 14,90 <span className="text-sm text-slate-400 font-bold uppercase">/mês</span></div>
+              <div className="text-5xl font-black text-slate-900 dark:text-white">R$ 14,90 <span className="text-sm text-slate-400 font-bold uppercase">/mês</span></div>
               <div className="space-y-4">
                 <PlanItem text="IA OCR Ilimitada" />
                 <PlanItem text="Dossiês de Venda e Sinistro" />
@@ -182,5 +183,3 @@ function PlanItem({ text }: { text: string }) {
     </div>
   );
 }
-
-import { BrainCircuit, Gavel } from 'lucide-react';

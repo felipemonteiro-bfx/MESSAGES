@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Scale, MessageCircle, FileText, ShieldCheck, ArrowRight, Loader2, Info, Gavel, Search, HelpCircle, ChevronDown, ChevronUp, Sparkles, Send, Landmark, Balance, PhoneIncoming, Clock, AlertCircle, CheckCircle2, History, Plus } from 'lucide-react';
+import { Scale, MessageCircle, FileText, ShieldCheck, ArrowRight, Loader2, Info, Gavel, Search, HelpCircle, ChevronDown, ChevronUp, Sparkles, Send, Landmark, PhoneIncoming, Clock, AlertCircle, CheckCircle2, History, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -48,7 +48,7 @@ export default function SupportPage() {
       <header className="flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="space-y-1">
           <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase tracking-tighter">Support <span className="text-emerald-600">& Legal</span></h1>
-          <p className="text-slate-500 font-medium">Gestão de conflitos, garantias e assistência VIP.</p>
+          <p className="text-slate-500 font-medium">Gestão de conflitos e assistência VIP.</p>
         </div>
         <div className="flex gap-3">
           <Link href="/consultant">
@@ -60,7 +60,6 @@ export default function SupportPage() {
       </header>
 
       <div className="grid gap-10 lg:grid-cols-3">
-        {/* Lado Esquerdo: Gestão de Casos Ativos */}
         <div className="lg:col-span-2 space-y-8">
           <div className="flex items-center justify-between">
             <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-tighter">
@@ -79,7 +78,7 @@ export default function SupportPage() {
               </Card>
             ) : (
               claims.map((claim) => (
-                <Card key={claim.id} className="border-none shadow-lg overflow-hidden bg-white dark:bg-slate-900 hover:shadow-xl transition-all">
+                <Card key={claim.id} className="border-none shadow-lg overflow-hidden bg-white dark:bg-slate-900">
                   <div className={`h-1.5 w-full ${getStatusColor(claim.status)}`} />
                   <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="flex items-start gap-6">
@@ -94,16 +93,9 @@ export default function SupportPage() {
                           <span className={`px-2 py-0.5 rounded text-[8px] font-black text-white uppercase ${getStatusColor(claim.status)}`}>{claim.status}</span>
                         </div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase">Item: {claim.warranties?.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Protocolo: <span className="font-mono font-black">{claim.protocol_number || '---'}</span></p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-[9px] font-black text-slate-400 uppercase">Prazo de Resposta</p>
-                        <p className="text-xs font-black text-slate-900 dark:text-white">{claim.deadline_date ? formatDate(claim.deadline_date) : 'Imediato'}</p>
-                      </div>
-                      <Button variant="outline" size="sm" className="h-10 px-4 text-[10px] font-black uppercase border-slate-100 dark:border-white/10">Atualizar</Button>
-                    </div>
+                    <Button variant="outline" size="sm" className="h-10 px-4 text-[10px] font-black uppercase border-slate-100 dark:border-white/10">Atualizar</Button>
                   </CardContent>
                 </Card>
               ))
@@ -111,44 +103,26 @@ export default function SupportPage() {
           </div>
 
           <Card className="border-none shadow-2xl bg-slate-900 text-white p-10 relative overflow-hidden group">
-            <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-1000"><Balance className="h-48 w-48 text-emerald-500 rotate-12" /></div>
+            <div className="absolute right-[-20px] top-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-1000"><Scale className="h-48 w-48 text-emerald-500 rotate-12" /></div>
             <div className="relative z-10 space-y-6">
-              <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-[0.3em]"><AlertCircle className="h-4 w-4" /> Alerta de Prazo</div>
-              <h2 className="text-3xl font-black leading-tight max-w-xl uppercase tracking-tighter">O fabricante tem <span className="text-emerald-400">30 dias</span> para consertar seu bem.</h2>
-              <p className="text-slate-400 text-sm font-medium leading-relaxed">Passado esse prazo, conforme o Art. 18 do CDC, você tem direito à substituição do produto, restituição do valor ou abatimento proporcional.</p>
-              <Button variant="ghost" className="bg-white/10 hover:bg-white/20 text-white font-black text-[10px] uppercase h-12 border border-white/10 px-8">Ler meus Direitos (CDC)</Button>
+              <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-[0.3em]"><AlertCircle className="h-4 w-4" /> Inteligência Jurídica</div>
+              <h2 className="text-3xl font-black leading-tight max-w-xl uppercase tracking-tighter">O fabricante tem <span className="text-emerald-400">30 dias</span> para conserto.</h2>
+              <p className="text-slate-400 text-sm font-medium leading-relaxed">Passado esse prazo, você tem direito à restituição imediata do valor pago corrigido.</p>
+              <Button variant="ghost" className="bg-white/10 hover:bg-white/20 text-white font-black text-[10px] uppercase h-12 border border-white/10 px-8">Ler meus Direitos</Button>
             </div>
           </Card>
         </div>
 
-        {/* Lado Direito: VIP Channel e FAQ */}
         <div className="space-y-8">
-          <Card className="border-none shadow-xl bg-emerald-600 text-white p-8 space-y-6 relative overflow-hidden group">
-            <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-110 transition-transform duration-1000"><PhoneIncoming className="h-32 w-32" /></div>
+          <Card className="border-none shadow-xl bg-emerald-600 text-white p-8 relative overflow-hidden group">
+            <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-110 transition-transform duration-700"><PhoneIncoming className="h-32 w-32" /></div>
             <div className="relative z-10 space-y-4">
-              <p className="text-[10px] font-black uppercase text-emerald-100 tracking-widest">Canal Exclusivo</p>
-              <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">VIP Legal Concierge</h3>
-              <p className="text-xs text-emerald-50 leading-relaxed font-medium">Conecte-se com advogados especialistas em Direito do Consumidor e resolva seu caso com prioridade.</p>
-              <Button className="w-full h-14 bg-white text-emerald-700 hover:bg-emerald-50 font-black uppercase text-[10px] tracking-widest shadow-xl border-none">Falar com Especialista</Button>
+              <p className="text-[10px] font-black uppercase text-emerald-100 tracking-widest">Canal VIP</p>
+              <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Legal Concierge</h3>
+              <p className="text-xs text-emerald-50 leading-relaxed font-medium">Fale agora com advogados parceiros especialistas em Direito do Consumidor.</p>
+              <Button className="w-full h-14 bg-white text-emerald-700 hover:bg-emerald-50 font-black uppercase text-[10px] tracking-widest shadow-xl border-none">Iniciar Chat VIP</Button>
             </div>
           </Card>
-
-          <div className="space-y-4">
-            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest px-1">Perguntas Frequentes</h4>
-            {faqs.map((faq, idx) => (
-              <Card key={idx} className="border-none shadow-sm overflow-hidden bg-white dark:bg-slate-900">
-                <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="w-full p-4 text-left flex justify-between items-center hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                  <span className="font-black text-slate-800 dark:text-slate-200 text-[10px] uppercase tracking-tight">{faq.q}</span>
-                  {openFaq === idx ? <ChevronUp className="h-4 w-4 text-emerald-600" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
-                </button>
-                <AnimatePresence>{openFaq === idx && (
-                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
-                    <div className="p-4 pt-0 text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed border-t border-slate-50 dark:border-white/5">{faq.a}</div>
-                  </motion.div>
-                )}</AnimatePresence>
-              </Card>
-            ))}
-          </div>
         </div>
       </div>
     </div>
