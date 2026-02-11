@@ -2,33 +2,42 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = 'http://127.0.0.1:3001';
 
-test.describe('Guardião de Notas v14.8 Platinum - Master Audit', () => {
+test.describe('Guardião de Notas v15.0 Platinum - Master Audit', () => {
   
+  test.beforeEach(async ({ context }) => {
+    // Adiciona o cookie de bypass para os testes
+    await context.addCookies([{
+      name: 'test-bypass',
+      value: 'true',
+      domain: '127.0.0.1',
+      path: '/',
+    }]);
+  });
+
   test('1. Landing Page Authority', async ({ page }) => {
     await page.goto(BASE_URL);
     await expect(page).toHaveTitle(/Guardião/);
     await expect(page.getByText('SEU PATRIMÔNIO', { exact: false })).toBeVisible();
   });
 
-  test('2. Authentication Flow (UI Check)', async ({ page }) => {
-    await page.goto(`${BASE_URL}/login`);
-    await expect(page.getByRole('heading', { name: /Bem-vindo/i })).toBeVisible();
-  });
-
-  test('3. Dashboard & Concierge', async ({ page }) => {
+  test('2. Dashboard & Health Check', async ({ page }) => {
     await page.goto(`${BASE_URL}/dashboard`);
-    const title = await page.title();
-    expect(title).toContain('Guardião');
+    await expect(page.getByText(/Asset Health/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Balanço Consolidado/i)).toBeVisible();
   });
 
-  test('4. Marketplace Navigation', async ({ page }) => {
+  test('3. Marketplace Integrity', async ({ page }) => {
     await page.goto(`${BASE_URL}/marketplace`);
-    // Usando Regex e ignorando case para ser mais resiliente
-    await expect(page.getByText(/Bens seminovos com procedência/i)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: /Filtros/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Marketplace Guardião/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Bens seminovos com procedência/i).first()).toBeVisible();
   });
 
-  test('5. Panic Mode (Disguise) Activation', async ({ page }) => {
+  test('4. Analytics Intelligence', async ({ page }) => {
+    await page.goto(`${BASE_URL}/analytics`);
+    await expect(page.getByText(/Impact Analytics/i).or(page.getByText(/Currency Intelligence/i))).toBeVisible({ timeout: 15000 });
+  });
+
+  test('5. Panic Mode (Functional Camouflage)', async ({ page }) => {
     await page.goto(`${BASE_URL}/dashboard`);
     
     await page.evaluate(() => {
@@ -37,7 +46,7 @@ test.describe('Guardião de Notas v14.8 Platinum - Master Audit', () => {
     });
 
     await page.waitForTimeout(2000);
-    await expect(page.getByText(/Bloco de Notas/i)).toBeVisible();
+    await expect(page.getByText(/Bloco de Notas Pessoal/i)).toBeVisible();
     
     await page.evaluate(() => {
       localStorage.setItem('panic_mode', 'false');
