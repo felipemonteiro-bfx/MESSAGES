@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Plane, ShieldCheck, FileDown, ArrowLeft, Loader2, CheckCircle2, QrCode, Smartphone, Camera, Laptop, Watch, Languages } from 'lucide-react';
+import { Plane, ShieldCheck, FileDown, ArrowLeft, Loader2, CheckCircle2, QrCode, Smartphone, Camera, Laptop, Watch, Languages, Globe } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';

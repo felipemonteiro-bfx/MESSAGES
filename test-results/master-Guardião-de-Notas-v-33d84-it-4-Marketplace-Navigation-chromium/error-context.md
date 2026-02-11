@@ -1,0 +1,55 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - button [ref=e6]:
+        - img [ref=e7]
+      - generic [ref=e10]:
+        - img [ref=e12]
+        - generic [ref=e15]:
+          - heading "Bem-vindo ao Futuro!" [level=3] [ref=e16]
+          - paragraph [ref=e17]: O Guardião de Notas agora é seu consultor de patrimônio. Vamos te mostrar como dominar o sistema em 30 segundos.
+        - button "Próximo" [ref=e24]:
+          - text: Próximo
+          - img [ref=e25]
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - img [ref=e31]
+        - heading "Guardião." [level=1] [ref=e34]
+      - generic [ref=e36]:
+        - generic [ref=e38]:
+          - heading "Bem-vindo de Volta" [level=3] [ref=e39]
+          - paragraph [ref=e40]: Proteja seu patrimônio com inteligência.
+        - generic [ref=e41]:
+          - button "Continuar com Google" [ref=e43]:
+            - img [ref=e44]
+            - text: Continuar com Google
+          - generic [ref=e53]: Ou use seu e-mail
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - text: E-mail
+              - textbox "seu@email.com" [ref=e56]
+            - generic [ref=e57]:
+              - text: Senha
+              - textbox "••••••••" [ref=e58]
+            - button "Entrar no Sistema" [ref=e59]:
+              - text: Entrar no Sistema
+              - img [ref=e60]
+          - contentinfo [ref=e62]:
+            - paragraph [ref=e63]:
+              - text: Ainda não tem conta?
+              - link "Criar agora" [ref=e64] [cursor=pointer]:
+                - /url: /signup
+      - paragraph [ref=e65]: Proteção de dados auditada via IA • 2026
+    - region "Notifications alt+T"
+  - status [ref=e66]:
+    - generic [ref=e67]:
+      - img [ref=e69]
+      - generic [ref=e71]:
+        - text: Static route
+        - button "Hide static indicator" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+  - alert [ref=e76]
+```
