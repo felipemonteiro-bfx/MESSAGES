@@ -5,20 +5,18 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Users, UserPlus, ShieldCheck, Mail, Crown, Trash2, Loader2, Star, CheckCircle2, FolderOpen, Share2, Plus, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { Users, UserPlus, ShieldCheck, Share2, Mail, Trash2, Loader2, ArrowRight, CheckCircle2, Heart, Home, Car, Smartphone, Briefcase, Lock, Crown, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
+import { toast } from 'sonner';
 
-export default function FamilyHubPage() {
+export default function FamilySharingPage() {
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
   const [shares, setShares] = useState<any[]>([]);
-  const [newShare, setNewShare] = useState({ email: '', folder: 'Casa' });
+  const [profile, setProfile] = useState<any>(null);
+  const [inviteEmail, setEmail] = useState('');
+  const [selectedFolder, setFolder] = useState('Casa');
   const supabase = createClient();
-
-  const folders = ['Pessoal', 'Trabalho', 'Casa', 'Veículo', 'Eletrônicos', 'Outros'];
 
   useEffect(() => {
     fetchData();
@@ -30,164 +28,158 @@ export default function FamilyHubPage() {
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setProfile(profileData);
       
-      const { data: shareData } = await supabase
-        .from('folder_shares')
-        .select('*')
-        .eq('owner_id', user.id);
+      const { data: shareData } = await supabase.from('folder_shares').select('*').order('created_at', { ascending: false });
       setShares(shareData || []);
     }
     setLoading(false);
   };
 
-  const handleCreateShare = async (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile?.is_premium) {
-      toast.error('Compartilhamento de pastas é exclusivo do Plano Família!');
+    if (!profile?.is_premium && shares.length >= 1) {
+      toast.error('O compartilhamento de pastas é exclusivo para Planos Família!');
       return;
     }
     setSharing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('folder_shares').insert({
-        owner_id: user?.id,
-        folder_name: newShare.folder,
-        shared_with_email: newShare.email.toLowerCase(),
+        folder_name: selectedFolder,
+        owner_id: profile.id,
+        shared_with_email: inviteEmail,
+        permission: 'editor'
       });
-
       if (error) throw error;
-      toast.success(`Pasta ${newShare.folder} compartilhada com ${newShare.email}`);
-      setNewShare({ email: '', folder: 'Casa' });
+      toast.success(`Convite enviado para ${inviteEmail}!`);
+      setEmail('');
       fetchData();
-    } catch (err: any) {
-      toast.error('Erro ao compartilhar. Verifique os dados.');
-    } finally {
-      setSharing(false);
-    }
+    } catch (err) { toast.error('Erro ao enviar convite.'); } finally { setSharing(false); }
   };
 
-  const revokeShare = async (id: string) => {
+  const removeShare = async (id: string) => {
     const { error } = await supabase.from('folder_shares').delete().eq('id', id);
     if (!error) {
-      toast.success('Acesso revogado com sucesso.');
-      fetchData();
+      setShares(prev => prev.filter(s => s.id !== id));
+      toast.success('Acesso removido.');
     }
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-12 w-12 animate-spin text-emerald-600" /></div>;
 
-  if (!profile?.is_premium) {
-    return (
-      <div className="max-w-4xl mx-auto py-20 text-center space-y-8">
-        <div className="h-24 w-24 bg-emerald-100 dark:bg-emerald-900/20 rounded-[40px] flex items-center justify-center mx-auto shadow-2xl shadow-emerald-200">
-          <Users className="h-12 w-12 text-emerald-600" />
-        </div>
-        <div className="space-y-4">
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Gestão <span className="text-emerald-600">Familiar</span></h1>
-          <p className="text-slate-500 dark:text-slate-400 max-w-lg mx-auto font-medium">Compartilhe pastas inteiras com sua família e gerencie o patrimônio de forma colaborativa. Recurso exclusivo Pro/Família.</p>
-        </div>
-        <Link href="/plans"><Button size="lg" className="h-16 px-12 text-lg shadow-xl shadow-emerald-500/20">Ativar Plano Família</Button></Link>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto space-y-10 pb-20 px-4 md:px-0">
       <header className="flex flex-col md:flex-row justify-between items-start gap-6">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase tracking-tighter">Centro <span className="text-emerald-600">Familiar</span></h1>
-          <p className="text-slate-500 font-medium text-sm">Gerencie quem pode acessar suas pastas de notas fiscais.</p>
+          <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white uppercase tracking-tighter">Gestão <span className="text-emerald-600">Compartilhada</span></h1>
+          <p className="text-slate-500 font-medium">Proteja o patrimônio de quem você ama com acesso colaborativo.</p>
+        </div>
+        <div className="px-4 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-slate-900/20">
+          <Crown className="h-4 w-4 text-amber-400" /> Plano Família Ativo
         </div>
       </header>
 
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* Formulário de Novo Compartilhamento */}
-        <Card className="lg:col-span-1 border-none shadow-xl bg-white dark:bg-slate-900 overflow-hidden h-fit">
+        {/* Lado Esquerdo: Formulário de Convite */}
+        <Card className="border-none shadow-2xl bg-white dark:bg-slate-900 overflow-hidden h-fit">
           <div className="h-1.5 w-full bg-emerald-500" />
-          <CardHeader className="p-8 pb-4"><CardTitle className="text-lg font-black flex items-center gap-2 text-slate-900 dark:text-white"><Share2 className="h-5 w-5 text-emerald-600" /> Compartilhar Pasta</CardTitle></CardHeader>
-          <CardContent className="p-8 pt-0">
-            <form onSubmit={handleCreateShare} className="space-y-6">
+          <CardHeader className="p-8 pb-4">
+            <CardTitle className="text-xl font-black flex items-center gap-2 text-slate-900 dark:text-white uppercase tracking-tighter">
+              <UserPlus className="h-5 w-5 text-emerald-600" /> Convidar Membro
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-8 pt-4">
+            <form onSubmit={handleInvite} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail do Membro</label>
-                <Input placeholder="exemplo@email.com" type="email" value={newShare.email} onChange={(e) => setNewShare({...newShare, email: e.target.value})} required />
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Pasta Compartilhada</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Casa', 'Veículo', 'Trabalho', 'Viagem'].map(f => (
+                    <button 
+                      key={f} 
+                      type="button"
+                      onClick={() => setFolder(f)}
+                      className={`h-12 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${selectedFolder === f ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100'}`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pasta para Liberar</label>
-                <select 
-                  value={newShare.folder}
-                  onChange={(e) => setNewShare({...newShare, folder: e.target.value})}
-                  className="w-full h-12 px-4 bg-slate-50 dark:bg-slate-800 border-2 border-teal-50 dark:border-white/5 rounded-xl focus:outline-none focus:border-emerald-500 text-sm font-bold text-slate-700 dark:text-slate-200"
-                >
-                  {folders.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">E-mail do Familiar</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input 
+                    type="email" 
+                    placeholder="email@familiar.com" 
+                    value={inviteEmail}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-sm"
+                  />
+                </div>
               </div>
-              <Button type="submit" disabled={sharing} className="w-full h-14 font-black uppercase text-xs tracking-widest gap-2">
-                {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Enviar Convite
+              <Button type="submit" disabled={sharing} className="w-full h-14 font-black uppercase text-xs tracking-widest shadow-xl shadow-emerald-500/20">
+                {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4 mr-2" />}
+                Conceder Acesso
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        {/* Lista de Acessos Ativos */}
-        <Card className="lg:col-span-2 border-none shadow-xl bg-white dark:bg-slate-900 overflow-hidden">
-          <CardHeader className="p-8 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-white/5">
-            <CardTitle className="text-sm font-black uppercase text-slate-400 flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" /> Acessos Ativos no seu Cofre
-            </CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-white dark:bg-slate-900 border-b border-slate-50 dark:border-white/5">
-                  <th className="px-8 py-4 text-[10px] font-black uppercase text-slate-400">Membro</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase text-slate-400">Pasta Compartilhada</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase text-slate-400">Data</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase text-slate-400 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                {shares.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-8 py-20 text-center text-slate-400 italic text-sm">Nenhuma pasta compartilhada ainda.</td>
-                  </tr>
-                ) : (
-                  shares.map((share) => (
-                    <tr key={share.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-8 py-6 font-bold text-slate-900 dark:text-slate-200 text-sm">{share.shared_with_email}</td>
-                      <td className="px-8 py-6">
-                        <span className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-500/20">
-                          {share.folder_name}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6 text-slate-400 text-xs">{new Date(share.created_at).toLocaleDateString('pt-BR')}</td>
-                      <td className="px-8 py-6 text-right">
-                        <Button 
-                          variant="ghost" 
-                          onClick={() => revokeShare(share.id)}
-                          className="h-10 w-10 p-0 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                        >
-                          <Trash2 className="h-4 w-4" />
+        {/* Lado Direito: Lista de Acessos Ativos */}
+        <div className="lg:col-span-2 space-y-6">
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 ml-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" /> Membros com Acesso ao Cofre
+          </h3>
+          
+          <div className="grid gap-4">
+            {shares.length === 0 ? (
+              <Card className="border-none shadow-xl bg-white dark:bg-slate-900 p-12 text-center">
+                <Users className="h-12 w-12 text-slate-200 mx-auto mb-4" />
+                <p className="text-sm text-slate-400 font-bold uppercase">Nenhum compartilhamento ativo.</p>
+              </Card>
+            ) : (
+              shares.map((share) => (
+                <motion.div key={share.id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+                  <Card className="border-none shadow-lg bg-white dark:bg-slate-900 overflow-hidden group">
+                    <CardContent className="p-6 flex items-center justify-between gap-6">
+                      <div className="flex items-center gap-6">
+                        <div className="h-14 w-14 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600 shadow-sm border border-emerald-100 dark:border-emerald-500/20">
+                          {share.folder_name === 'Casa' ? <Home className="h-6 w-6" /> : share.folder_name === 'Veículo' ? <Car className="h-6 w-6" /> : <Smartphone className="h-6 w-6" />}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-black text-slate-900 dark:text-white uppercase text-sm tracking-tighter">{share.shared_with_email}</h4>
+                            <span className="bg-emerald-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase">Editor</span>
+                          </div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Pasta: <span className="text-emerald-600">{share.folder_name}</span></p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right hidden sm:block">
+                          <p className="text-[9px] font-black text-slate-400 uppercase">Status</p>
+                          <p className="text-xs font-black text-emerald-600 uppercase">Acesso Ativo</p>
+                        </div>
+                        <Button onClick={() => removeShare(share.id)} variant="ghost" size="sm" className="h-10 w-10 p-0 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50">
+                          <Trash2 className="h-5 w-5" />
                         </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))
+            )}
           </div>
-        </Card>
-      </div>
 
-      <div className="p-10 glass rounded-[40px] bg-slate-900 text-white flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group shadow-2xl">
-        <div className="absolute right-[-20px] bottom-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-1000"><Star className="h-48 w-48 text-emerald-500" /></div>
-        <div className="flex items-center gap-6 relative z-10">
-          <div className="h-16 w-16 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-500/20"><Crown className="h-8 w-8 text-white" /></div>
-          <div className="space-y-1">
-            <h3 className="text-2xl font-black uppercase tracking-tighter">Privilégios de Administrador</h3>
-            <p className="text-slate-400 text-sm font-medium leading-relaxed max-w-lg">Você possui controle total. Somente o administrador do plano pode criar novos compartilhamentos ou revogar acessos críticos.</p>
-          </div>
+          <Card className="border-none shadow-2xl bg-slate-900 text-white p-10 relative overflow-hidden group">
+            <div className="absolute right-[-20px] bottom-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-1000"><Heart className="h-48 w-48 text-red-500" /></div>
+            <div className="relative z-10 space-y-6">
+              <div className="flex items-center gap-2 text-emerald-400 font-black text-[10px] uppercase tracking-widest"><Star className="h-4 w-4" /> Inteligência Familiar</div>
+              <h2 className="text-3xl font-black leading-tight max-w-xl uppercase tracking-tighter">O patrimônio da casa em <span className="text-emerald-400">harmonia total.</span></h2>
+              <p className="text-slate-400 text-sm font-medium leading-relaxed max-w-2xl">O Plano Família permite que todos os moradores adicionem notas fiscais e fotos de vistoria no mesmo cofre, garantindo que em caso de sinistro, as provas estejam prontas para todos.</p>
+              <Button variant="ghost" className="bg-white/10 hover:bg-white/20 text-white font-black text-[10px] uppercase h-12 border border-white/10 px-8 rounded-2xl">Gerar Relatório Familiar</Button>
+            </div>
+          </Card>
         </div>
-        <Button variant="ghost" className="bg-white/10 hover:bg-white/20 text-white font-black text-[10px] uppercase tracking-widest px-8 h-14 rounded-2xl border border-white/10 relative z-10">Ver Relatório de Acessos</Button>
       </div>
     </div>
   );
