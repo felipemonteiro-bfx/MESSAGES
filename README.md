@@ -1,60 +1,47 @@
-# 🛡️ Warranty Tracker SaaS
+# 🛡️ Guardião de Notas v15.0 Platinum 🚀✨💎
 
-Aplicativo Web moderno para gerenciamento de garantias de produtos, com preenchimento automático via Inteligência Artificial.
+O **Guardião de Notas** é uma plataforma de elite para gestão de ativos imobilizados, proteção patrimonial e inteligência financeira. Transformamos simples notas fiscais em um dossiê digital auditado, garantindo seus direitos e valorizando seu patrimônio.
 
-## 🚀 Funcionalidades
+## 💎 Funcionalidades Platinum (Classe Mundial)
 
-- **Interface Premium (UI/UX):** Design moderno com Glassmorphism, degradês vibrantes e animações fluidas via Framer Motion.
-- **Inteligência Artificial (Gemini):** Upload de nota fiscal com extração automática de dados via IA (Nome, Data e Categoria).
-- **Dashboard Estratégico:** Visualização clara de produtos protegidos, vencendo em breve ou expirados.
-- **Autenticação Segura:** Sistema de login e cadastro totalmente em Português-BR.
-- **Gestão de Garantias:** CRUD completo (Criar, Listar, Editar e Excluir) com armazenamento de arquivos no Supabase.
+### 🏦 Inteligência Financeira & Gestão
+- **Balanço Consolidado:** Monitoramento de patrimônio líquido em tempo real.
+- **ROI de Upgrades:** Cálculo automático de valorização baseado em melhorias técnicas.
+- **Monitor de Câmbio 2.0:** Impacto da flutuação do Dólar/Euro no custo de reposição dos seus bens.
+- **Módulo Business (CNPJ):** Cálculo de depreciação contábil linear para ativos de escritório.
+- **Subscription Guardian:** Gestão de assinaturas digitais vinculadas aos seus bens físicos.
+
+### 🔐 Segurança & Blindagem
+- **Panic Mode (Disfarce):** Camuflagem instantânea para um app fake de notas, protegido por senha individual.
+- **Filtro de Privacidade:** Borramento (blur) dinâmico de valores monetários em ambientes públicos.
+- **Selo de Integridade Digital:** Hash de autenticidade único para cada item auditado.
+- **Sucessão Patrimonial (Death Switch):** Gatilho de inatividade para transmissão automática de bens para herdeiros.
+
+### 🤖 Automação & IA (Gemini 1.5 Flash)
+- **IA OCR Real:** Extração de chaves NF-e, bandeiras de cartão, valores e datas de notas reais.
+- **Semantic IA Search:** Busca por linguagem natural (Ex: "O que comprei na Amazon ano passado?").
+- **Price Watchdog:** Monitoramento de preços live para acionar seguro Proteção de Preço do cartão.
+- **Consultor Advisor IA:** Assistente jurídico e técnico para vícios ocultos e reclamações CDC.
+
+### 🤝 Ecossistema & Compliance
+- **Marketplace Real:** Vitrine de bens seminovos com histórico auditado e selo de procedência.
+- **Family Sharing 2.0:** Colaboração em tempo real e pastas compartilhadas para a família.
+- **Modo Viagem Global:** Declaração de bens multilingue (Português, Inglês, Espanhol).
+- **Scanner de Recalls:** Varredura global de segurança (ANVISA/SENACON).
 
 ## 🛠️ Stack Tecnológica
 
-- **Framework:** [Next.js 15 (App Router)](https://nextjs.org/)
-- **Linguagem:** TypeScript
-- **Banco de Dados & Auth:** [Supabase](https://supabase.com/)
-- **IA:** [Google Gemini Pro Vision](https://aistudio.google.com/)
-- **Estilização:** Tailwind CSS & Lucide Icons
+- **Frontend:** Next.js 15.1.6 (App Router), Tailwind CSS, Framer Motion.
+- **Backend:** Supabase SSR (Auth, Database, Storage).
+- **IA:** Google Gemini 1.5 Flash.
+- **Pagamentos:** Stripe (Plans Pro & Family).
+- **Qualidade:** Playwright (100% Master Audit Passed).
 
-## 📋 Configuração do Ambiente
+## 📋 Configuração de Elite
 
-1. **Clone o repositório:**
-   ```bash
-   git clone https://github.com/felipemonteiro-bfx/warranty-tracker.git
-   cd warranty-tracker
-   ```
-
-2. **Instale as dependências:**
-   ```bash
-   yarn install
-   ```
-
-3. **Variáveis de Ambiente (.env.local):**
-   Crie um arquivo `.env.local` com as seguintes chaves:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=seu_url_supabase
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_supabase
-   NEXT_PUBLIC_GEMINI_API_KEY=sua_chave_gemini
-   ```
-
-4. **Banco de Dados:**
-   Execute o script SQL fornecido na pasta `docs/schema.sql` (ou no histórico do chat) no SQL Editor do Supabase.
-
-5. **Inicie o servidor:**
-   ```bash
-   yarn dev
-   ```
-   Acesse `http://localhost:3001`.
-
-## 📈 Sugestões de Melhorias (Roadmap)
-
-1. **Notificações:** Envio de e-mail automático 15 dias antes de uma garantia vencer.
-2. **Categorias Customizadas:** Permitir que o usuário crie suas próprias categorias.
-3. **Multi-moeda:** Suporte para registrar o valor pago em diferentes moedas.
-4. **Relatórios:** Exportar lista de garantias em PDF ou Excel.
-5. **Modo Escuro:** Implementar alternância de tema Dark/Light.
+1. **Dependências:** `yarn install`
+2. **Ambiente:** Configure o `.env.local` com as chaves de Supabase, Gemini e Stripe.
+3. **Execução:** `yarn next dev -p 3001 --hostname 127.0.0.1`
 
 ---
-Desenvolvido com ⚡ por Gemini CLI.
+**Guardião de Notas: Protegendo o que é seu, hoje e sempre.** 🛡️💎🏆
