@@ -31,7 +31,7 @@ export default function ChatLayout() {
   const [showEditNicknameModal, setShowEditNicknameModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingNickname, setEditingNickname] = useState<string>('');
-  const [currentUserProfile, setCurrentUserProfile] = useState<{ nickname: string } | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<{ nickname: string; avatar_url?: string | null } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -116,7 +116,7 @@ export default function ChatLayout() {
         // Buscar perfil do usuário atual
         const { data: profile } = await supabase
           .from('profiles')
-          .select('nickname')
+          .select('nickname, avatar_url')
           .eq('id', user.id)
           .single();
         if (profile) {
@@ -884,14 +884,14 @@ export default function ChatLayout() {
             // Recarregar chats e perfil
             if (currentUser) {
               await fetchChats(currentUser.id);
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('nickname')
-                .eq('id', currentUser.id)
-                .single();
-              if (profile) {
-                setCurrentUserProfile(profile);
-              }
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('nickname, avatar_url')
+                  .eq('id', currentUser.id)
+                  .single();
+                if (profile) {
+                  setCurrentUserProfile(profile);
+                }
             }
           }}
         />
