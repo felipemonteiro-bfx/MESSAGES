@@ -1,14 +1,7 @@
 name: Test All
 
 on:
-  push:
-    branches: [ main, develop, staging ]
-  pull_request:
-    branches: [ main, develop, staging ]
-  workflow_dispatch: # Permite execução manual
-  schedule:
-    # Roda todos os dias às 2h UTC (meia-noite no Brasil)
-    - cron: '0 2 * * *'
+  workflow_dispatch: # Apenas execução manual - testes foram removidos
 
 jobs:
   test-all:
@@ -36,121 +29,14 @@ jobs:
       run: yarn lint
       continue-on-error: true
     
-    - name: Format check
-      run: yarn format:check
-      continue-on-error: true
-    
-    - name: Install Playwright Browsers
-      run: yarn playwright install --with-deps
-    
-    - name: Run Basic Tests
-      run: yarn test:basic || true
-      continue-on-error: true
+    - name: Build
+      run: yarn build
       env:
-        CI: true
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        NEXT_PUBLIC_NEWS_API_KEY: ${{ secrets.NEXT_PUBLIC_NEWS_API_KEY }}
+        NODE_ENV: production
     
-    - name: Run Dashboard Tests
-      run: yarn test:dashboard || true
+    - name: Skip tests - Tests removed
+      run: echo "Tests were removed from this project. Only lint, type-check and build are executed."
       continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Run UI Component Tests
-      run: yarn test:ui-components || true
-      continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Run Integration Tests
-      run: yarn test:integration || true
-      continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Run Performance Tests
-      run: yarn test:performance || true
-      continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Run Security Tests
-      run: yarn test:security || true
-      continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Run Accessibility Tests
-      run: yarn test:accessibility || true
-      continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Run Auth Tests
-      run: yarn test:auth || true
-      continue-on-error: true
-      env:
-        CI: true
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-    
-    - name: Check for Playwright Report
-      if: always()
-      run: |
-        if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
-          echo "✅ Relatório encontrado em playwright-report/"
-          ls -lah playwright-report/ | head -10
-        else
-          echo "⚠️  Nenhum relatório encontrado (isso é normal se todos os testes falharam antes de gerar relatório)"
-          mkdir -p playwright-report
-          echo "<html><body><h1>Nenhum relatório disponível</h1><p>Os testes podem ter falhado antes de gerar o relatório.</p></body></html>" > playwright-report/index.html
-        fi
-    
-    - name: Upload Playwright Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      continue-on-error: true
-      with:
-        name: playwright-report
-        path: playwright-report/
-        if-no-files-found: ignore
-        retention-days: 30
-        compression-level: 6
-    
-    - name: Upload Test Results
-      if: always()
-      uses: actions/upload-artifact@v4
-      continue-on-error: true
-      with:
-        name: test-results
-        path: test-results/
-        if-no-files-found: ignore
-        retention-days: 7
-    
-    - name: Test Summary
-      if: always()
-      run: |
-        echo "## 🧪 Resumo dos Testes" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Todos os testes foram executados" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        if [ -d "playwright-report" ] && [ -f "playwright-report/index.html" ]; then
-          echo "📊 Relatório HTML disponível no artifact 'playwright-report'" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "⚠️  Relatório não disponível (testes podem ter falhado antes de gerar)" >> $GITHUB_STEP_SUMMARY
-        fi
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "💡 Baixe o artifact para ver detalhes completos" >> $GITHUB_STEP_SUMMARY

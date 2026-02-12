@@ -52,12 +52,22 @@ export default function EditNicknameModal({
 
       // Se for próprio perfil, usar update normal
       if (isOwnProfile) {
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('profiles')
           .update({ nickname: validation.data })
-          .eq('id', userId);
+          .eq('id', userId)
+          .select()
+          .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Erro ao atualizar nickname:', error);
+          throw error;
+        }
+        
+        // Verificar se atualizou corretamente
+        if (!data) {
+          throw new Error('Nickname não foi atualizado. Tente novamente.');
+        }
       } else {
         // Para editar nickname de outros, usar função RPC (precisa ser criada no Supabase)
         const { error } = await supabase.rpc('update_user_nickname', {

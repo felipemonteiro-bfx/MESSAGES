@@ -499,12 +499,35 @@ export default function ChatLayout() {
             />
           </div>
           <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
-          {currentUser && currentUserProfile && (
+          {currentUser && (
             <button 
-              onClick={() => {
-                setEditingUserId(currentUser.id);
-                setEditingNickname(currentUserProfile.nickname);
-                setShowEditNicknameModal(true);
+              onClick={async () => {
+                try {
+                  // Sempre buscar o perfil mais recente antes de editar
+                  const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('nickname, avatar_url')
+                    .eq('id', currentUser.id)
+                    .single();
+                  
+                  if (profileError) {
+                    console.error('Erro ao buscar perfil:', profileError);
+                    toast.error('Erro ao carregar perfil. Tente novamente.');
+                    return;
+                  }
+                  
+                  if (profile) {
+                    setCurrentUserProfile(profile);
+                    setEditingUserId(currentUser.id);
+                    setEditingNickname(profile.nickname || '');
+                    setShowEditNicknameModal(true);
+                  } else {
+                    toast.error('Perfil não encontrado. Por favor, faça login novamente.');
+                  }
+                } catch (error: any) {
+                  console.error('Erro ao abrir modal de edição:', error);
+                  toast.error('Erro ao abrir editor de nickname. Tente novamente.');
+                }
               }}
               className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" 
               title="Editar meu nickname"
