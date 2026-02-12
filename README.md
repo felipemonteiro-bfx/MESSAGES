@@ -1,78 +1,78 @@
-# 🔐 Stealth Messaging - Sistema de Mensagens Disfarçado
+# 🔐 Stealth Messaging – Sistema de Mensagens Disfarçado
 
-Sistema de mensagens completamente disfarçado como um aplicativo de notícias em tempo real.
+Aplicativo de **mensagens em tempo real** disfarçado como app de **notícias**. A interface pública mostra notícias; usuários autenticados acessam o chat.
 
 ## 🎯 Funcionalidades
 
-- **Interface Pública**: Aplicativo de notícias em tempo real
-- **Acesso Secreto**: PIN de 4 dígitos para acessar mensagens
-- **Mensagens em Tempo Real**: Chat usando Supabase Realtime
-- **Upload de Mídia**: Fotos, vídeos e áudio
-- **Auto-Lock**: Volta automaticamente para modo notícias após 10 segundos sem foco
-- **Notificações Disfarçadas**: Mensagens aparecem como notícias
+| Funcionalidade | Descrição |
+|----------------|-----------|
+| **Login e cadastro** | Cadastro com email, senha e nickname em `/signup`; login em `/login`. Home exige sessão. |
+| **Menu lateral** | Ícone ☰ abre sidebar com: Início, Receber alertas de notícias (push), Sair. |
+| **Notícias em nova aba** | Clique em qualquer notícia abre o link em nova aba (inclui mocks com URL). |
+| **Push disfarçado** | “Receber alertas de notícias” inscreve o dispositivo para notificações (Web Push). |
+| **Mensagens em tempo real** | Chat com Supabase Realtime. |
+| **Upload de mídia** | Fotos, vídeos e áudio no chat. |
+| **Auto-lock** | Volta ao modo notícias após inatividade. |
 
-## 🚀 Instalação
+## 🚀 Instalação rápida
 
-1. Clone o repositório:
 ```bash
-git clone <seu-repositorio>
+git clone https://github.com/felipemonteiro-bfx/MESSAGES.git stealth-messaging
 cd stealth-messaging
-```
-
-2. Instale as dependências:
-```bash
 yarn install
-```
-
-3. Configure as variáveis de ambiente:
-```bash
 cp .env.example .env.local
 ```
 
-Edite `.env.local` com suas credenciais do Supabase:
-```
-NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anon
-NEXT_PUBLIC_NEWS_API_KEY=sua-chave-news-api (opcional)
-```
+Edite `.env.local` com as credenciais do Supabase (e opcionalmente News API e VAPID para push). Depois execute no **Supabase → SQL Editor**, nesta ordem:
 
-4. Execute o script SQL no Supabase:
-- Acesse o SQL Editor no Supabase
-- Execute o conteúdo de `docs/messaging_schema.sql`
+1. `docs/SETUP_COMPLETO.sql` – tabelas (profiles, chats, messages, etc.), RLS e Realtime  
+2. `docs/adicionar_mensagens_efemeras.sql` – mensagens efêmeras (opcional)  
+3. `docs/push_subscriptions.sql` – tabela de inscrições push  
+4. `docs/trigger_create_profile.sql` – cria perfil ao registrar usuário  
 
-5. Crie os buckets de Storage no Supabase:
-- `chat-media` (privado) - para mídia das mensagens
+Em seguida:
 
-6. Ative o Realtime nas tabelas:
-- `messages`
-- `chats`
-- `chat_participants`
+- **Storage**: criar bucket `chat-media` (privado).  
+- **Realtime**: habilitado nas tabelas indicadas no `SETUP_COMPLETO.sql`.  
+- **Auth**: em *Authentication → URL Configuration*, definir *Site URL* (ex.: `http://localhost:3005` ou a URL da Vercel).
 
-7. Execute o projeto:
 ```bash
 yarn dev
 ```
 
-Acesse: http://localhost:3005
+Acesse: **http://localhost:3005**
+
+- Sem sessão: redireciona para `/login`.  
+- Cadastro: `/signup` → preencha email, senha e nickname.
+
+## 📁 Variáveis de ambiente
+
+| Variável | Obrigatório | Descrição |
+|----------|-------------|-----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Sim | URL do projeto Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Sim | Chave anônima (pública) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Para APIs server-side | Chave service role |
+| `NEXT_PUBLIC_NEWS_API_KEY` | Não | News API para notícias reais |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Para push | Chave pública VAPID (Web Push) |
+| `VAPID_PRIVATE_KEY` | Para push | Chave privada VAPID |
+
+Gerar par VAPID: `node scripts/generate-vapid.js` (se existir) ou use [web-push](https://www.npmjs.com/package/web-push).
 
 ## 📚 Documentação
 
-- `STEALTH_MESSAGING.md` - Documentação completa do sistema
-- `CONFIGURAR_SUPABASE.md` - Guia de configuração do Supabase
-- `DEPLOY_VERCEL.md` - Guia completo de deploy no Vercel
-- `CONFIGURAR_NEWSAPI.md` - Como configurar NewsAPI para notícias reais
-- `TESTAR_NO_SAFARI.md` - Como testar no iPhone Safari
-- `MELHORIAS_IMPLEMENTADAS.md` - Lista de melhorias aplicadas
+- **[docs/DOCUMENTACAO_APLICACAO.md](docs/DOCUMENTACAO_APLICACAO.md)** – Documentação completa da aplicação (setup, rotas, deploy, troubleshooting)  
+- `CONFIGURAR_SUPABASE.md` – Configuração do Supabase  
+- `DEPLOY_VERCEL.md` – Deploy na Vercel  
+- `CONFIGURAR_NEWSAPI.md` – Notícias reais com News API  
+- `STEALTH_MESSAGING.md` – Detalhes do sistema stealth  
 
 ## 🛠️ Tecnologias
 
-- Next.js 15.1.6
+- Next.js 16 (App Router)
 - React 19
 - Supabase (Auth, Database, Storage, Realtime)
-- TypeScript
-- Tailwind CSS
-- Framer Motion
-- Zod (validação)
+- TypeScript, Tailwind CSS, Framer Motion, Zod
+- Web Push (notificações)
 
 ## 📝 Licença
 

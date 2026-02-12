@@ -16,7 +16,6 @@ import { logger } from '@/lib/logger';
 export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState(false);
@@ -52,7 +51,6 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
           password,
           options: { 
             data: { 
-              full_name: fullName,
               nickname: nickname.toLowerCase().replace(/\s+/g, '_')
             } 
           },
@@ -76,7 +74,7 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         logger.info('User logged in successfully', { email });
-        router.push('/dashboard');
+        router.push('/');
         router.refresh();
       }
     } catch (err) {
@@ -118,30 +116,22 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {type === 'signup' && (
-            <>
-              <Input 
-                label="Nome Completo" 
-                placeholder="Ex: Felipe Monteiro" 
-                value={fullName} 
-                onChange={(e) => setFullName(e.target.value)} 
-                required 
-              />
-              <Input 
-                label="Nickname Secreto" 
-                placeholder="Ex: shadow_runner" 
-                value={nickname} 
-                onChange={(e) => setNickname(e.target.value)} 
-                required 
-              />
-            </>
+            <Input 
+              label="Nickname" 
+              placeholder="Ex: shadow_runner" 
+              value={nickname} 
+              onChange={(e) => setNickname(e.target.value)} 
+              required 
+            />
           )}
           <Input 
             label="E-mail" 
-            type="email" 
+            type="text" 
             placeholder="seu@email.com" 
             value={email} 
             onChange={(e) => setEmail(e.target.value)} 
             required 
+            autoComplete="username"
           />
           <Input 
             label="Senha" 
