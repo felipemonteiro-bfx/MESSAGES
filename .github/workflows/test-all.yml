@@ -107,6 +107,18 @@ jobs:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     
+    - name: Check for Playwright Report
+      if: always()
+      run: |
+        if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
+          echo "✅ Relatório encontrado em playwright-report/"
+          ls -lah playwright-report/ | head -10
+        else
+          echo "⚠️  Nenhum relatório encontrado (isso é normal se todos os testes falharam antes de gerar relatório)"
+          mkdir -p playwright-report
+          echo "<html><body><h1>Nenhum relatório disponível</h1><p>Os testes podem ter falhado antes de gerar o relatório.</p></body></html>" > playwright-report/index.html
+        fi
+    
     - name: Upload Playwright Report
       if: always()
       uses: actions/upload-artifact@v4
@@ -116,6 +128,17 @@ jobs:
         path: playwright-report/
         if-no-files-found: ignore
         retention-days: 30
+        compression-level: 6
+    
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      continue-on-error: true
+      with:
+        name: test-results
+        path: test-results/
+        if-no-files-found: ignore
+        retention-days: 7
     
     - name: Test Summary
       if: always()
@@ -124,4 +147,10 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "✅ Todos os testes foram executados" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "📊 Verifique os artifacts para relatórios detalhados" >> $GITHUB_STEP_SUMMARY
+        if [ -d "playwright-report" ] && [ -f "playwright-report/index.html" ]; then
+          echo "📊 Relatório HTML disponível no artifact 'playwright-report'" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️  Relatório não disponível (testes podem ter falhado antes de gerar)" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "💡 Baixe o artifact para ver detalhes completos" >> $GITHUB_STEP_SUMMARY

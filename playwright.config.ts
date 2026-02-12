@@ -7,7 +7,11 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI 
-    ? [['html', { outputFolder: 'playwright-report' }], ['list']]
+    ? [
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
+        ['list'],
+        ['junit', { outputFile: 'test-results/junit.xml' }]
+      ]
     : 'html',
   use: {
     baseURL: 'http://127.0.0.1:3001',

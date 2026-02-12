@@ -15,6 +15,7 @@
 /test-results
 /playwright-report
 *.zip
+playwright-report*.zip
 
 # next.js
 /.next/

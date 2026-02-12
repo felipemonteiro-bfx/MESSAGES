@@ -15,8 +15,8 @@ export const mockWarranties: Warranty[] = [
     price: 3500.00,
     store: 'Magazine Luiza',
     notes: 'Garantia estendida incluída',
+    invoice_url: null,
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
   {
     id: '2',
@@ -28,8 +28,8 @@ export const mockWarranties: Warranty[] = [
     price: 2500.00,
     store: 'Americanas',
     notes: '',
+    invoice_url: null,
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
   {
     id: '3',
@@ -41,8 +41,8 @@ export const mockWarranties: Warranty[] = [
     price: 2800.00,
     store: 'Casas Bahia',
     notes: 'Instalação incluída',
+    invoice_url: null,
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
   {
     id: '4',
@@ -54,8 +54,8 @@ export const mockWarranties: Warranty[] = [
     price: 450.00,
     store: 'Amazon',
     notes: '',
+    invoice_url: null,
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
 ];
 
@@ -69,9 +69,8 @@ export const mockExpiredWarranty: Warranty = {
   price: 100.00,
   store: 'Loja Teste',
   notes: '',
-  folder: 'Pessoal',
+  invoice_url: null,
   created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
 };
 
 export const mockExpiringSoonWarranty: Warranty = {
@@ -84,9 +83,8 @@ export const mockExpiringSoonWarranty: Warranty = {
   price: 200.00,
   store: 'Loja Teste',
   notes: '',
-  folder: 'Pessoal',
+  invoice_url: null,
   created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
 };
 
 export const mockUser = {
