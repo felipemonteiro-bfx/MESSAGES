@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, Phone, TrendingUp, Calendar, ExternalLink, Bell } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, Phone, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
+import { createClient } from '@/lib/supabase/client';
 
 interface NewsItem {
   id: string;
@@ -37,10 +39,18 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullStartY, setPullStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
 
-  const handleMenuClick = () => {
-    toast.info('Menu em desenvolvimento', { duration: 2000 });
+  const handleMenuClick = () => setMenuOpen(true);
+
+  const handleSair = async () => {
+    setMenuOpen(false);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
   };
 
   const handleEnablePush = async () => {
@@ -290,7 +300,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'G1 Economia',
         time: '15min atrás',
         image: 'https://images.unsplash.com/photo-1611974765270-ca1258634369?w=800&auto=format&fit=crop&q=60',
-        category: 'Economia'
+        category: 'Economia',
+        url: 'https://www.google.com/search?q=mercado+financeiro+brasil'
       },
       {
         id: '2',
@@ -298,7 +309,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'TechNews Brasil',
         time: '1h atrás',
         image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=60',
-        category: 'Tecnologia'
+        category: 'Tecnologia',
+        url: 'https://www.google.com/search?q=tecnologia+comunicação+digital'
       },
       {
         id: '3',
@@ -306,7 +318,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'ESPN Brasil',
         time: '2h atrás',
         image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&auto=format&fit=crop&q=60',
-        category: 'Esportes'
+        category: 'Esportes',
+        url: 'https://www.google.com/search?q=seleção+brasileira+futebol'
       },
       {
         id: '4',
@@ -314,7 +327,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'Folha Saúde',
         time: '3h atrás',
         image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800&auto=format&fit=crop&q=60',
-        category: 'Saúde'
+        category: 'Saúde',
+        url: 'https://www.google.com/search?q=saúde+doenças+crônicas'
       },
       {
         id: '5',
@@ -322,7 +336,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'Veja Entretenimento',
         time: '4h atrás',
         image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800&auto=format&fit=crop&q=60',
-        category: 'Entretenimento'
+        category: 'Entretenimento',
+        url: 'https://www.google.com/search?q=festival+música+São+Paulo'
       },
       {
         id: '6',
@@ -330,7 +345,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'BBC Mundo',
         time: '5h atrás',
         image: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=800&auto=format&fit=crop&q=60',
-        category: 'Mundo'
+        category: 'Mundo',
+        url: 'https://www.google.com/search?q=ONU+mudanças+climáticas'
       },
       {
         id: '7',
@@ -338,7 +354,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'Exame',
         time: '6h atrás',
         image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&auto=format&fit=crop&q=60',
-        category: 'Tecnologia'
+        category: 'Tecnologia',
+        url: 'https://www.google.com/search?q=startup+investimento+brasil'
       },
       {
         id: '8',
@@ -346,7 +363,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         source: 'TecMundo',
         time: '7h atrás',
         image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&auto=format&fit=crop&q=60',
-        category: 'Tecnologia'
+        category: 'Tecnologia',
+        url: 'https://www.google.com/search?q=aplicativo+comunicação'
       }
     ];
 
@@ -445,6 +463,66 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
+      {/* Menu lateral */}
+      <AnimatePresence>
+        {menuOpen && (
+          <>
+            <motion.div
+              key="menu-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-[150]"
+              onClick={() => setMenuOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.aside
+              key="menu-sidebar"
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              className="fixed left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-white shadow-xl z-[160] flex flex-col border-r border-gray-200"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                <span className="font-bold text-gray-900">Menu</span>
+                <button onClick={() => setMenuOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Fechar menu">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <nav className="p-2 flex flex-col gap-1">
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                >
+                  <Home className="w-5 h-5 text-gray-500" />
+                  Início
+                </button>
+                {isSupported && (
+                  <button
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      await handleEnablePush();
+                    }}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                  >
+                    <Bell className="w-5 h-5 text-gray-500" />
+                    {isSubscribed ? 'Alertas ativados' : 'Receber alertas de notícias'}
+                  </button>
+                )}
+                <button
+                  onClick={handleSair}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-red-600 font-medium mt-auto"
+                >
+                  <LogOut className="w-5 h-5" />
+                  Sair
+                </button>
+              </nav>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Sugestão iPhone: Indicador de Pull-to-Refresh */}
       {pullDistance > 0 && (
         <div 

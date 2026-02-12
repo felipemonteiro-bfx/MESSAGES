@@ -70,6 +70,8 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
         }
 
         toast.success('Conta criada! Verifique seu e-mail para confirmar.');
+        router.push('/login?registered=1');
+        router.refresh();
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
