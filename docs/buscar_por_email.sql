@@ -1,0 +1,49 @@
+-- Função para buscar usuário por email
+-- Execute este SQL no Supabase SQL Editor para habilitar busca por email
+
+-- Função para buscar usuário por email (retorna profile)
+CREATE OR REPLACE FUNCTION get_user_by_email(user_email TEXT)
+RETURNS TABLE (
+  id UUID,
+  nickname TEXT,
+  avatar_url TEXT,
+  status TEXT,
+  last_seen TIMESTAMPTZ,
+  created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  user_id UUID;
+BEGIN
+  -- Buscar ID do usuário pelo email na tabela auth.users
+  SELECT id INTO user_id
+  FROM auth.users
+  WHERE email = user_email
+  LIMIT 1;
+  
+  -- Se não encontrou, retornar vazio
+  IF user_id IS NULL THEN
+    RETURN;
+  END IF;
+  
+  -- Retornar o profile correspondente
+  RETURN QUERY
+  SELECT 
+    p.id,
+    p.nickname,
+    p.avatar_url,
+    p.status,
+    p.last_seen,
+    p.created_at
+  FROM public.profiles p
+  WHERE p.id = user_id;
+END;
+$$;
+
+-- Dar permissão para todos os usuários autenticados usarem a função
+GRANT EXECUTE ON FUNCTION get_user_by_email(TEXT) TO authenticated;
+
+-- Teste a função (substitua pelo email real):
+-- SELECT * FROM get_user_by_email('teste@stealth.com');
