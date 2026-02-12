@@ -1,0 +1,32 @@
+name: Playwright Report Viewer
+
+on:
+  workflow_run:
+    workflows: ["Playwright Tests", "Test All"]
+    types:
+      - completed
+
+jobs:
+  report:
+    if: ${{ github.event.workflow_run.conclusion != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Playwright Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          continue-on-error: true
+      
+      - name: Display Report Info
+        if: always()
+        run: |
+          if [ -d "playwright-report" ] && [ "$(ls -A playwright-report)" ]; then
+            echo "✅ Relatório baixado com sucesso"
+            echo "📁 Arquivos no relatório:"
+            find playwright-report -type f -name "*.html" | head -5
+          else
+            echo "⚠️  Nenhum relatório encontrado"
+          fi

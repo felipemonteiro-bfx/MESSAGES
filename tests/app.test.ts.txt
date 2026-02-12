@@ -1,0 +1,25 @@
+import { test, expect } from '@playwright/test';
+
+test('Abrir aplicação e verificar erros básicos', async ({ page }) => {
+
+  await page.goto('http://localhost:3000');
+
+  await page.waitForLoadState('networkidle');
+
+  // verifica se abriu
+  await expect(page).toHaveURL(/localhost/);
+
+  // procura erros no console
+  const errors: string[] = [];
+
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      errors.push(msg.text());
+    }
+  });
+
+  // espera 3 segundos
+  await page.waitForTimeout(3000);
+
+  expect(errors).toEqual([]);
+});

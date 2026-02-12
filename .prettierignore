@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+dist
+build
+coverage
+*.lock
+yarn.lock
+package-lock.json
+.env*
+!.env.example
+playwright-report
+test-results

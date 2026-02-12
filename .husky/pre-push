@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🚀 Executando verificações pré-push..."
+
+# Type check
+echo "📝 Verificando tipos TypeScript..."
+yarn type-check
+if [ $? -ne 0 ]; then
+  echo "❌ Type check falhou. Corrija os erros antes de fazer push."
+  exit 1
+fi
+
+# Linter
+echo "🔍 Executando linter..."
+yarn lint
+if [ $? -ne 0 ]; then
+  echo "⚠️  Linter encontrou problemas. Continue mesmo assim? (y/n)"
+  read -r response
+  if [ "$response" != "y" ]; then
+    exit 1
+  fi
+fi
+
+# Testes básicos (rápidos) - não bloqueia, apenas avisa
+echo "🧪 Executando testes básicos..."
+yarn test:basic || echo "⚠️  Alguns testes básicos falharam (não bloqueando push)"
+
+echo "✅ Verificações concluídas!"
