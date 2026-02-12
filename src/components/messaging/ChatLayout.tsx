@@ -260,6 +260,16 @@ export default function ChatLayout() {
 
       if (messageError) throw messageError;
 
+      const mediaContent = type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio';
+      const recipientId = selectedChat.recipient?.id;
+      if (recipientId) {
+        fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipientId, content: mediaContent }),
+        }).catch(() => {});
+      }
+
       await fetchChats(currentUser.id);
       toast.success('Bom trabalho! Mídia enviada com sucesso.', { duration: 2000 });
     } catch (error) {
@@ -387,6 +397,15 @@ export default function ChatLayout() {
       });
 
       if (error) throw error;
+
+      const recipientId = selectedChat.recipient?.id;
+      if (recipientId) {
+        fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipientId, content: messageContent }),
+        }).catch(() => {});
+      }
       
       logger.info('Message sent', {
         chatId: selectedChat.id,

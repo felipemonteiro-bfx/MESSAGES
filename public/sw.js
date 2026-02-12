@@ -43,14 +43,12 @@ self.addEventListener('fetch', (event) => {
 // Sugestão 3: Receber Push Notifications disfarçadas
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  
-  // Gerar título disfarçado como manchete
   const newsSources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo'];
   const randomSource = newsSources[Math.floor(Math.random() * newsSources.length)];
-  
+
   const title = data.title || 'BREAKING: Nova informação importante';
   const options = {
-    body: `${randomSource} • Agora`,
+    body: data.body || `${randomSource} • Agora`,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'news-notification',

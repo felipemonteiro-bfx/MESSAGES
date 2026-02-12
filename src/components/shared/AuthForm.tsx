@@ -47,7 +47,7 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
     setLoading(true);
     try {
       if (type === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error } = await supabase.auth.signUp({
           email,
           password,
           options: { 
@@ -58,7 +58,18 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
           },
         });
         if (error) throw error;
-        toast.success('Conta criada! Verifique seu e-mail.');
+
+        if (signUpData.user) {
+          const cleanNickname = nickname.toLowerCase().replace(/\s+/g, '_');
+          const { error: profileError } = await supabase.from('profiles').upsert({
+            id: signUpData.user.id,
+            nickname: cleanNickname,
+            avatar_url: `https://i.pravatar.cc/150?u=${signUpData.user.id}`,
+          }, { onConflict: 'id' });
+          if (profileError) logger.error('Failed to create profile', profileError);
+        }
+
+        toast.success('Conta criada! Verifique seu e-mail para confirmar.');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;

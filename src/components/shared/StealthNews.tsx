@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, Phone, TrendingUp, Calendar, ExternalLink } from 'lucide-react';
+import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, Phone, TrendingUp, Calendar, ExternalLink, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
 
 interface NewsItem {
   id: string;
@@ -35,6 +37,17 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullStartY, setPullStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
+  const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
+
+  const handleMenuClick = () => {
+    toast.info('Menu em desenvolvimento', { duration: 2000 });
+  };
+
+  const handleEnablePush = async () => {
+    const { ok, message } = await registerAndSubscribe();
+    if (ok) toast.success(message, { duration: 4000 });
+    else toast.error(message, { duration: 5000 });
+  };
 
   useEffect(() => {
     const updateDate = () => {
@@ -449,7 +462,13 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm safe-area-top">
         <div className="flex items-center gap-4">
-          <Menu className="w-6 h-6 text-gray-600" />
+          <button
+            onClick={handleMenuClick}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Menu"
+          >
+            <Menu className="w-6 h-6 text-gray-600" />
+          </button>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-gray-900">Notícias em Tempo Real</h1>
             <p className="text-[10px] text-gray-400 font-medium">Atualizado a cada 5 minutos • Brasil e Mundo</p>
@@ -468,8 +487,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         </div>
       </header>
 
-      {/* Botão Secreto: "Fale Conosco" */}
-      <div className="px-4 py-2 border-b border-gray-100">
+      {/* Botão Secreto: "Fale Conosco" + Ativar push disfarçado */}
+      <div className="px-4 py-2 border-b border-gray-100 space-y-2">
         <button
           onClick={handleSecretButton}
           className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors text-blue-600 font-medium text-sm shadow-sm"
@@ -478,6 +497,16 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           Fale Conosco
           <span className="text-xs text-blue-400 ml-auto">Suporte 24/7</span>
         </button>
+        {isSupported && (
+          <button
+            type="button"
+            onClick={handleEnablePush}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors text-gray-600 font-medium text-sm border border-gray-200"
+          >
+            <Bell className="w-4 h-4" />
+            {isSubscribed ? 'Alertas de notícias ativados' : 'Receber alertas de notícias'}
+          </button>
+        )}
       </div>
 
       {/* Seção de Destaques */}
