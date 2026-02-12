@@ -68,4 +68,4 @@ FROM public.profiles
 LIMIT 5;
 
 -- Teste 3: Testar a função (substitua pelo email real do seu usuário)
--- Exemplo: SELECT * FROM get_user_by_email('teste@stealth.com');
+-- SELECT * FROM get_user_by_email('teste@stealth.com');
