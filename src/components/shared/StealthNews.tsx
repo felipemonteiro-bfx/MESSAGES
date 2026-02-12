@@ -383,7 +383,15 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           </div>
           <div className="space-y-2">
             {news.slice(0, 2).map((item) => (
-              <div key={item.id} className="flex items-start gap-2 p-2 bg-white rounded-lg border border-red-100">
+              <div 
+                key={item.id} 
+                className="flex items-start gap-2 p-2 bg-white rounded-lg border border-red-100 cursor-pointer hover:bg-red-50 transition-colors"
+                onClick={() => {
+                  if (item.url) {
+                    window.open(item.url, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+              >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase">
@@ -462,63 +470,87 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 <p className="text-sm mt-2">Tente novamente em alguns instantes</p>
               </div>
             ) : (
-              news.map((item, index) => (
-                <article key={item.id} className="group cursor-pointer">
-                  <div className="flex gap-4">
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap">
-                        {breakingNews.includes(item.id) && (
-                          <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded animate-pulse">
-                            BREAKING
-                          </span>
-                        )}
-                        <span>{item.category}</span>
-                        <span className="text-gray-400 font-normal">• {item.source}</span>
-                      </div>
-                      <h2 className="text-lg font-bold leading-snug group-hover:text-blue-700 transition-colors line-clamp-3">
-                        {item.title}
-                      </h2>
-                      {item.description && (
-                        <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
-                      )}
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-gray-500">{item.time}</span>
-                        <div className="flex gap-3">
-                          {item.url && (
-                            <a 
-                              href={item.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                            </a>
+              news.map((item, index) => {
+                const handleNewsClick = () => {
+                  if (item.url) {
+                    window.open(item.url, '_blank', 'noopener,noreferrer');
+                  }
+                };
+
+                return (
+                  <article 
+                    key={item.id} 
+                    className="group cursor-pointer"
+                    onClick={handleNewsClick}
+                  >
+                    <div className="flex gap-4">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap">
+                          {breakingNews.includes(item.id) && (
+                            <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded animate-pulse">
+                              BREAKING
+                            </span>
                           )}
-                          <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                            <Share2 className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                          </button>
-                          <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                            <MoreVertical className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                          </button>
+                          <span>{item.category}</span>
+                          <span className="text-gray-400 font-normal">• {item.source}</span>
+                        </div>
+                        <h2 className="text-lg font-bold leading-snug group-hover:text-blue-700 transition-colors line-clamp-3">
+                          {item.title}
+                        </h2>
+                        {item.description && (
+                          <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xs text-gray-500">{item.time}</span>
+                          <div className="flex gap-3" onClick={(e) => e.stopPropagation()}>
+                            {item.url && (
+                              <a 
+                                href={item.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                              </a>
+                            )}
+                            <button 
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (navigator.share && item.url) {
+                                  navigator.share({
+                                    title: item.title,
+                                    text: item.description || item.title,
+                                    url: item.url
+                                  }).catch(() => {});
+                                }
+                              }}
+                            >
+                              <Share2 className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                            </button>
+                            <button className="p-1 hover:bg-gray-100 rounded transition-colors">
+                              <MoreVertical className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                            </button>
+                          </div>
                         </div>
                       </div>
+                      <div className="w-24 h-24 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden relative">
+                        <img 
+                          src={item.image} 
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                          onLoad={(e) => {
+                            e.currentTarget.classList.add('loaded');
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-24 h-24 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden relative">
-                      <img 
-                        src={item.image} 
-                        alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
-                        onLoad={(e) => {
-                          e.currentTarget.classList.add('loaded');
-                        }}
-                      />
-                    </div>
-                  </div>
-                  {index < news.length - 1 && <hr className="my-4 border-gray-100" />}
-                </article>
-              ))
+                    {index < news.length - 1 && <hr className="my-4 border-gray-100" />}
+                  </article>
+                );
+              })
             )}
           </>
         )}
