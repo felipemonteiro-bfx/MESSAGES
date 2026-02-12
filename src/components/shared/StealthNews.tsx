@@ -138,23 +138,20 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       if (apiKey) {
         try {
           // Buscar notícias de múltiplas fontes mundiais
-          const newsPromises = [];
+          const newsPromises: Promise<Response>[] = [];
           
           // Notícias do país selecionado
           newsPromises.push(
-            fetch(`https://newsapi.org/v2/top-headlines?country=${country}&pageSize=10&apiKey=${apiKey}`, 
-              { next: { revalidate: 300 } })
+            fetch(`https://newsapi.org/v2/top-headlines?country=${country}&pageSize=10&apiKey=${apiKey}`)
           );
           
-          // Notícias internacionais (sempre incluir)
+          // Notícias internacionais (sempre incluir em Top Stories e Mundo)
           if (selectedCategory === 'Mundo' || selectedCategory === 'Top Stories') {
             newsPromises.push(
-              fetch(`https://newsapi.org/v2/top-headlines?category=general&language=en&pageSize=10&apiKey=${apiKey}`, 
-                { next: { revalidate: 300 } })
+              fetch(`https://newsapi.org/v2/top-headlines?category=general&language=en&pageSize=10&apiKey=${apiKey}`)
             );
             newsPromises.push(
-              fetch(`https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=5&apiKey=${apiKey}`, 
-                { next: { revalidate: 300 } })
+              fetch(`https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=5&apiKey=${apiKey}`)
             );
           }
           
@@ -172,40 +169,31 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
             
             const apiCategory = categoryMap[selectedCategory] || 'general';
             newsPromises.push(
-              fetch(`https://newsapi.org/v2/top-headlines?category=${apiCategory}&language=pt&pageSize=15&apiKey=${apiKey}`, 
-                { next: { revalidate: 300 } })
+              fetch(`https://newsapi.org/v2/top-headlines?category=${apiCategory}&language=pt&pageSize=15&apiKey=${apiKey}`)
             );
           }
           
+          // Aguardar todas as respostas
           const responses = await Promise.allSettled(newsPromises);
           const allArticles: any[] = [];
           
-          responses.forEach((result) => {
+          // Processar respostas bem-sucedidas
+          for (const result of responses) {
             if (result.status === 'fulfilled') {
-              result.value.json().then((data: any) => {
-                if (data.articles) {
+              try {
+                const data = await result.value.json();
+                if (data.articles && Array.isArray(data.articles)) {
                   allArticles.push(...data.articles);
                 }
-              }).catch(() => {});
+              } catch (e) {
+                // Ignorar erros de parsing
+              }
             }
-          });
-          
-          // Aguardar todas as respostas
-          const allData = await Promise.all(
-            responses
-              .filter((r): r is PromiseFulfilledResult<Response> => r.status === 'fulfilled')
-              .map(r => r.value.json())
-          );
-          
-          allData.forEach((data: any) => {
-            if (data.articles) {
-              allArticles.push(...data.articles);
-            }
-          });
+          }
           
           // Remover duplicatas e limitar
           const uniqueArticles = Array.from(
-            new Map(allArticles.map((article: any) => [article.url, article])).values()
+            new Map(allArticles.map((article: any) => [article.url || article.title, article])).values()
           ).slice(0, 30);
           
           if (uniqueArticles.length > 0) {
