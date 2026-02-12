@@ -195,7 +195,7 @@ export default function ChatLayout() {
       if (messageError) throw messageError;
 
       await fetchChats(currentUser.id);
-      toast.success('Mídia enviada!');
+      toast.success('Bom trabalho! Mídia enviada com sucesso.', { duration: 2000 });
     } catch (error) {
       const appError = normalizeError(error);
       logError(appError);
@@ -288,6 +288,8 @@ export default function ChatLayout() {
         messageLength: messageContent.length,
       });
       
+      toast.success('Mensagem enviada!', { duration: 1500 });
+      
       // Atualizar lista de chats
       await fetchChats(currentUser.id);
     } catch (error) {
@@ -343,7 +345,7 @@ export default function ChatLayout() {
         
         if (participantsError) throw participantsError;
         
-        toast.success('Chat criado!');
+        toast.success('Bom trabalho! Chat criado com sucesso.', { duration: 2000 });
         await fetchChats(currentUser.id);
         setSelectedChat({
           ...newChat,

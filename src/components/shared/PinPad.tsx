@@ -133,10 +133,10 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
         
         <div className="text-center">
             <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">
-              {isFirstTime ? 'Configure seu PIN' : 'Enter Passcode'}
+              {isFirstTime ? 'Configure seu PIN de Segurança' : 'Digite seu Código de Acesso'}
             </p>
             {isFirstTime && (
-              <p className="text-xs text-gray-400 mt-2">Escolha um PIN de 4 dígitos para segurança</p>
+              <p className="text-xs text-gray-400 mt-2">Escolha um PIN de 4 dígitos para proteger suas mensagens</p>
             )}
         </div>
       </motion.div>

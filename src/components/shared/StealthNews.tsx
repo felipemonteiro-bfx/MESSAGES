@@ -281,14 +281,17 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-4">
           <Menu className="w-6 h-6 text-gray-600" />
-          <h1 className="text-xl font-bold tracking-tight text-gray-900">Notícias em Tempo Real</h1>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">Notícias em Tempo Real</h1>
+            <p className="text-[10px] text-gray-400 font-medium">Atualizado a cada 5 minutos • Brasil e Mundo</p>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <Search className="w-5 h-5 text-gray-600" />
           <div 
             className="flex items-center gap-1 text-sm text-gray-500 font-medium cursor-pointer select-none hover:text-gray-700 transition-colors"
             onClick={handleSecretButton}
-            title="Data e Hora"
+            title="Data e Hora - Clique duas vezes para acessar"
           >
             <Clock className="w-4 h-4" />
             <span className="capitalize">{currentDate}</span>
@@ -300,10 +303,11 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       <div className="px-4 py-2 border-b border-gray-100">
         <button
           onClick={handleSecretButton}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors text-blue-600 font-medium text-sm"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors text-blue-600 font-medium text-sm shadow-sm"
         >
           <MessageCircle className="w-4 h-4" />
           Fale Conosco
+          <span className="text-xs text-blue-400 ml-auto">Suporte 24/7</span>
         </button>
       </div>
 
@@ -334,7 +338,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           <>
             {news.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                <p>Nenhuma notícia encontrada</p>
+                <p>Nenhuma notícia encontrada no momento</p>
+                <p className="text-sm mt-2">Tente novamente em alguns instantes</p>
               </div>
             ) : (
               news.map((item, index) => (
@@ -378,24 +383,24 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       {/* Bottom Nav (Disguise) */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-center text-xs font-medium text-gray-500">
-        <div className="flex flex-col items-center gap-1 text-blue-600">
-          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-            <div className="w-3 h-3 bg-blue-600 rounded-full" />
+              <div className="flex flex-col items-center gap-1 text-blue-600">
+            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+              <div className="w-3 h-3 bg-blue-600 rounded-full" />
+            </div>
+            <span>Início</span>
           </div>
-          <span>Home</span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <div className="w-6 h-6 bg-gray-100 rounded-full" />
-          <span>Buscar</span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <div className="w-6 h-6 bg-gray-100 rounded-full" />
-          <span>Salvos</span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <div className="w-6 h-6 bg-gray-100 rounded-full" />
-          <span>Perfil</span>
-        </div>
+          <div className="flex flex-col items-center gap-1">
+            <div className="w-6 h-6 bg-gray-100 rounded-full" />
+            <span>Buscar</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <div className="w-6 h-6 bg-gray-100 rounded-full" />
+            <span>Salvos</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <div className="w-6 h-6 bg-gray-100 rounded-full" />
+            <span>Perfil</span>
+          </div>
       </div>
     </div>
   );

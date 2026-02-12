@@ -5,6 +5,7 @@ const BASE_URL = 'http://127.0.0.1:3001';
 test.describe('Autenticação', () => {
   
   test.beforeEach(async ({ context, page }) => {
+    // Adiciona cookie de bypass para rate limiting e autenticação
     await context.addCookies([{
       name: 'test-bypass',
       value: 'true',

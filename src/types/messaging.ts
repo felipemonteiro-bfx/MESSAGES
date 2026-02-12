@@ -18,6 +18,7 @@ export interface Message {
   content: string;
   created_at: string;
   media_url?: string | null;
+  media_type?: 'image' | 'video' | 'audio' | null;
   read_at?: string | null;
 }
 

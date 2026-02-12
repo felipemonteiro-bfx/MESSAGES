@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import StealthNews from './StealthNews';
 import PinPad from './PinPad';
 import ChatLayout from '../messaging/ChatLayout';
+import WelcomeScreen from './WelcomeScreen';
 import { toast } from 'sonner';
 
 const StealthMessagingContext = createContext({
@@ -23,6 +24,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const [isStealthMode, setIsStealthMode] = useState(true);
   const [showPinPad, setShowPinPad] = useState(false);
   const [showMessaging, setShowMessaging] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [notifications, setNotifications] = useState<string[]>([]);
   const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -52,12 +54,13 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     };
 
     const handleBlur = () => {
-      // Se sair do foco por mais de 30 segundos, bloquear
+      // Se sair do foco por mais de 10 segundos, bloquear
       visibilityTimeoutRef.current = setTimeout(() => {
         if (!document.hasFocus() && !isStealthMode) {
           lockMessaging();
+          toast.success('Sistema bloqueado automaticamente', { duration: 2000 });
         }
-      }, 30000);
+      }, 10000); // 10 segundos
     };
 
     const handleFocus = () => {
@@ -88,6 +91,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setShowMessaging(true);
     localStorage.setItem('stealth_messaging_mode', 'false');
     document.title = 'Mensagens';
+    toast.success('Bom trabalho! Acesso concedido.', { duration: 2000 });
   };
 
   const lockMessaging = () => {
@@ -96,7 +100,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setShowPinPad(false);
     localStorage.setItem('stealth_messaging_mode', 'true');
     document.title = 'Notícias em Tempo Real';
-    toast.success('Modo notícias ativado', { duration: 1000 });
+    toast.success('Bom trabalho! Modo notícias ativado automaticamente.', { duration: 2000 });
   };
 
   const handleUnlockRequest = () => {
@@ -126,7 +130,9 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   return (
     <StealthMessagingContext.Provider value={{ isStealthMode, unlockMessaging, lockMessaging }}>
       <AnimatePresence mode="wait">
-        {isStealthMode ? (
+        {showWelcome ? (
+          <WelcomeScreen onComplete={() => setShowWelcome(false)} />
+        ) : isStealthMode ? (
           <motion.div 
             key="stealth"
             initial={{ opacity: 0 }}
@@ -163,13 +169,13 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
                       <span className="text-xl">📰</span>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900 mb-1">Nova Notícia</p>
+                      <p className="text-sm font-semibold text-gray-900 mb-1">Nova Notícia Recebida</p>
                       <p className="text-xs text-gray-600">{notification}</p>
                       <button
                         onClick={() => handleUnlockRequest()}
                         className="text-xs text-blue-600 mt-2 font-medium hover:underline"
                       >
-                        Ver mais →
+                        Ver mais detalhes →
                       </button>
                     </div>
                   </div>
