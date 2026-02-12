@@ -14,8 +14,8 @@ function hashPin(pin: string): string {
   return hash.toString(36);
 }
 
-const PIN_STORAGE_KEY = 'warranty_tracker_pin_hash';
-const PIN_SETUP_KEY = 'warranty_tracker_pin_setup';
+const PIN_STORAGE_KEY = 'stealth_messaging_pin_hash';
+const PIN_SETUP_KEY = 'stealth_messaging_pin_setup';
 
 /**
  * Verifica se o PIN já foi configurado

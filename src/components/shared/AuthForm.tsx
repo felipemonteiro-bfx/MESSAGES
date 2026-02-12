@@ -13,7 +13,15 @@ import { motion } from 'framer-motion';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
 import { logger } from '@/lib/logger';
 
-export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
+interface AuthFormProps {
+  type: 'login' | 'signup';
+  /** Usado em modal: ao ter sucesso, chama callback em vez de redirecionar */
+  onSuccess?: () => void;
+  /** Em modal: alternar entre signup e login sem navegar */
+  onSwitchMode?: () => void;
+}
+
+export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -67,15 +75,25 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
           if (profileError) logger.error('Failed to create profile', profileError);
         }
 
-        toast.success('Conta criada! Verifique seu e-mail para confirmar.');
-        router.push('/login?registered=1');
-        router.refresh();
+        toast.success('Conta criada! Configure seu PIN de acesso.');
+        if (onSuccess) {
+          onSuccess();
+          router.refresh();
+        } else {
+          router.push('/login?registered=1');
+          router.refresh();
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         logger.info('User logged in successfully', { email });
-        router.push('/');
-        router.refresh();
+        if (onSuccess) {
+          onSuccess();
+          router.refresh();
+        } else {
+          router.push('/');
+          router.refresh();
+        }
       }
     } catch (err) {
       const appError = normalizeError(err);
@@ -91,9 +109,13 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
       <div className="h-2 w-full bg-emerald-600" />
       <CardHeader className="pt-10 pb-6 text-center space-y-2">
         <CardTitle className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white uppercase">
-          {type === 'login' ? 'Bem-vindo de Volta' : 'Criar Conta Elite'}
+          {type === 'login' ? 'Bem-vindo de Volta' : 'Criar Conta'}
         </CardTitle>
-        <p className="text-sm text-slate-500 font-medium">Proteja suas comunicações com inteligência.</p>
+        <p className="text-sm text-slate-500 font-medium">
+          {type === 'signup'
+            ? 'E-mail e nickname servem para outros usuários te encontrarem para conversar.'
+            : 'Proteja suas comunicações com inteligência.'}
+        </p>
       </CardHeader>
       <CardContent className="px-10 pb-12 space-y-8">
         
@@ -151,9 +173,15 @@ export const AuthForm = ({ type }: { type: 'login' | 'signup' }) => {
         <footer className="text-center pt-4">
           <p className="text-xs text-slate-500 font-medium">
             {type === 'login' ? 'Ainda não tem conta?' : 'Já possui cadastro?'}
-            <Link href={type === 'login' ? '/signup' : '/login'} className="ml-2 text-emerald-600 font-black uppercase hover:underline">
-              {type === 'login' ? 'Criar agora' : 'Fazer Login'}
-            </Link>
+            {onSwitchMode ? (
+              <button type="button" onClick={onSwitchMode} className="ml-2 text-emerald-600 font-black uppercase hover:underline">
+                {type === 'login' ? 'Criar agora' : 'Fazer Login'}
+              </button>
+            ) : (
+              <Link href={type === 'login' ? '/signup' : '/login'} className="ml-2 text-emerald-600 font-black uppercase hover:underline">
+                {type === 'login' ? 'Criar agora' : 'Fazer Login'}
+              </Link>
+            )}
           </p>
         </footer>
       </CardContent>

@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import StealthNews from './StealthNews';
 import PinPad from './PinPad';
 import ChatLayout from '../messaging/ChatLayout';
+import { AuthForm } from './AuthForm';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
 
@@ -21,8 +23,11 @@ interface StealthMessagingProviderProps {
 }
 
 export default function StealthMessagingProvider({ children }: StealthMessagingProviderProps) {
+  const { user } = useAuth();
   const [isStealthMode, setIsStealthMode] = useState(true);
   const [showPinPad, setShowPinPad] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'signup' | 'login'>('signup');
   const [showMessaging, setShowMessaging] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
   const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -33,15 +38,10 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Verificar estado salvo
-    const saved = localStorage.getItem('stealth_messaging_mode');
-    if (saved === 'false') {
-      setIsStealthMode(false);
-      setShowMessaging(true);
-    } else {
-      setIsStealthMode(true);
-      document.title = 'Notícias em Tempo Real';
-    }
+    // Sempre começar com portal de notícias (news first)
+    setIsStealthMode(true);
+    setShowMessaging(false);
+    document.title = 'Notícias em Tempo Real';
 
     // Sugestão 7: Atalho de teclado para bloquear (Ctrl+Shift+L ou Escape 2x)
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -162,6 +162,18 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   };
 
   const handleUnlockRequest = () => {
+    if (!user) {
+      // Primeira vez / não logado: mostrar registro (signup ou login)
+      setShowAuthModal(true);
+      setAuthModalMode('signup');
+    } else {
+      // Já logado: só pedir PIN
+      setShowPinPad(true);
+    }
+  };
+
+  const handleAuthSuccess = () => {
+    setShowAuthModal(false);
     setShowPinPad(true);
   };
 
@@ -210,6 +222,38 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
               onUnlockRequest={handleUnlockRequest}
               onMessageNotification={handleMessageNotification}
             />
+            {/* Modal de registro/login (primeira vez, não logado) */}
+            <AnimatePresence>
+              {showAuthModal && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                >
+                  <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    className="relative w-full max-w-md"
+                  >
+                    <button
+                      onClick={() => setShowAuthModal(false)}
+                      className="absolute -top-2 -right-2 z-10 p-2 rounded-full bg-white/90 shadow-lg text-gray-500 hover:text-gray-700"
+                      aria-label="Fechar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                    <AuthForm
+                      type={authModalMode}
+                      onSuccess={handleAuthSuccess}
+                      onSwitchMode={() => setAuthModalMode((m) => (m === 'signup' ? 'login' : 'signup'))}
+                    />
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence>
               {showPinPad && (
                 <PinPad 
