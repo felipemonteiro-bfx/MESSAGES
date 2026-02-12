@@ -11,8 +11,10 @@ import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-ha
 import { checkRateLimit, getRateLimitIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import EditNicknameModal from '@/components/shared/EditNicknameModal';
+import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
 
 export default function ChatLayout() {
+  const { lockMessaging } = useStealthMessaging();
   const [chats, setChats] = useState<ChatWithRecipient[]>([]);
   const [selectedChat, setSelectedChat] = useState<ChatWithRecipient | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -728,19 +730,37 @@ export default function ChatLayout() {
                   </p>
                 </div>
               </div>
-              {selectedChat.recipient && (
+              <div className="flex items-center gap-2">
+                {/* Botão de Pânico - Voltar para Notícias (iPhone Optimized) */}
                 <button
                   onClick={() => {
-                    setEditingUserId(selectedChat.recipient!.id);
-                    setEditingNickname(selectedChat.recipient!.nickname);
-                    setShowEditNicknameModal(true);
+                    // Sugestão iPhone: Haptic Feedback forte no botão de pânico
+                    if (navigator.vibrate) {
+                      navigator.vibrate([50, 30, 50]); // Vibração padrão-alerta-padrão
+                    }
+                    lockMessaging();
+                    toast.success('Bom trabalho! Modo notícias ativado.', { duration: 2000 });
                   }}
-                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                  title="Editar nickname"
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-xl text-sm font-bold transition-all touch-manipulation min-w-[70px] min-h-[44px] flex items-center justify-center gap-1.5 shadow-lg active:scale-95"
+                  title="Botão de Pânico - Voltar para Notícias"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <span className="text-lg">📰</span>
+                  <span className="hidden sm:inline font-semibold">Notícias</span>
                 </button>
-              )}
+                {selectedChat.recipient && (
+                  <button
+                    onClick={() => {
+                      setEditingUserId(selectedChat.recipient!.id);
+                      setEditingNickname(selectedChat.recipient!.nickname);
+                      setShowEditNicknameModal(true);
+                    }}
+                    className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+                    title="Editar nickname"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </header>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621]" data-stealth-content="true">
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
@@ -901,7 +921,7 @@ export default function ChatLayout() {
                   onChange={(e) => handleFileSelect(e, 'audio')}
                 />
 
-                <div className="flex items-end gap-2">
+                <div className="flex items-end gap-2 safe-area-bottom">
                   <button
                     onClick={() => setShowMediaMenu(!showMediaMenu)}
                     className="w-11 h-11 bg-[#242f3d] rounded-full flex items-center justify-center text-[#4c94d5] hover:bg-[#2b5278] transition-colors"
@@ -930,7 +950,13 @@ export default function ChatLayout() {
                     />
                   </div>
                   <button 
-                    onClick={handleSendMessage} 
+                    onClick={() => {
+                      // Sugestão iPhone: Haptic Feedback
+                      if (navigator.vibrate) {
+                        navigator.vibrate(10); // Vibração suave de 10ms
+                      }
+                      handleSendMessage();
+                    }}
                     disabled={!inputText.trim() || isSending}
                     className={`w-11 h-11 min-w-[44px] min-h-[44px] bg-blue-600 dark:bg-[#2b5278] rounded-full flex items-center justify-center text-white transition-opacity touch-manipulation ${
                       !inputText.trim() || isSending ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700 dark:hover:bg-[#346290] active:scale-95'

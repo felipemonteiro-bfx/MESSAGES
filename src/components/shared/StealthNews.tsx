@@ -32,6 +32,9 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const categories = ['Top Stories', 'Brasil', 'Mundo', 'Tecnologia', 'Esportes', 'Saúde', 'Economia', 'Entretenimento', 'Política', 'Ciência'];
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullStartY, setPullStartY] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
 
   useEffect(() => {
     const updateDate = () => {
@@ -134,15 +137,80 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       if (apiKey) {
         try {
-          const response = await fetch(
-            `https://newsapi.org/v2/top-headlines?country=${country}&pageSize=20&apiKey=${apiKey}`,
-            { next: { revalidate: 300 } } // Cache por 5 minutos
-          );
-          const data = await response.json();
+          // Buscar notícias de múltiplas fontes mundiais
+          const newsPromises = [];
           
-          if (data.articles) {
-            fetchedNews = data.articles.slice(0, 20).map((article: any, index: number) => ({
-              id: `news-${index}`,
+          // Notícias do país selecionado
+          newsPromises.push(
+            fetch(`https://newsapi.org/v2/top-headlines?country=${country}&pageSize=10&apiKey=${apiKey}`, 
+              { next: { revalidate: 300 } })
+          );
+          
+          // Notícias internacionais (sempre incluir)
+          if (selectedCategory === 'Mundo' || selectedCategory === 'Top Stories') {
+            newsPromises.push(
+              fetch(`https://newsapi.org/v2/top-headlines?category=general&language=en&pageSize=10&apiKey=${apiKey}`, 
+                { next: { revalidate: 300 } })
+            );
+            newsPromises.push(
+              fetch(`https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=5&apiKey=${apiKey}`, 
+                { next: { revalidate: 300 } })
+            );
+          }
+          
+          // Notícias por categoria específica
+          if (selectedCategory !== 'Top Stories' && selectedCategory !== 'Brasil' && selectedCategory !== 'Mundo') {
+            const categoryMap: { [key: string]: string } = {
+              'Tecnologia': 'technology',
+              'Esportes': 'sports',
+              'Saúde': 'health',
+              'Economia': 'business',
+              'Entretenimento': 'entertainment',
+              'Política': 'general',
+              'Ciência': 'science'
+            };
+            
+            const apiCategory = categoryMap[selectedCategory] || 'general';
+            newsPromises.push(
+              fetch(`https://newsapi.org/v2/top-headlines?category=${apiCategory}&language=pt&pageSize=15&apiKey=${apiKey}`, 
+                { next: { revalidate: 300 } })
+            );
+          }
+          
+          const responses = await Promise.allSettled(newsPromises);
+          const allArticles: any[] = [];
+          
+          responses.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              result.value.json().then((data: any) => {
+                if (data.articles) {
+                  allArticles.push(...data.articles);
+                }
+              }).catch(() => {});
+            }
+          });
+          
+          // Aguardar todas as respostas
+          const allData = await Promise.all(
+            responses
+              .filter((r): r is PromiseFulfilledResult<Response> => r.status === 'fulfilled')
+              .map(r => r.value.json())
+          );
+          
+          allData.forEach((data: any) => {
+            if (data.articles) {
+              allArticles.push(...data.articles);
+            }
+          });
+          
+          // Remover duplicatas e limitar
+          const uniqueArticles = Array.from(
+            new Map(allArticles.map((article: any) => [article.url, article])).values()
+          ).slice(0, 30);
+          
+          if (uniqueArticles.length > 0) {
+            fetchedNews = uniqueArticles.map((article: any, index: number) => ({
+              id: `news-${index}-${Date.now()}`,
               title: article.title || 'Sem título',
               source: article.source?.name || 'Fonte desconhecida',
               time: getTimeAgo(new Date(article.publishedAt)),
@@ -338,10 +406,60 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     setLastClickTime(now);
   };
 
+  // Sugestão iPhone: Pull-to-Refresh
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (window.scrollY === 0) {
+      setPullStartY(e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (pullStartY > 0 && window.scrollY === 0) {
+      const currentY = e.touches[0].clientY;
+      const distance = currentY - pullStartY;
+      if (distance > 0) {
+        setPullDistance(Math.min(distance, 100));
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 50) {
+      setIsRefreshing(true);
+      fetchNews().finally(() => {
+        setIsRefreshing(false);
+        setPullDistance(0);
+        setPullStartY(0);
+      });
+    } else {
+      setPullDistance(0);
+      setPullStartY(0);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-white text-gray-900 font-sans pb-20">
+    <div 
+      className="min-h-screen bg-white text-gray-900 font-sans pb-20 safe-area-top"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Sugestão iPhone: Indicador de Pull-to-Refresh */}
+      {pullDistance > 0 && (
+        <div 
+          className="fixed top-0 left-0 right-0 flex items-center justify-center bg-blue-50 text-blue-600 py-2 z-20 transition-transform"
+          style={{ transform: `translateY(${Math.min(pullDistance, 60)}px)` }}
+        >
+          {pullDistance > 50 ? (
+            <span className="text-sm font-semibold">Solte para atualizar</span>
+          ) : (
+            <span className="text-sm">Puxe para atualizar</span>
+          )}
+        </div>
+      )}
+      
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm safe-area-top">
         <div className="flex items-center gap-4">
           <Menu className="w-6 h-6 text-gray-600" />
           <div>
@@ -556,8 +674,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         )}
       </main>
 
-      {/* Bottom Nav (Disguise) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-center text-xs font-medium text-gray-500">
+      {/* Bottom Nav (Disguise) - iPhone Safe Area */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-center text-xs font-medium text-gray-500 safe-area-inset-bottom">
               <div className="flex flex-col items-center gap-1 text-blue-600">
             <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
               <div className="w-3 h-3 bg-blue-600 rounded-full" />

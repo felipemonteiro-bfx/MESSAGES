@@ -74,9 +74,33 @@
   filter: blur(0); /* Opcional: revela ao passar o mouse se quiser, mas para pânico é melhor manter borrado */
 }
 
-/* Mobile optimizations */
+/* Mobile optimizations - iPhone Safe Area */
 @supports (padding: max(0px)) {
   .safe-area-inset-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  
+  .safe-area-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  
+  /* Safe area para iPhone com notch/Dynamic Island */
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  /* Header fixo com safe area */
+  header.fixed-top,
+  header.sticky {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  
+  /* Input fixo na parte inferior */
+  .fixed-bottom-input,
+  footer.sticky {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }
