@@ -72,9 +72,7 @@ CREATE POLICY "Users can view other participants in their chats"
       SELECT 1 FROM public.chat_participants cp
       WHERE cp.chat_id = chat_participants.chat_id
       AND cp.user_id = auth.uid()
-    )-- SETUP COMPLETO - Execute este SQL primeiro!
--- Este arquivo cria todas as tabelas necessárias antes de criar as funções
-
+    )
   );
 
 DROP POLICY IF EXISTS "Users can insert participants" ON public.chat_participants;
