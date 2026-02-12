@@ -1,7 +1,7 @@
 {
-  "name": "Notícias em Tempo Real",
-  "short_name": "Notícias",
-  "description": "Sua fonte diária de notícias e atualizações",
+  "name": "Notícias BR - Tempo Real",
+  "short_name": "Notícias BR",
+  "description": "Sua fonte diária de notícias e atualizações do Brasil e do mundo",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -9,13 +9,27 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/next.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ],
-  "categories": ["news", "utilities"],
+  "categories": ["news"],
   "screenshots": [],
-  "shortcuts": []
+  "shortcuts": [
+    {
+      "name": "Últimas Notícias",
+      "short_name": "Notícias",
+      "description": "Ver as últimas notícias",
+      "url": "/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }

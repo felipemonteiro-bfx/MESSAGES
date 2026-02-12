@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2 } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -32,6 +32,12 @@ export default function ChatLayout() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingNickname, setEditingNickname] = useState<string>('');
   const [currentUserProfile, setCurrentUserProfile] = useState<{ nickname: string; avatar_url?: string | null } | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [otherUserTyping, setOtherUserTyping] = useState<string | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [showEphemeralOption, setShowEphemeralOption] = useState(false);
+  const [ephemeralSeconds, setEphemeralSeconds] = useState(30);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -145,9 +151,10 @@ export default function ChatLayout() {
   }, [supabase]);
 
   useEffect(() => {
-    if (selectedChat) {
+    if (selectedChat && currentUser) {
       fetchMessages(selectedChat.id);
       
+      // Sugestão 8: Indicador digitando e status online
       const channel = supabase
         .channel(`chat:${selectedChat.id}`)
         .on('postgres_changes', { 
@@ -156,15 +163,57 @@ export default function ChatLayout() {
           table: 'messages',
           filter: `chat_id=eq.${selectedChat.id}` 
         }, payload => {
-          setMessages(prev => [...prev, payload.new as Message]);
+          const newMessage = payload.new as Message;
+          setMessages(prev => [...prev, newMessage]);
+          
+          // Sugestão 4: Remover mensagens efêmeras expiradas
+          if (newMessage.expires_at) {
+            const expiresAt = new Date(newMessage.expires_at);
+            const now = new Date();
+            if (expiresAt <= now) {
+              // Mensagem já expirada, não adicionar
+              return;
+            }
+            // Agendar remoção quando expirar
+            const timeout = expiresAt.getTime() - now.getTime();
+            setTimeout(() => {
+              setMessages(prev => prev.filter(m => m.id !== newMessage.id));
+            }, timeout);
+          }
+        })
+        // Sugestão 8: Escutar eventos de digitação
+        .on('broadcast', { event: 'typing' }, (payload) => {
+          if (payload.payload.userId !== currentUser.id) {
+            setOtherUserTyping(payload.payload.userId);
+            setTimeout(() => setOtherUserTyping(null), 3000);
+          }
+        })
+        // Sugestão 8: Escutar status online
+        .on('presence', { event: 'sync' }, () => {
+          const presenceState = channel.presenceState();
+          const online = new Set<string>();
+          Object.values(presenceState).forEach((presences: any[]) => {
+            presences.forEach((presence: any) => {
+              if (presence.userId) online.add(presence.userId);
+            });
+          });
+          setOnlineUsers(online);
         })
         .subscribe();
 
+      // Sugestão 8: Enviar presença online
+      channel.track({
+        userId: currentUser.id,
+        online: true,
+        lastSeen: new Date().toISOString()
+      });
+
       return () => {
+        channel.untrack();
         supabase.removeChannel(channel);
       };
     }
-  }, [selectedChat, fetchMessages, supabase]);
+  }, [selectedChat, fetchMessages, supabase, currentUser]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -263,8 +312,41 @@ export default function ChatLayout() {
     }
   }, [mediaRecorder, isRecording]);
 
+  // Sugestão 8: Detectar quando usuário está digitando
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputText(e.target.value);
+    
+    if (!selectedChat || !currentUser) return;
+    
+    // Enviar evento de digitação
+    if (!isTyping) {
+      setIsTyping(true);
+      const channel = supabase.channel(`chat:${selectedChat.id}`);
+      channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { userId: currentUser.id }
+      });
+    }
+    
+    // Reset timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 1000);
+  }, [selectedChat, currentUser, supabase, isTyping]);
+
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || !selectedChat || !currentUser || isSending) return;
+    
+    // Parar indicador de digitação
+    setIsTyping(false);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
     
     // Rate limiting no cliente (verificação adicional no servidor)
     if (typeof window !== 'undefined') {
@@ -288,11 +370,18 @@ export default function ChatLayout() {
     const messageContent = validation.data!;
     setInputText(''); // Limpar input imediatamente para melhor UX
     
+    // Sugestão 4: Calcular expires_at se for mensagem efêmera
+    const expiresAt = showEphemeralOption && ephemeralSeconds > 0
+      ? new Date(Date.now() + ephemeralSeconds * 1000).toISOString()
+      : null;
+    
     try {
       const { error } = await supabase.from('messages').insert({
         chat_id: selectedChat.id,
         sender_id: currentUser.id,
-        content: messageContent
+        content: messageContent,
+        expires_at: expiresAt,
+        is_ephemeral: showEphemeralOption && ephemeralSeconds > 0
       });
 
       if (error) throw error;
@@ -598,7 +687,14 @@ export default function ChatLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col relative bg-gray-50 dark:bg-[#0e1621] min-w-0">
+      <main 
+        className="flex-1 flex flex-col relative bg-gray-50 dark:bg-[#0e1621] min-w-0"
+        data-stealth-content="true"
+        onContextMenu={(e) => {
+          // Sugestão 6: Dificultar screenshot - aviso silencioso
+          e.preventDefault();
+        }}
+      >
         {selectedChat ? (
           <>
             <header className="p-3 border-b border-gray-200 dark:border-[#17212b] flex items-center justify-between bg-white dark:bg-[#17212b] z-10">
@@ -617,7 +713,19 @@ export default function ChatLayout() {
                   <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-white">
                     Discussão • {selectedChat.recipient?.nickname || selectedChat.name || 'Tópico'}
                   </h2>
-                  <p className="text-[11px] text-gray-500 dark:text-[#4c94d5]">Leitores ativos</p>
+                  <p className="text-[11px] text-gray-500 dark:text-[#4c94d5] flex items-center gap-1">
+                    {selectedChat.recipient && onlineUsers.has(selectedChat.recipient.id) ? (
+                      <>
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        Online
+                      </>
+                    ) : (
+                      'Leitores ativos'
+                    )}
+                    {otherUserTyping === selectedChat.recipient?.id && (
+                      <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">digitando...</span>
+                    )}
+                  </p>
                 </div>
               </div>
               {selectedChat.recipient && (
@@ -634,7 +742,7 @@ export default function ChatLayout() {
                 </button>
               )}
             </header>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621]">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621]" data-stealth-content="true">
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-12">
@@ -643,8 +751,21 @@ export default function ChatLayout() {
                     <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Seja o primeiro a comentar!</p>
                   </div>
                 ) : (
-                  messages.map((msg) => (
-                    <div key={msg.id} className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}>
+                  messages
+                    .filter(msg => {
+                      // Sugestão 4: Filtrar mensagens efêmeras expiradas
+                      if (msg.expires_at) {
+                        const expiresAt = new Date(msg.expires_at);
+                        return expiresAt > new Date();
+                      }
+                      return true;
+                    })
+                    .map((msg) => (
+                    <div 
+                      key={msg.id} 
+                      className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
+                      data-stealth-content="true"
+                    >
                       <img 
                         src={msg.sender_id === currentUser?.id 
                           ? (currentUserProfile?.avatar_url || 'https://i.pravatar.cc/150')
@@ -792,7 +913,7 @@ export default function ChatLayout() {
                       rows={1} 
                       value={inputText} 
                       onChange={(e) => {
-                        setInputText(e.target.value);
+                        handleInputChange(e);
                         // Auto-resize textarea
                         e.target.style.height = 'auto';
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;

@@ -28,6 +28,10 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
+  // Sugestão 7: Atalho de teclado para bloquear
+  const [escapePressCount, setEscapePressCount] = useState(0);
+  const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     // Verificar estado salvo
     const saved = localStorage.getItem('stealth_messaging_mode');
@@ -39,11 +43,59 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
       document.title = 'Notícias em Tempo Real';
     }
 
-    // Auto-lock quando a página perde foco ou usuário sai
+    // Sugestão 7: Atalho de teclado para bloquear (Ctrl+Shift+L ou Escape 2x)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Shift+L para bloquear
+      if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+        e.preventDefault();
+        if (!isStealthMode) {
+          lockMessaging();
+          toast.success('Bom trabalho! Modo notícias ativado.', { duration: 2000 });
+        }
+        return;
+      }
+
+      // Escape duas vezes para bloquear
+      if (e.key === 'Escape') {
+        if (escapeTimeoutRef.current) {
+          clearTimeout(escapeTimeoutRef.current);
+        }
+        
+        setEscapePressCount(prev => {
+          const newCount = prev + 1;
+          if (newCount === 2 && !isStealthMode) {
+            lockMessaging();
+            toast.success('Bom trabalho! Modo notícias ativado.', { duration: 2000 });
+            return 0;
+          }
+          
+          // Reset contador após 1 segundo
+          escapeTimeoutRef.current = setTimeout(() => {
+            setEscapePressCount(0);
+          }, 1000);
+          
+          return newCount;
+        });
+      }
+    };
+
+    // Sugestão 6: Proteção contra screenshot/gravação
     const handleVisibilityChange = () => {
       if (document.hidden && !isStealthMode) {
         // Usuário saiu da página - voltar para modo stealth
         lockMessaging();
+      }
+    };
+
+    // Detectar tentativas de captura de tela (limitado pelo navegador)
+    const handleContextMenu = (e: MouseEvent) => {
+      // Em alguns casos, desabilitar menu de contexto pode ajudar
+      if (!isStealthMode && e.target instanceof HTMLElement) {
+        const isSensitiveArea = e.target.closest('[data-stealth-content]');
+        if (isSensitiveArea) {
+          // Aviso silencioso (não bloquear completamente pois não é possível)
+          console.warn('Conteúdo sensível detectado');
+        }
       }
     };
 
@@ -68,18 +120,25 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
       }
     };
 
+    window.addEventListener('keydown', handleKeyDown);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      window.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
       if (visibilityTimeoutRef.current) {
         clearTimeout(visibilityTimeoutRef.current);
+      }
+      if (escapeTimeoutRef.current) {
+        clearTimeout(escapeTimeoutRef.current);
       }
     };
   }, [isStealthMode]);
