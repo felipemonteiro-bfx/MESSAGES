@@ -43,16 +43,16 @@ export async function updateSession(request: NextRequest) {
   // Bypass de autenticação para testes (Playwright)
   const isTestBypass = request.cookies.get('test-bypass')?.value === 'true';
 
-  if (
-    !user &&
-    !isTestBypass &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/signup') &&
-    !request.nextUrl.pathname.startsWith('/auth') &&
-    !request.nextUrl.pathname.startsWith('/share') &&
-    !request.nextUrl.pathname.startsWith('/travel-check') &&
-    request.nextUrl.pathname !== '/'
-  ) {
+  // Rotas públicas: portal de notícias (/) e auth
+  const isPublicRoute =
+    request.nextUrl.pathname === '/' ||
+    request.nextUrl.pathname.startsWith('/login') ||
+    request.nextUrl.pathname.startsWith('/signup') ||
+    request.nextUrl.pathname.startsWith('/auth') ||
+    request.nextUrl.pathname.startsWith('/share') ||
+    request.nextUrl.pathname.startsWith('/travel-check');
+
+  if (!user && !isTestBypass && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);

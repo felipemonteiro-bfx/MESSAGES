@@ -1,12 +1,38 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, Phone, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X } from 'lucide-react';
+import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { createClient } from '@/lib/supabase/client';
+
+const SAVED_NEWS_KEY = 'stealth_news_saved';
+type SavedItem = { id: string; title: string; url?: string; source: string; time: string };
+function getSavedList(): SavedItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(SAVED_NEWS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function getSavedIds(): Set<string> {
+  return new Set(getSavedList().map((s) => s.id));
+}
+function toggleSaved(item: { id: string; title: string; url?: string; source: string; time: string }): boolean {
+  const list = getSavedList();
+  const idx = list.findIndex((s) => s.id === item.id);
+  if (idx >= 0) {
+    list.splice(idx, 1);
+    localStorage.setItem(SAVED_NEWS_KEY, JSON.stringify(list));
+    return false;
+  }
+  list.unshift({ id: item.id, title: item.title, url: item.url, source: item.source, time: item.time });
+  localStorage.setItem(SAVED_NEWS_KEY, JSON.stringify(list));
+  return true;
+}
 
 interface NewsItem {
   id: string;
@@ -40,10 +66,54 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [pullStartY, setPullStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSaved, setShowSaved] = useState(false);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [articleMenuId, setArticleMenuId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
 
+  useEffect(() => {
+    setSavedIds(getSavedIds());
+  }, [showSaved]);
+
+  useEffect(() => {
+    if (!articleMenuId) return;
+    const close = () => setArticleMenuId(null);
+    document.addEventListener('click', close, { once: true });
+    return () => document.removeEventListener('click', close);
+  }, [articleMenuId]);
+
+  const displayedNews = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return news;
+    return news.filter(
+      (n) =>
+        n.title.toLowerCase().includes(q) ||
+        n.source.toLowerCase().includes(q) ||
+        n.category.toLowerCase().includes(q)
+    );
+  }, [news, searchQuery]);
+
   const handleMenuClick = () => setMenuOpen(true);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setSearchOpen(false);
+  };
+
+  const handleSaveArticle = (item: NewsItem) => {
+    const nowSaved = toggleSaved({ id: item.id, title: item.title, url: item.url, source: item.source, time: item.time });
+    setSavedIds(getSavedIds());
+    setArticleMenuId(null);
+    toast.success(nowSaved ? 'Notícia salva' : 'Removida dos salvos');
+  };
 
   const handleSair = async () => {
     setMenuOpen(false);
@@ -294,86 +364,23 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
   const getMockNews = (category: string): NewsItem[] => {
     const baseNews: NewsItem[] = [
-      {
-        id: '1',
-        title: 'Mercado financeiro registra alta após anúncio do governo',
-        source: 'G1 Economia',
-        time: '15min atrás',
-        image: 'https://images.unsplash.com/photo-1611974765270-ca1258634369?w=800&auto=format&fit=crop&q=60',
-        category: 'Economia',
-        url: 'https://www.google.com/search?q=mercado+financeiro+brasil'
-      },
-      {
-        id: '2',
-        title: 'Nova tecnologia promete revolucionar comunicação digital',
-        source: 'TechNews Brasil',
-        time: '1h atrás',
-        image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=60',
-        category: 'Tecnologia',
-        url: 'https://www.google.com/search?q=tecnologia+comunicação+digital'
-      },
-      {
-        id: '3',
-        title: 'Seleção brasileira anuncia convocados para próximos jogos',
-        source: 'ESPN Brasil',
-        time: '2h atrás',
-        image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&auto=format&fit=crop&q=60',
-        category: 'Esportes',
-        url: 'https://www.google.com/search?q=seleção+brasileira+futebol'
-      },
-      {
-        id: '4',
-        title: 'Pesquisa revela avanços no tratamento de doenças crônicas',
-        source: 'Folha Saúde',
-        time: '3h atrás',
-        image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800&auto=format&fit=crop&q=60',
-        category: 'Saúde',
-        url: 'https://www.google.com/search?q=saúde+doenças+crônicas'
-      },
-      {
-        id: '5',
-        title: 'Festival de música reúne milhares em São Paulo',
-        source: 'Veja Entretenimento',
-        time: '4h atrás',
-        image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800&auto=format&fit=crop&q=60',
-        category: 'Entretenimento',
-        url: 'https://www.google.com/search?q=festival+música+São+Paulo'
-      },
-      {
-        id: '6',
-        title: 'ONU discute novas medidas para mudanças climáticas',
-        source: 'BBC Mundo',
-        time: '5h atrás',
-        image: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=800&auto=format&fit=crop&q=60',
-        category: 'Mundo',
-        url: 'https://www.google.com/search?q=ONU+mudanças+climáticas'
-      },
-      {
-        id: '7',
-        title: 'Startup brasileira recebe investimento milionário',
-        source: 'Exame',
-        time: '6h atrás',
-        image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&auto=format&fit=crop&q=60',
-        category: 'Tecnologia',
-        url: 'https://www.google.com/search?q=startup+investimento+brasil'
-      },
-      {
-        id: '8',
-        title: 'Novo aplicativo facilita comunicação entre usuários',
-        source: 'TecMundo',
-        time: '7h atrás',
-        image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&auto=format&fit=crop&q=60',
-        category: 'Tecnologia',
-        url: 'https://www.google.com/search?q=aplicativo+comunicação'
-      }
+      { id: '1', title: 'Mercado financeiro registra alta após anúncio do governo', source: 'G1 Economia', time: '15min atrás', image: 'https://images.unsplash.com/photo-1611974765270-ca1258634369?w=800&auto=format&fit=crop&q=60', category: 'Economia', url: 'https://www.google.com/search?q=mercado+financeiro+brasil', description: 'Índices sobem com expectativa de novas medidas econômicas.' },
+      { id: '2', title: 'Nova tecnologia promete revolucionar comunicação digital', source: 'TechNews Brasil', time: '1h atrás', image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=60', category: 'Tecnologia', url: 'https://www.google.com/search?q=tecnologia+comunicação+digital', description: 'Empresas apostam em ferramentas mais seguras e rápidas.' },
+      { id: '3', title: 'Seleção brasileira anuncia convocados para próximos jogos', source: 'ESPN Brasil', time: '2h atrás', image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&auto=format&fit=crop&q=60', category: 'Esportes', url: 'https://www.google.com/search?q=seleção+brasileira+futebol', description: 'Técnico divulga lista de atletas para a data FIFA.' },
+      { id: '4', title: 'Pesquisa revela avanços no tratamento de doenças crônicas', source: 'Folha Saúde', time: '3h atrás', image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800&auto=format&fit=crop&q=60', category: 'Saúde', url: 'https://www.google.com/search?q=saúde+doenças+crônicas', description: 'Estudo aponta redução de sintomas com novo protocolo.' },
+      { id: '5', title: 'Festival de música reúne milhares em São Paulo', source: 'Veja Entretenimento', time: '4h atrás', image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800&auto=format&fit=crop&q=60', category: 'Entretenimento', url: 'https://www.google.com/search?q=festival+música+São+Paulo', description: 'Evento acontece no fim de semana com várias atrações.' },
+      { id: '6', title: 'ONU discute novas medidas para mudanças climáticas', source: 'BBC Mundo', time: '5h atrás', image: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=800&auto=format&fit=crop&q=60', category: 'Mundo', url: 'https://www.google.com/search?q=ONU+mudanças+climáticas', description: 'Cúpula define metas para a próxima década.' },
+      { id: '7', title: 'Startup brasileira recebe investimento milionário', source: 'Exame', time: '6h atrás', image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&auto=format&fit=crop&q=60', category: 'Tecnologia', url: 'https://www.google.com/search?q=startup+investimento+brasil', description: 'Rodada de investimento deve acelerar expansão.' },
+      { id: '8', title: 'Novo aplicativo facilita comunicação entre usuários', source: 'TecMundo', time: '7h atrás', image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&auto=format&fit=crop&q=60', category: 'Tecnologia', url: 'https://www.google.com/search?q=aplicativo+comunicação', description: 'Plataforma ganha destaque no mercado nacional.' },
+      { id: '9', title: 'Congresso aprova projeto de lei sobre reforma tributária', source: 'Estadão Política', time: '2h atrás', image: 'https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop&q=60', category: 'Política', url: 'https://www.google.com/search?q=reforma+tributária+brasil', description: 'Texto segue para sanção presidencial.' },
+      { id: '10', title: 'Eleições municipais: candidatos divulgam propostas', source: 'Folha Política', time: '4h atrás', image: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&auto=format&fit=crop&q=60', category: 'Política', url: 'https://www.google.com/search?q=eleições+municipais', description: 'Campanha entra na reta final em várias cidades.' },
+      { id: '11', title: 'Descoberta científica pode mudar tratamento do câncer', source: 'BBC Ciência', time: '1h atrás', image: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&auto=format&fit=crop&q=60', category: 'Ciência', url: 'https://www.google.com/search?q=pesquisa+câncer+ciência', description: 'Pesquisadores identificam novo mecanismo celular.' },
+      { id: '12', title: 'Missão espacial coleta amostras de asteroide', source: 'G1 Ciência', time: '6h atrás', image: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=800&auto=format&fit=crop&q=60', category: 'Ciência', url: 'https://www.google.com/search?q=missão+espacial+asteroide', description: 'Material deve chegar à Terra no próximo ano.' }
     ];
 
-    if (category === 'Top Stories') {
-      return baseNews;
-    }
-
+    if (category === 'Top Stories') return baseNews;
     return baseNews.filter(n => {
-      if (category === 'Brasil') return n.source.includes('Brasil') || n.source.includes('G1') || n.source.includes('Folha');
+      if (category === 'Brasil') return n.source.includes('Brasil') || n.source.includes('G1') || n.source.includes('Folha') || n.source.includes('ESPN');
       if (category === 'Mundo') return n.category === 'Mundo';
       return n.category === category;
     });
@@ -538,30 +545,44 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       )}
       
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm safe-area-top">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleMenuClick}
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Menu"
-          >
-            <Menu className="w-6 h-6 text-gray-600" />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">Notícias em Tempo Real</h1>
-            <p className="text-[10px] text-gray-400 font-medium">Atualizado a cada 5 minutos • Brasil e Mundo</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <Search className="w-5 h-5 text-gray-600" />
-          <div 
-            className="flex items-center gap-1 text-sm text-gray-500 font-medium cursor-pointer select-none hover:text-gray-700 transition-colors"
-            onClick={handleSecretButton}
-            title="Data e Hora - Clique duas vezes para acessar"
-          >
-            <Clock className="w-4 h-4" />
-            <span className="capitalize">{currentDate}</span>
-          </div>
+      <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 shadow-sm safe-area-top">
+        <div className="flex items-center justify-between gap-2">
+          {searchOpen ? (
+            <>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar notícias..."
+                className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button onClick={() => { setSearchOpen(false); setSearchQuery(''); }} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg" aria-label="Fechar busca">
+                <X className="w-5 h-5" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={handleMenuClick} className="p-1 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Menu">
+                <Menu className="w-6 h-6 text-gray-600" />
+              </button>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl font-bold tracking-tight text-gray-900 truncate">Notícias em Tempo Real</h1>
+                <p className="text-[10px] text-gray-400 font-medium">Atualizado a cada 5 min • Brasil e Mundo</p>
+              </div>
+              <button onClick={() => setSearchOpen(true)} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Buscar">
+                <Search className="w-5 h-5 text-gray-600" />
+              </button>
+              <div
+                className="flex items-center gap-1 text-sm text-gray-500 font-medium cursor-pointer select-none hover:text-gray-700 transition-colors shrink-0"
+                onClick={handleSecretButton}
+                title="Data e Hora"
+              >
+                <Clock className="w-4 h-4" />
+                <span className="capitalize hidden sm:inline">{currentDate}</span>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
@@ -588,28 +609,24 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       </div>
 
       {/* Seção de Destaques */}
-      {selectedCategory === 'Top Stories' && news.length > 0 && (
+      {selectedCategory === 'Top Stories' && displayedNews.length > 0 && !showSaved && (
         <div className="px-4 py-3 bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-100">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="w-4 h-4 text-red-600" />
             <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide">Em Destaque</h2>
           </div>
           <div className="space-y-2">
-            {news.slice(0, 2).map((item) => (
-              <div 
-                key={item.id} 
+            {displayedNews.slice(0, 2).map((item) => (
+              <div
+                key={item.id}
                 className="flex items-start gap-2 p-2 bg-white rounded-lg border border-red-100 cursor-pointer hover:bg-red-50 transition-colors"
                 onClick={() => {
-                  if (item.url) {
-                    window.open(item.url, '_blank', 'noopener,noreferrer');
-                  }
+                  if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
                 }}
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase">
-                      Breaking
-                    </span>
+                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase">Breaking</span>
                     <span className="text-xs text-gray-500">{item.source}</span>
                   </div>
                   <h3 className="text-sm font-semibold text-gray-900 line-clamp-2">{item.title}</h3>
@@ -621,6 +638,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       )}
 
       {/* Filtros de Data */}
+      {!showSaved && (
       <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
         <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
           <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
@@ -639,8 +657,10 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           ))}
         </div>
       </div>
+      )}
 
       {/* Categories */}
+      {!showSaved && (
       <nav className="overflow-x-auto whitespace-nowrap px-4 py-3 border-b border-gray-100 hide-scrollbar">
         {categories.map((cat) => (
           <button 
@@ -656,111 +676,145 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           </button>
         ))}
       </nav>
+      )}
 
       {/* Main Content */}
-      <main className="max-w-md mx-auto px-4 py-4 space-y-6">
-        {loading ? (
+      <main className="max-w-md mx-auto px-4 py-4 space-y-6 pb-24">
+        {showSaved ? (
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Notícias salvas</h2>
+              <button onClick={() => setShowSaved(false)} className="text-sm text-blue-600 font-medium">Voltar</button>
+            </div>
+            {getSavedList().length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p>Nenhuma notícia salva</p>
+                <p className="text-sm mt-1">Toque em ⋮ em uma notícia e escolha &quot;Salvar&quot;</p>
+              </div>
+            ) : (
+              getSavedList().map((s) => (
+                <div
+                  key={s.id}
+                  className="p-3 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 cursor-pointer"
+                  onClick={() => s.url && window.open(s.url, '_blank')}
+                >
+                  <p className="text-sm font-semibold text-gray-900 line-clamp-2">{s.title}</p>
+                  <p className="text-xs text-gray-500 mt-1">{s.source} • {s.time}</p>
+                </div>
+              ))
+            )}
+          </div>
+        ) : loading ? (
+          <div className="space-y-4">
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="animate-pulse">
                 <div className="flex gap-4">
                   <div className="flex-1 space-y-3">
-                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                    <div className="h-6 bg-gray-200 rounded w-full"></div>
-                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/4" />
+                    <div className="h-6 bg-gray-200 rounded w-full" />
+                    <div className="h-4 bg-gray-200 rounded w-3/4" />
+                    <div className="h-3 bg-gray-200 rounded w-1/3" />
                   </div>
-                  <div className="w-24 h-24 bg-gray-200 rounded-lg"></div>
+                  <div className="w-24 h-24 bg-gray-200 rounded-lg" />
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <>
-            {news.length === 0 ? (
+            {displayedNews.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                <p>Nenhuma notícia encontrada no momento</p>
-                <p className="text-sm mt-2">Tente novamente em alguns instantes</p>
+                <p>Nenhuma notícia encontrada</p>
+                <p className="text-sm mt-2">{searchQuery ? 'Tente outros termos' : 'Puxe para atualizar'}</p>
               </div>
             ) : (
-              news.map((item, index) => {
-                const handleNewsClick = () => {
-                  if (item.url) {
-                    window.open(item.url, '_blank', 'noopener,noreferrer');
-                  }
-                };
-
+              displayedNews.map((item, index) => {
+                const isSaved = savedIds.has(item.id);
+                const menuOpen = articleMenuId === item.id;
                 return (
-                  <article 
-                    key={item.id} 
-                    className="group cursor-pointer"
-                    onClick={handleNewsClick}
-                  >
-                    <div className="flex gap-4">
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap">
-                          {breakingNews.includes(item.id) && (
-                            <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded animate-pulse">
-                              BREAKING
-                            </span>
-                          )}
-                          <span>{item.category}</span>
-                          <span className="text-gray-400 font-normal">• {item.source}</span>
-                        </div>
-                        <h2 className="text-lg font-bold leading-snug group-hover:text-blue-700 transition-colors line-clamp-3">
-                          {item.title}
-                        </h2>
-                        {item.description && (
-                          <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
-                        )}
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs text-gray-500">{item.time}</span>
-                          <div className="flex gap-3" onClick={(e) => e.stopPropagation()}>
-                            {item.url && (
-                              <a 
-                                href={item.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="p-1 hover:bg-gray-100 rounded transition-colors"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <ExternalLink className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                              </a>
+                  <article key={item.id} className="group relative">
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => {
+                        if (articleMenuId) setArticleMenuId(null);
+                        else if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
+                      }}
+                    >
+                      <div className="flex gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap">
+                            {breakingNews.includes(item.id) && (
+                              <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded animate-pulse">BREAKING</span>
                             )}
-                            <button 
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (navigator.share && item.url) {
-                                  navigator.share({
-                                    title: item.title,
-                                    text: item.description || item.title,
-                                    url: item.url
-                                  }).catch(() => {});
-                                }
-                              }}
-                            >
-                              <Share2 className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                            </button>
-                            <button className="p-1 hover:bg-gray-100 rounded transition-colors">
-                              <MoreVertical className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                            </button>
+                            <span>{item.category}</span>
+                            <span className="text-gray-400 font-normal">• {item.source}</span>
+                          </div>
+                          <h2 className="text-lg font-bold leading-snug group-hover:text-blue-700 transition-colors line-clamp-3">{item.title}</h2>
+                          {item.description && <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>}
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-gray-500">{item.time}</span>
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                              {item.url && (
+                                <a href={item.url} target="_blank" rel="noopener noreferrer" className="p-1.5 hover:bg-gray-100 rounded" onClick={(e) => e.stopPropagation()}>
+                                  <ExternalLink className="w-4 h-4 text-gray-400" />
+                                </a>
+                              )}
+                              <button
+                                className="p-1.5 hover:bg-gray-100 rounded"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (navigator.share && item.url) {
+                                    navigator.share({ title: item.title, text: item.description || item.title, url: item.url }).catch(() => {});
+                                  }
+                                }}
+                              >
+                                <Share2 className="w-4 h-4 text-gray-400" />
+                              </button>
+                              <button
+                                className="p-1.5 hover:bg-gray-100 rounded relative"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setArticleMenuId(menuOpen ? null : item.id);
+                                }}
+                              >
+                                <MoreVertical className="w-4 h-4 text-gray-400" />
+                                {menuOpen && (
+                                  <div className="absolute right-0 top-full mt-1 py-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px]" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                      onClick={(e) => { e.stopPropagation(); if (item.url) window.open(item.url, '_blank'); setArticleMenuId(null); }}
+                                    >
+                                      <ExternalLink className="w-4 h-4" /> Abrir em nova aba
+                                    </button>
+                                    <button
+                                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (navigator.share && item.url) navigator.share({ title: item.title, url: item.url }).catch(() => {});
+                                        setArticleMenuId(null);
+                                      }}
+                                    >
+                                      <Share2 className="w-4 h-4" /> Compartilhar
+                                    </button>
+                                    <button
+                                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                      onClick={(e) => { e.stopPropagation(); handleSaveArticle(item); }}
+                                    >
+                                      <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-blue-600 text-blue-600' : ''}`} /> {isSaved ? 'Remover dos salvos' : 'Salvar'}
+                                    </button>
+                                  </div>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="w-24 h-24 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden relative">
-                        <img 
-                          src={item.image} 
-                          alt={item.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                          onLoad={(e) => {
-                            e.currentTarget.classList.add('loaded');
-                          }}
-                        />
+                        <div className="w-24 h-24 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden">
+                          <img src={item.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                        </div>
                       </div>
                     </div>
-                    {index < news.length - 1 && <hr className="my-4 border-gray-100" />}
+                    {index < displayedNews.length - 1 && <hr className="my-4 border-gray-100" />}
                   </article>
                 );
               })
@@ -769,27 +823,38 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         )}
       </main>
 
-      {/* Bottom Nav (Disguise) - iPhone Safe Area */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-center text-xs font-medium text-gray-500 safe-area-inset-bottom">
-              <div className="flex flex-col items-center gap-1 text-blue-600">
-            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-blue-600 rounded-full" />
-            </div>
-            <span>Início</span>
+      {/* Bottom Nav - 100% funcional */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 flex justify-around items-center text-xs font-medium text-gray-500 safe-area-inset-bottom z-30">
+        <button onClick={scrollToTop} className="flex flex-col items-center gap-1 text-blue-600 hover:opacity-80 transition-opacity">
+          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <Home className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-6 h-6 bg-gray-100 rounded-full" />
-            <span>Buscar</span>
+          <span>Início</span>
+        </button>
+        <button onClick={() => { setShowSaved(false); setSearchOpen(true); searchInputRef.current?.focus(); }} className="flex flex-col items-center gap-1 hover:text-gray-900 transition-colors">
+          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+            <Search className="w-4 h-4 text-gray-600" />
           </div>
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-6 h-6 bg-gray-100 rounded-full" />
-            <span>Salvos</span>
+          <span>Buscar</span>
+        </button>
+        <button onClick={() => { setSearchOpen(false); setShowSaved(true); setSavedIds(getSavedIds()); }} className="flex flex-col items-center gap-1 hover:text-gray-900 transition-colors relative">
+          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+            <Bookmark className="w-4 h-4 text-gray-600" />
           </div>
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-6 h-6 bg-gray-100 rounded-full" />
-            <span>Perfil</span>
+          <span>Salvos</span>
+          {getSavedList().length > 0 && (
+            <span className="absolute top-0 right-0 min-w-[18px] h-[18px] bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+              {getSavedList().length}
+            </span>
+          )}
+        </button>
+        <button onClick={() => setMenuOpen(true)} className="flex flex-col items-center gap-1 hover:text-gray-900 transition-colors relative">
+          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+            <User className="w-4 h-4 text-gray-600" />
           </div>
-      </div>
+          <span>Perfil</span>
+        </button>
+      </nav>
     </div>
   );
 }
