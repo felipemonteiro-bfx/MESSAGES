@@ -62,9 +62,9 @@ git commit -m "Initial commit"
 No Vercel > Settings > Environment Variables:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://moaxyoqjedgrfnxeskku.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_eaIUZoh1qAkdWVcAm9VYrg_cp0fcgsM
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_rvTz9mUlJsW7wn_T_1Qyww_jBaOgKXc
+NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anon-aqui
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key-aqui
 NEXT_PUBLIC_NEWS_API_KEY=sua-chave-newsapi
 NODE_ENV=production
 ```
