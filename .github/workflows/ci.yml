@@ -38,9 +38,10 @@ jobs:
     - name: Build
       run: yarn build
       env:
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-        NEXT_PUBLIC_NEWS_API_KEY: ${{ secrets.NEXT_PUBLIC_NEWS_API_KEY }}
+        # Usar secrets se existirem; senão valores placeholder para o build passar
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+        NEXT_PUBLIC_NEWS_API_KEY: ${{ secrets.NEXT_PUBLIC_NEWS_API_KEY || '' }}
         NODE_ENV: production
 
   security:
