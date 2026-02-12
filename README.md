@@ -50,8 +50,8 @@ O **Guardião de Notas** é uma plataforma de elite para gestão de ativos imobi
 
 1. **Clone o repositório:**
    ```bash
-   git clone https://github.com/seu-usuario/warranty-tracker.git
-   cd warranty-tracker
+   git clone https://github.com/felipemonteiro-bfx/MESSAGES.git
+   cd MESSAGES
    ```
 
 2. **Instale as dependências:**
