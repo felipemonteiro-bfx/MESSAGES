@@ -182,8 +182,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   };
 
   const handleMessageNotification = (fakeNewsTitle: string) => {
-    // Gerar notificação mais realista como manchete de notícia
-    const newsSources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo'];
+    // Gerar notificação mais realista como manchete de notícia (muitas fontes)
+    const newsSources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo', 'Estadão', 'Reuters', 'AFP', 'Valor Econômico', 'R7', 'Terra', 'Jovem Pan', 'Gazeta do Povo', 'InfoMoney', 'TecMundo', 'Lance!', 'GE', 'Exame', 'El País', 'Space.com', 'AdoroCinema', 'Rolling Stone Brasil', 'Agência Brasil', 'Correio Braziliense'];
     const randomSource = newsSources[Math.floor(Math.random() * newsSources.length)];
     const notificationId = `notification-${Date.now()}`;
     

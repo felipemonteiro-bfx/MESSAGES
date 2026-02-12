@@ -196,14 +196,33 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       'ATUALIZAÇÃO: Desenvolvimento importante que você precisa saber',
       'ALERTA: Nova informação de interesse público',
       'MANCHETE: Descoberta recente gera repercussão',
-      'EXCLUSIVO: Informação importante divulgada agora'
+      'EXCLUSIVO: Informação importante divulgada agora',
+      'ÚLTIMA HORA: Desenvolvimento em tempo real',
+      'AO VIVO: Acompanhe a cobertura completa'
     ];
-    const sources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo', 'Estadão'];
+    const sources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo', 'Estadão', 'Reuters', 'AFP', 'Valor', 'R7', 'Terra', 'Jovem Pan', 'Gazeta do Povo', 'InfoMoney', 'TecMundo', 'Lance!', 'GE', 'AdoroCinema', 'Space.com', 'Nature'];
     const randomTemplate = newsTemplates[Math.floor(Math.random() * newsTemplates.length)];
     const randomSource = sources[Math.floor(Math.random() * sources.length)];
     const truncated = content.substring(0, 40);
     return `${randomTemplate} - ${randomSource}`;
   };
+
+  // Notificações "última hora" periódicas (mais notícias em destaque)
+  useEffect(() => {
+    if (news.length === 0 || showSaved) return;
+    const interval = setInterval(() => {
+      const item = news[Math.floor(Math.random() * news.length)];
+      if (!item) return;
+      const labels = ['Última hora', 'Em destaque', 'Agora'];
+      const label = labels[Math.floor(Math.random() * labels.length)];
+      toast.info(item.title, {
+        duration: 5000,
+        icon: '📰',
+        description: `${item.source} • ${item.time}`,
+      });
+    }, 45000); // a cada 45 segundos
+    return () => clearInterval(interval);
+  }, [news, showSaved]);
 
   // Cache de notícias
   const newsCacheRef = useRef<{ [key: string]: { news: NewsItem[], timestamp: number } }>({});
@@ -363,24 +382,53 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   };
 
   const getMockNews = (category: string): NewsItem[] => {
+    const img = (id: string) => `https://images.unsplash.com/photo-${id}?w=800&auto=format&fit=crop&q=60`;
     const baseNews: NewsItem[] = [
-      { id: '1', title: 'Mercado financeiro registra alta após anúncio do governo', source: 'G1 Economia', time: '15min atrás', image: 'https://images.unsplash.com/photo-1611974765270-ca1258634369?w=800&auto=format&fit=crop&q=60', category: 'Economia', url: 'https://www.google.com/search?q=mercado+financeiro+brasil', description: 'Índices sobem com expectativa de novas medidas econômicas.' },
-      { id: '2', title: 'Nova tecnologia promete revolucionar comunicação digital', source: 'TechNews Brasil', time: '1h atrás', image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=60', category: 'Tecnologia', url: 'https://www.google.com/search?q=tecnologia+comunicação+digital', description: 'Empresas apostam em ferramentas mais seguras e rápidas.' },
-      { id: '3', title: 'Seleção brasileira anuncia convocados para próximos jogos', source: 'ESPN Brasil', time: '2h atrás', image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&auto=format&fit=crop&q=60', category: 'Esportes', url: 'https://www.google.com/search?q=seleção+brasileira+futebol', description: 'Técnico divulga lista de atletas para a data FIFA.' },
-      { id: '4', title: 'Pesquisa revela avanços no tratamento de doenças crônicas', source: 'Folha Saúde', time: '3h atrás', image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800&auto=format&fit=crop&q=60', category: 'Saúde', url: 'https://www.google.com/search?q=saúde+doenças+crônicas', description: 'Estudo aponta redução de sintomas com novo protocolo.' },
-      { id: '5', title: 'Festival de música reúne milhares em São Paulo', source: 'Veja Entretenimento', time: '4h atrás', image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800&auto=format&fit=crop&q=60', category: 'Entretenimento', url: 'https://www.google.com/search?q=festival+música+São+Paulo', description: 'Evento acontece no fim de semana com várias atrações.' },
-      { id: '6', title: 'ONU discute novas medidas para mudanças climáticas', source: 'BBC Mundo', time: '5h atrás', image: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=800&auto=format&fit=crop&q=60', category: 'Mundo', url: 'https://www.google.com/search?q=ONU+mudanças+climáticas', description: 'Cúpula define metas para a próxima década.' },
-      { id: '7', title: 'Startup brasileira recebe investimento milionário', source: 'Exame', time: '6h atrás', image: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&auto=format&fit=crop&q=60', category: 'Tecnologia', url: 'https://www.google.com/search?q=startup+investimento+brasil', description: 'Rodada de investimento deve acelerar expansão.' },
-      { id: '8', title: 'Novo aplicativo facilita comunicação entre usuários', source: 'TecMundo', time: '7h atrás', image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&auto=format&fit=crop&q=60', category: 'Tecnologia', url: 'https://www.google.com/search?q=aplicativo+comunicação', description: 'Plataforma ganha destaque no mercado nacional.' },
-      { id: '9', title: 'Congresso aprova projeto de lei sobre reforma tributária', source: 'Estadão Política', time: '2h atrás', image: 'https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop&q=60', category: 'Política', url: 'https://www.google.com/search?q=reforma+tributária+brasil', description: 'Texto segue para sanção presidencial.' },
-      { id: '10', title: 'Eleições municipais: candidatos divulgam propostas', source: 'Folha Política', time: '4h atrás', image: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&auto=format&fit=crop&q=60', category: 'Política', url: 'https://www.google.com/search?q=eleições+municipais', description: 'Campanha entra na reta final em várias cidades.' },
-      { id: '11', title: 'Descoberta científica pode mudar tratamento do câncer', source: 'BBC Ciência', time: '1h atrás', image: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&auto=format&fit=crop&q=60', category: 'Ciência', url: 'https://www.google.com/search?q=pesquisa+câncer+ciência', description: 'Pesquisadores identificam novo mecanismo celular.' },
-      { id: '12', title: 'Missão espacial coleta amostras de asteroide', source: 'G1 Ciência', time: '6h atrás', image: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=800&auto=format&fit=crop&q=60', category: 'Ciência', url: 'https://www.google.com/search?q=missão+espacial+asteroide', description: 'Material deve chegar à Terra no próximo ano.' }
+      { id: '1', title: 'Mercado financeiro registra alta após anúncio do governo', source: 'G1 Economia', time: '15min atrás', image: img('1611974765270-ca1258634369'), category: 'Economia', url: 'https://www.google.com/search?q=mercado+financeiro+brasil', description: 'Índices sobem com expectativa de novas medidas econômicas.' },
+      { id: '2', title: 'Nova tecnologia promete revolucionar comunicação digital', source: 'TechNews Brasil', time: '1h atrás', image: img('1518770660439-4636190af475'), category: 'Tecnologia', url: 'https://www.google.com/search?q=tecnologia+comunicação+digital', description: 'Empresas apostam em ferramentas mais seguras e rápidas.' },
+      { id: '3', title: 'Seleção brasileira anuncia convocados para próximos jogos', source: 'ESPN Brasil', time: '2h atrás', image: img('1574629810360-7efbbe195018'), category: 'Esportes', url: 'https://www.google.com/search?q=seleção+brasileira+futebol', description: 'Técnico divulga lista de atletas para a data FIFA.' },
+      { id: '4', title: 'Pesquisa revela avanços no tratamento de doenças crônicas', source: 'Folha Saúde', time: '3h atrás', image: img('1559757148-5c350d0d3c56'), category: 'Saúde', url: 'https://www.google.com/search?q=saúde+doenças+crônicas', description: 'Estudo aponta redução de sintomas com novo protocolo.' },
+      { id: '5', title: 'Festival de música reúne milhares em São Paulo', source: 'Veja Entretenimento', time: '4h atrás', image: img('1470229722913-7c0e2dbbafd3'), category: 'Entretenimento', url: 'https://www.google.com/search?q=festival+música+São+Paulo', description: 'Evento acontece no fim de semana com várias atrações.' },
+      { id: '6', title: 'ONU discute novas medidas para mudanças climáticas', source: 'BBC Mundo', time: '5h atrás', image: img('1611273426858-450d8e3c9fce'), category: 'Mundo', url: 'https://www.google.com/search?q=ONU+mudanças+climáticas', description: 'Cúpula define metas para a próxima década.' },
+      { id: '7', title: 'Startup brasileira recebe investimento milionário', source: 'Exame', time: '6h atrás', image: img('1559136555-9303baea8ebd'), category: 'Tecnologia', url: 'https://www.google.com/search?q=startup+investimento+brasil', description: 'Rodada de investimento deve acelerar expansão.' },
+      { id: '8', title: 'Novo aplicativo facilita comunicação entre usuários', source: 'TecMundo', time: '7h atrás', image: img('1512941937669-90a1b58e7e9c'), category: 'Tecnologia', url: 'https://www.google.com/search?q=aplicativo+comunicação', description: 'Plataforma ganha destaque no mercado nacional.' },
+      { id: '9', title: 'Congresso aprova projeto de lei sobre reforma tributária', source: 'Estadão Política', time: '2h atrás', image: img('1541872703-74c5e44368f9'), category: 'Política', url: 'https://www.google.com/search?q=reforma+tributária+brasil', description: 'Texto segue para sanção presidencial.' },
+      { id: '10', title: 'Eleições municipais: candidatos divulgam propostas', source: 'Folha Política', time: '4h atrás', image: img('1529107386315-e1a2ed48a620'), category: 'Política', url: 'https://www.google.com/search?q=eleições+municipais', description: 'Campanha entra na reta final em várias cidades.' },
+      { id: '11', title: 'Descoberta científica pode mudar tratamento do câncer', source: 'BBC Ciência', time: '1h atrás', image: img('1532094349884-543bc11b234d'), category: 'Ciência', url: 'https://www.google.com/search?q=pesquisa+câncer+ciência', description: 'Pesquisadores identificam novo mecanismo celular.' },
+      { id: '12', title: 'Missão espacial coleta amostras de asteroide', source: 'G1 Ciência', time: '6h atrás', image: img('1446776811953-b23d57bd21aa'), category: 'Ciência', url: 'https://www.google.com/search?q=missão+espacial+asteroide', description: 'Material deve chegar à Terra no próximo ano.' },
+      { id: '13', title: 'Dólar cai e bolsa sobe com notícias do exterior', source: 'Valor Econômico', time: '20min atrás', image: img('1611974765270-ca1258634369'), category: 'Economia', url: 'https://www.google.com/search?q=dólar+bolsa+hoje', description: 'Mercado reage a indicadores internacionais.' },
+      { id: '14', title: 'Banco Central mantém Selic estável', source: 'InfoMoney', time: '45min atrás', image: img('1611974765270-ca1258634369'), category: 'Economia', url: 'https://www.google.com/search?q=selic+banco+central', description: 'Comitê de política monetária se reúne nesta semana.' },
+      { id: '15', title: 'UOL Esportes: resultado dos jogos da rodada', source: 'UOL Esportes', time: '1h atrás', image: img('1574629810360-7efbbe195018'), category: 'Esportes', url: 'https://www.google.com/search?q=resultados+futebol+hoje', description: 'Confira placar de todos os jogos.' },
+      { id: '16', title: 'Lance!: transferências do futebol brasileiro', source: 'Lance!', time: '2h atrás', image: img('1574629810360-7efbbe195018'), category: 'Esportes', url: 'https://www.google.com/search?q=transferências+futebol', description: 'Clubes fecham contratações para a temporada.' },
+      { id: '17', title: 'Ministério da Saúde anuncia nova campanha de vacinação', source: 'Agência Brasil', time: '30min atrás', image: img('1559757148-5c350d0d3c56'), category: 'Saúde', url: 'https://www.google.com/search?q=campanha+vacinação+2025', description: 'Meta é imunizar grupos prioritários.' },
+      { id: '18', title: 'Hospitais recebem novos equipamentos de diagnóstico', source: 'R7 Saúde', time: '3h atrás', image: img('1559757148-5c350d0d3c56'), category: 'Saúde', url: 'https://www.google.com/search?q=hospitais+equipamentos', description: 'Investimento em tecnologia médica.' },
+      { id: '19', title: 'Netflix anuncia novas séries brasileiras', source: 'AdoroCinema', time: '1h atrás', image: img('1470229722913-7c0e2dbbafd3'), category: 'Entretenimento', url: 'https://www.google.com/search?q=netflix+séries+brasil', description: 'Produções nacionais em destaque.' },
+      { id: '20', title: 'Globo estreia nova novela no horário nobre', source: 'O Globo', time: '5h atrás', image: img('1470229722913-7c0e2dbbafd3'), category: 'Entretenimento', url: 'https://www.google.com/search?q=novela+globo+2025', description: 'Elenco e sinopse são divulgados.' },
+      { id: '21', title: 'Guerra na Ucrânia: últimas atualizações', source: 'Reuters', time: '25min atrás', image: img('1611273426858-450d8e3c9fce'), category: 'Mundo', url: 'https://www.google.com/search?q=ucrânia+guerra', description: 'Situação no front e negociações.' },
+      { id: '22', title: 'Cúpula do G20 debate economia global', source: 'AFP', time: '4h atrás', image: img('1611273426858-450d8e3c9fce'), category: 'Mundo', url: 'https://www.google.com/search?q=G20+cúpula', description: 'Líderes discutem cooperação internacional.' },
+      { id: '23', title: 'El País: crise migratória na Europa', source: 'El País', time: '6h atrás', image: img('1611273426858-450d8e3c9fce'), category: 'Mundo', url: 'https://www.google.com/search?q=migração+europa', description: 'Países buscam soluções conjuntas.' },
+      { id: '24', title: 'Inteligência artificial: novas ferramentas para empresas', source: 'CNN Brasil Tech', time: '50min atrás', image: img('1518770660439-4636190af475'), category: 'Tecnologia', url: 'https://www.google.com/search?q=IA+empresas', description: 'Startups apostam em soluções com IA.' },
+      { id: '25', title: 'Celulares 5G: preços caem no Brasil', source: 'TudoCelular', time: '2h atrás', image: img('1518770660439-4636190af475'), category: 'Tecnologia', url: 'https://www.google.com/search?q=5G+celular+preço', description: 'Modelos mais acessíveis chegam ao mercado.' },
+      { id: '26', title: 'Senado analisa mudanças na Previdência', source: 'Gazeta do Povo', time: '3h atrás', image: img('1541872703-74c5e44368f9'), category: 'Política', url: 'https://www.google.com/search?q=previdência+reforma', description: 'Proposta deve ser votada em breve.' },
+      { id: '27', title: 'Correio Braziliense: orçamento federal aprovado', source: 'Correio Braziliense', time: '5h atrás', image: img('1541872703-74c5e44368f9'), category: 'Política', url: 'https://www.google.com/search?q=orçamento+federal', description: 'Congressistas fecham acordo.' },
+      { id: '28', title: 'Pesquisa com células-tronco avança no país', source: 'Revista Pesquisa Fapesp', time: '2h atrás', image: img('1532094349884-543bc11b234d'), category: 'Ciência', url: 'https://www.google.com/search?q=células+tronco+pesquisa', description: 'Laboratórios brasileiros na vanguarda.' },
+      { id: '29', title: 'Nature: novo estudo sobre mudanças climáticas', source: 'Nature', time: '8h atrás', image: img('1446776811953-b23d57bd21aa'), category: 'Ciência', url: 'https://www.google.com/search?q=mudanças+climáticas+ciência', description: 'Artigo publicado em revista internacional.' },
+      { id: '30', title: 'Ibovespa fecha em alta pelo terceiro dia', source: 'Bloomberg Brasil', time: '10min atrás', image: img('1611974765270-ca1258634369'), category: 'Economia', url: 'https://www.google.com/search?q=ibovespa+hoje', description: 'Commodities e bancos puxam alta.' },
+      { id: '31', title: 'Campeonato Brasileiro: tabela e jogos', source: 'GE GloboEsporte', time: '40min atrás', image: img('1574629810360-7efbbe195018'), category: 'Esportes', url: 'https://www.google.com/search?q=brasileirão+tabela', description: 'Confira a classificação atualizada.' },
+      { id: '32', title: 'Olimpíadas 2028: preparação dos atletas', source: 'Olympics.com', time: '5h atrás', image: img('1574629810360-7efbbe195018'), category: 'Esportes', url: 'https://www.google.com/search?q=olimpíadas+2028', description: 'Comitês nacionais definem estratégia.' },
+      { id: '33', title: 'ANS regulamenta planos de saúde', source: 'Saúde Business', time: '1h atrás', image: img('1559757148-5c350d0d3c56'), category: 'Saúde', url: 'https://www.google.com/search?q=ANS+planos+saúde', description: 'Novas regras entram em vigor.' },
+      { id: '34', title: 'Spotify lança playlist oficial da Copa', source: 'Rolling Stone Brasil', time: '2h atrás', image: img('1470229722913-7c0e2dbbafd3'), category: 'Entretenimento', url: 'https://www.google.com/search?q=spotify+playlist', description: 'Músicas para torcer.' },
+      { id: '35', title: 'YouTube anuncia mudanças para criadores', source: 'TecMundo', time: '4h atrás', image: img('1470229722913-7c0e2dbbafd3'), category: 'Entretenimento', url: 'https://www.google.com/search?q=youtube+criadores', description: 'Nova política de monetização.' },
+      { id: '36', title: 'CNN: tensão no Oriente Médio', source: 'CNN Internacional', time: '35min atrás', image: img('1611273426858-450d8e3c9fce'), category: 'Mundo', url: 'https://www.google.com/search?q=oriente+médio', description: 'Análise da situação regional.' },
+      { id: '37', title: 'Criptomoedas: mercado reage a decisão regulatória', source: 'CoinTelegraph Brasil', time: '55min atrás', image: img('1518770660439-4636190af475'), category: 'Tecnologia', url: 'https://www.google.com/search?q=criptomoedas+regulação', description: 'Autoridades definem marco legal.' },
+      { id: '38', title: 'TSE divulga calendário eleitoral', source: 'Jovem Pan News', time: '1h atrás', image: img('1541872703-74c5e44368f9'), category: 'Política', url: 'https://www.google.com/search?q=TSE+calendário+eleitoral', description: 'Datas das próximas eleições.' },
+      { id: '39', title: 'NASA confirma missão à Lua em 2026', source: 'Space.com', time: '3h atrás', image: img('1446776811953-b23d57bd21aa'), category: 'Ciência', url: 'https://www.google.com/search?q=NASA+lua+2026', description: 'Programa Artemis segue no cronograma.' },
+      { id: '40', title: 'Terra: previsão do tempo para o fim de semana', source: 'Terra', time: '12min atrás', image: img('1611273426858-450d8e3c9fce'), category: 'Mundo', url: 'https://www.google.com/search?q=previsão+tempo', description: 'Frente fria avança pelo país.' }
     ];
 
     if (category === 'Top Stories') return baseNews;
     return baseNews.filter(n => {
-      if (category === 'Brasil') return n.source.includes('Brasil') || n.source.includes('G1') || n.source.includes('Folha') || n.source.includes('ESPN');
+      if (category === 'Brasil') return n.source.includes('Brasil') || n.source.includes('G1') || n.source.includes('Folha') || n.source.includes('ESPN') || n.source.includes('UOL') || n.source.includes('Globo') || n.source.includes('Gazeta') || n.source.includes('Correio') || n.source.includes('Lance') || n.source.includes('GE') || n.source.includes('Jovem Pan') || n.source.includes('Agência Brasil') || n.source.includes('R7') || n.source.includes('Estadão') || n.source.includes('Valor') || n.source.includes('InfoMoney') || n.source.includes('Exame') || n.source.includes('TecMundo') || n.source.includes('CNN Brasil') || n.source.includes('Bloomberg Brasil') || n.source.includes('Rolling Stone Brasil') || n.source.includes('CoinTelegraph Brasil');
       if (category === 'Mundo') return n.category === 'Mundo';
       return n.category === category;
     });
