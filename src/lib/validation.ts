@@ -28,11 +28,11 @@ export const messageContentSchema = z
 // Validação de email
 export const emailSchema = z.string().email('Email inválido');
 
-// Validação de checkout request
-export const checkoutRequestSchema = z.object({
-  priceId: z.string().min(1, 'Price ID é obrigatório'),
-  planName: z.string().min(1, 'Nome do plano é obrigatório'),
-});
+// Validação de checkout request (removido - não usado mais)
+// export const checkoutRequestSchema = z.object({
+//   priceId: z.string().min(1, 'Price ID é obrigatório'),
+//   planName: z.string().min(1, 'Nome do plano é obrigatório'),
+// });
 
 // Validação de chat ID
 export const chatIdSchema = z.string().uuid('ID de chat inválido');
