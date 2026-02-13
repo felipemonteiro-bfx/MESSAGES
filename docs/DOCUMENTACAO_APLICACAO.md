@@ -14,8 +14,12 @@ O **Stealth Messaging** é um app de mensagens em tempo real cuja interface púb
 - **Perfil**: criado automaticamente no signup (tabela `profiles`), com nickname e avatar.
 - **Capa (notícias)**: lista de notícias; ao clicar, o link abre em **nova aba**.
 - **Menu lateral (☰)**: Início, Receber alertas de notícias (push), Sair.
-- **Push disfarçado**: notificações Web Push configuradas como “alertas de notícias”.
-- **Chat**: mensagens em tempo real (Supabase Realtime), mídia (fotos, vídeo, áudio), mensagens efêmeras (opcional).
+- **Push disfarçado**: notificações Web Push configuradas como "alertas de notícias".
+- **Notificações inteligentes**: mensagens reais têm notificação diferenciada (título "Nova mensagem"), enquanto notícias mantêm disfarce.
+- **Chat**: mensagens em tempo real (Supabase Realtime), mídia (fotos, vídeo, **áudio**), mensagens efêmeras (opcional).
+- **Envio de áudio**: gravação direta no app ou upload de arquivo de áudio.
+- **Toast ao receber**: notificação in-app quando recebe mensagem de outro usuário.
+- **Retenção de dados**: mensagens e mídia mantidos por **mínimo de 10 dias** (mesmo efêmeras respeitam período mínimo).
 - **Rate limit no PIN**: após 5 tentativas erradas, bloqueio de 1 minuto (anti brute-force).
 - **Botão "Esconder agora"**: ícone discreto no header do chat que volta ao portal imediatamente (situações de risco).
 
@@ -155,11 +159,14 @@ Detalhes adicionais: **DEPLOY_VERCEL.md** e **VERCEL_ENV_VARS.md** na raiz do pr
 |----------|------------------|
 | Cadastro não cria usuário/perfil | Supabase: trigger `trigger_create_profile.sql` instalado; RLS em `profiles` permite INSERT para o próprio usuário. |
 | Login não redireciona / sessão não persiste | Site URL e Redirect URLs no Supabase; cookies em produção (domínio e HTTPS). |
-| “Não tem nada” após cadastrar | Garantir que as rotas `/login` e `/signup` existem e que a home é pública; o acesso ao chat é pelo botão oculto (Fale Conosco ou duplo clique na data). |
+| "Não tem nada" após cadastrar | Garantir que as rotas `/login` e `/signup` existem e que a home é pública; o acesso ao chat é pelo botão oculto (Fale Conosco ou duplo clique na data). |
 | Menu lateral não abre | Verificar componente StealthNews (sidebar e estado de abertura). |
 | Notícias não abrem em nova aba | Lista de notícias deve usar `window.open(url, '_blank')` ou `<a target="_blank">` com `url` definido. |
 | Push não funciona | Tabela `push_subscriptions` criada; envs VAPID na Vercel; HTTPS; Service Worker e `/api/push/subscribe` sendo chamados. |
-| Erro de build “useSearchParams suspense” | Página que usa `useSearchParams()` deve estar dentro de um `<Suspense>` (ex.: wrapper na página de login). |
+| Notificações não aparecem | Verificar permissão do navegador; Service Worker registrado (`/sw.js`); VAPID configurado. |
+| Mensagens não aparecem | Verificar Realtime habilitado nas tabelas; RLS permite SELECT para participantes do chat. |
+| Áudio não funciona | Verificar permissão de microfone; navegador suporta MediaRecorder API; bucket `chat-media` criado. |
+| Erro de build "useSearchParams suspense" | Página que usa `useSearchParams()` deve estar dentro de um `<Suspense>` (ex.: wrapper na página de login). |
 
 ---
 
@@ -170,6 +177,8 @@ Detalhes adicionais: **DEPLOY_VERCEL.md** e **VERCEL_ENV_VARS.md** na raiz do pr
 - **docs/SETUP_COMPLETO.sql** – Schema principal do banco.
 - **docs/trigger_create_profile.sql** – Criação automática de perfil no signup.
 - **docs/push_subscriptions.sql** – Tabela e RLS para push.
+- **docs/adicionar_mensagens_efemeras.sql** – Mensagens efêmeras com retenção mínima de 10 dias.
+- **docs/retencao_10_dias.sql** – Política de retenção mínima (standalone).
 - **CONFIGURAR_SUPABASE.md**, **DEPLOY_VERCEL.md**, **CONFIGURAR_NEWSAPI.md** – Guias específicos.
 
 Para dúvidas sobre mensagens efêmeras ou schema de mensagens, consulte também **docs/adicionar_mensagens_efemeras.sql** e **docs/messaging_schema.sql** (se existirem).
