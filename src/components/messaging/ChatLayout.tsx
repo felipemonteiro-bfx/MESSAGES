@@ -236,15 +236,7 @@ export default function ChatLayout() {
         } catch (error) {
           logger.warn('Erro ao sincronizar mensagens pendentes', { error });
         }
-        // Buscar perfil do usuário atual
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('nickname, avatar_url')
-          .eq('id', user.id)
-          .single();
-        if (profile) {
-          setCurrentUserProfile(profile);
-        }
+        // Perfil já foi buscado e definido acima (linha 205-220)
       }
     };
     init();

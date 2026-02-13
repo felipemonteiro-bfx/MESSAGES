@@ -43,10 +43,6 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
           options: { 
             // Não enviar email de confirmação (mas Supabase ainda pode enviar se configurado no Dashboard)
             emailRedirectTo: undefined,
-            // Desabilitar confirmação via opções (pode não funcionar se habilitado no Dashboard)
-            email: {
-              shouldCreateUser: true,
-            },
             data: { 
               nickname: nickname.toLowerCase().replace(/\s+/g, '_')
             } 
