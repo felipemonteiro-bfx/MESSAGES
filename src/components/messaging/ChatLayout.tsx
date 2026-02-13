@@ -201,6 +201,24 @@ export default function ChatLayout() {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
       if (user) {
+        // Verificar se o perfil existe e tem nickname
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('nickname, avatar_url')
+          .eq('id', user.id)
+          .single();
+        
+        if (profileError || !profile) {
+          logger.warn('Profile not found or missing nickname', { userId: user.id, error: profileError });
+          toast.warning('Seu perfil precisa de um nickname. Configure no cadastro.');
+        } else if (!profile.nickname) {
+          logger.warn('Profile missing nickname', { userId: user.id });
+          toast.warning('Seu perfil precisa de um nickname para usar mensagens.');
+        } else {
+          setCurrentUserProfile(profile);
+          logger.info('User profile loaded', { userId: user.id, nickname: profile.nickname });
+        }
+        
         await fetchChats(user.id);
         
         // Sugestão 15: Sincronizar mensagens pendentes ao inicializar
@@ -750,17 +768,71 @@ export default function ChatLayout() {
       }
 
       if (fetchError || !targetUser) {
-        const errorMsg = isEmail 
-          ? 'Usuário não encontrado com este email. Certifique-se de que a função get_user_by_email está criada no Supabase.'
-          : 'Usuário não encontrado com este nickname';
+        let errorMsg = '';
+        if (isEmail) {
+          errorMsg = 'Usuário não encontrado com este email. Certifique-se de que a função get_user_by_email está criada no Supabase.';
+        } else {
+          // Verificar se é erro de validação ou não encontrado
+          if (fetchError?.code === 'PGRST116') {
+            errorMsg = 'Usuário não encontrado com este nickname. Verifique se o nickname está correto.';
+          } else if (fetchError?.message?.includes('Nickname inválido')) {
+            errorMsg = fetchError.message;
+          } else {
+            errorMsg = 'Usuário não encontrado com este nickname. Verifique se está digitado corretamente.';
+          }
+        }
         toast.error(errorMsg);
+        logger.warn('User not found', { searchTerm, isEmail, error: fetchError });
         setIsAddingContact(false);
         return;
       }
 
       if (targetUser.id === currentUser.id) {
         toast.error("Você não pode adicionar a si mesmo");
+        setIsAddingContact(false);
         return;
+      }
+
+      // Verificar se já existe um chat entre esses dois usuários
+      const { data: existingChats } = await supabase
+        .from('chat_participants')
+        .select('chat_id')
+        .eq('user_id', currentUser.id);
+      
+      if (existingChats && existingChats.length > 0) {
+        const chatIds = existingChats.map(cp => cp.chat_id);
+        const { data: existingChatWithUser } = await supabase
+          .from('chat_participants')
+          .select('chat_id')
+          .eq('user_id', targetUser.id)
+          .in('chat_id', chatIds)
+          .single();
+        
+        if (existingChatWithUser) {
+          // Chat já existe, apenas selecionar
+          const { data: existingChat } = await supabase
+            .from('chats')
+            .select('*')
+            .eq('id', existingChatWithUser.chat_id)
+            .single();
+          
+          if (existingChat) {
+            toast.info('Chat já existe com este usuário');
+            await fetchChats(currentUser.id);
+            setSelectedChat({
+              ...existingChat,
+              recipient: {
+                id: targetUser.id,
+                nickname: targetUser.nickname,
+                avatar_url: targetUser.avatar_url || ''
+              }
+            } as ChatWithRecipient);
+            setIsAddContactOpen(false);
+            setNicknameSearch('');
+            setIsAddingContact(false);
+            return;
+          }
+        }
       }
 
       const { data: newChat, error: chatError } = await supabase
@@ -769,7 +841,10 @@ export default function ChatLayout() {
         .select()
         .single();
 
-      if (chatError) throw chatError;
+      if (chatError) {
+        logger.error('Error creating chat', chatError);
+        throw chatError;
+      }
 
       if (newChat) {
         const { error: participantsError } = await supabase.from('chat_participants').insert([
@@ -777,7 +852,18 @@ export default function ChatLayout() {
           { chat_id: newChat.id, user_id: targetUser.id }
         ]);
         
-        if (participantsError) throw participantsError;
+        if (participantsError) {
+          logger.error('Error adding participants', participantsError);
+          // Tentar deletar o chat criado se falhar ao adicionar participantes
+          await supabase.from('chats').delete().eq('id', newChat.id);
+          throw participantsError;
+        }
+        
+        logger.info('Chat created successfully', { 
+          chatId: newChat.id, 
+          userId: currentUser.id, 
+          targetUserId: targetUser.id 
+        });
         
         toast.success('Bom trabalho! Chat criado com sucesso.', { duration: 2000 });
         await fetchChats(currentUser.id);

@@ -56,12 +56,39 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
 
         if (signUpData.user) {
           const cleanNickname = nickname.toLowerCase().replace(/\s+/g, '_');
+          
+          // Validar nickname antes de criar perfil
+          if (!cleanNickname || cleanNickname.length < 3 || cleanNickname.length > 20) {
+            throw new Error('Nickname deve ter entre 3 e 20 caracteres');
+          }
+          
+          // Verificar se nickname já existe
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('nickname', cleanNickname)
+            .single();
+          
+          if (existingProfile && existingProfile.id !== signUpData.user.id) {
+            throw new Error('Este nickname já está em uso. Escolha outro.');
+          }
+          
           const { error: profileError } = await supabase.from('profiles').upsert({
             id: signUpData.user.id,
             nickname: cleanNickname,
             avatar_url: `https://i.pravatar.cc/150?u=${signUpData.user.id}`,
           }, { onConflict: 'id' });
-          if (profileError) logger.error('Failed to create profile', profileError);
+          
+          if (profileError) {
+            logger.error('Failed to create profile', profileError);
+            // Se erro de nickname duplicado, informar usuário
+            if (profileError.code === '23505' || profileError.message?.includes('unique')) {
+              throw new Error('Este nickname já está em uso. Escolha outro.');
+            }
+            throw profileError;
+          }
+          
+          logger.info('Profile created successfully', { userId: signUpData.user.id, nickname: cleanNickname });
           
           // Aguardar um pouco para garantir que a sessão está estabelecida
           await new Promise(resolve => setTimeout(resolve, 500));
