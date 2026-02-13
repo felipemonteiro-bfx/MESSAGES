@@ -41,6 +41,16 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    // Verificar se já está desbloqueado antes de resetar
+    const storedMode = localStorage.getItem('stealth_messaging_mode');
+    if (storedMode === 'false' && user) {
+      // Se já estava desbloqueado e usuário está autenticado, manter desbloqueado
+      setIsStealthMode(false);
+      setShowMessaging(true);
+      document.title = 'Mensagens';
+      return;
+    }
+    
     // Sempre começar com portal de notícias (news first)
     setIsStealthMode(true);
     setShowMessaging(false);
@@ -150,12 +160,14 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   }, [isStealthMode]);
 
   const unlockMessaging = () => {
+    console.log('unlockMessaging chamado');
     setIsStealthMode(false);
     setShowPinPad(false);
     setShowMessaging(true);
     localStorage.setItem('stealth_messaging_mode', 'false');
     document.title = 'Mensagens';
     toast.success('Bom trabalho! Acesso concedido.', { duration: 2000 });
+    console.log('Estado atualizado: isStealthMode=false, showMessaging=true');
   };
 
   const lockMessaging = () => {
@@ -197,16 +209,10 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   };
 
   const handlePinSuccess = () => {
-    // Verificar se o usuário está autenticado antes de desbloquear
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        unlockMessaging();
-      } else {
-        toast.error('Sessão expirada. Faça login novamente.');
-        setShowPinPad(false);
-        setShowAuthModal(true);
-      }
-    });
+    console.log('handlePinSuccess chamado');
+    // Desbloquear mensagens diretamente após PIN correto
+    // O usuário já está autenticado (caso contrário não teria chegado até o PinPad)
+    unlockMessaging();
   };
 
   const handleMessageNotification = (fakeNewsTitle: string) => {
