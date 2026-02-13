@@ -7,6 +7,7 @@ import PinPad from './PinPad';
 import ChatLayout from '../messaging/ChatLayout';
 import { AuthForm } from './AuthForm';
 import { useAuth } from '@/hooks/useAuth';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
 import { getAutoLockTimeout } from '@/lib/settings';
@@ -25,6 +26,7 @@ interface StealthMessagingProviderProps {
 
 export default function StealthMessagingProvider({ children }: StealthMessagingProviderProps) {
   const { user } = useAuth();
+  const supabase = createClient();
   const [isStealthMode, setIsStealthMode] = useState(true);
   const [showPinPad, setShowPinPad] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -166,23 +168,45 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   };
 
   const handleUnlockRequest = () => {
-    if (!user) {
-      // Primeira vez / não logado: mostrar registro (signup ou login)
-      setShowAuthModal(true);
-      setAuthModalMode('signup');
-    } else {
-      // Já logado: só pedir PIN
+    // Verificar novamente o estado do usuário antes de decidir
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) {
+        // Primeira vez / não logado: mostrar registro (signup ou login)
+        setShowAuthModal(true);
+        setAuthModalMode('signup');
+      } else {
+        // Já logado: só pedir PIN
+        setShowPinPad(true);
+      }
+    });
+  };
+
+  const handleAuthSuccess = async () => {
+    setShowAuthModal(false);
+    // Aguardar um pouco para garantir que a sessão foi estabelecida
+    await new Promise(resolve => setTimeout(resolve, 300));
+    // Verificar novamente se o usuário está autenticado
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
       setShowPinPad(true);
+    } else {
+      // Se ainda não estiver autenticado, mostrar erro
+      toast.error('Erro ao autenticar. Tente novamente.');
+      setShowAuthModal(true);
     }
   };
 
-  const handleAuthSuccess = () => {
-    setShowAuthModal(false);
-    setShowPinPad(true);
-  };
-
   const handlePinSuccess = () => {
-    unlockMessaging();
+    // Verificar se o usuário está autenticado antes de desbloquear
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        unlockMessaging();
+      } else {
+        toast.error('Sessão expirada. Faça login novamente.');
+        setShowPinPad(false);
+        setShowAuthModal(true);
+      }
+    });
   };
 
   const handleMessageNotification = (fakeNewsTitle: string) => {

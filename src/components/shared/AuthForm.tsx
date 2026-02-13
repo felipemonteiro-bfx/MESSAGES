@@ -55,13 +55,19 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
             avatar_url: `https://i.pravatar.cc/150?u=${signUpData.user.id}`,
           }, { onConflict: 'id' });
           if (profileError) logger.error('Failed to create profile', profileError);
+          
+          // Aguardar um pouco para garantir que a sessão está estabelecida
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
 
         // Após cadastro, ir direto para o portal (não para /login)
         toast.success('Conta criada! Configure seu PIN de acesso.');
         if (onSuccess) {
-          onSuccess(); // Modal fecha e mostra PinPad
-          router.refresh();
+          // Aguardar um pouco mais para garantir que o estado do usuário foi atualizado
+          setTimeout(() => {
+            onSuccess(); // Modal fecha e mostra PinPad
+            router.refresh();
+          }, 300);
         } else {
           // Se não for modal, redireciona para portal
           router.push('/');
