@@ -79,10 +79,12 @@ async function encryptWithPin(data: Uint8Array, pin: string): Promise<string> {
   const key = await deriveKeyFromPin(pin);
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
+  // Criar uma cópia para garantir que seja um ArrayBuffer válido
+  const dataBuffer = new Uint8Array(data).buffer;
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
-    data
+    dataBuffer
   );
 
   // Combinar IV + dados criptografados e converter para base64
@@ -102,10 +104,12 @@ async function decryptWithPin(encryptedData: string, pin: string): Promise<Uint8
   const data = combined.slice(IV_LENGTH);
 
   const key = await deriveKeyFromPin(pin);
+  // Criar uma cópia para garantir que seja um ArrayBuffer válido
+  const dataBuffer = new Uint8Array(data).buffer;
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
     key,
-    data
+    dataBuffer
   );
 
   return new Uint8Array(decrypted);
@@ -116,7 +120,8 @@ async function decryptWithPin(encryptedData: string, pin: string): Promise<Uint8
  */
 export async function encryptMessage(message: string, recipientPublicKeyBase64: string): Promise<string> {
   // Importar chave pública do destinatário
-  const publicKeyBuffer = Uint8Array.from(atob(recipientPublicKeyBase64), c => c.charCodeAt(0));
+  const publicKeyArray = Uint8Array.from(atob(recipientPublicKeyBase64), c => c.charCodeAt(0));
+  const publicKeyBuffer = new Uint8Array(publicKeyArray).buffer;
   const publicKey = await crypto.subtle.importKey(
     'spki',
     publicKeyBuffer,
@@ -148,9 +153,11 @@ export async function decryptMessage(encryptedMessage: string, userId: string, p
   }
 
   const privateKeyBuffer = await decryptWithPin(encryptedPrivateKey, pin);
+  // Criar uma cópia para garantir que seja um ArrayBuffer válido
+  const keyBuffer = new Uint8Array(privateKeyBuffer).buffer;
   const privateKey = await crypto.subtle.importKey(
     'pkcs8',
-    privateKeyBuffer,
+    keyBuffer,
     { name: 'RSA-OAEP', hash: 'SHA-256' },
     false,
     ['decrypt']
