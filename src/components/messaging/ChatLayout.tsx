@@ -47,6 +47,9 @@ export default function ChatLayout() {
   const [messagesPage, setMessagesPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const MESSAGES_PER_PAGE = 50;
+  // Sugestão 23: Drag & drop de arquivos
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPreview, setDragPreview] = useState<{ files: File[]; count: number } | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -900,7 +903,112 @@ export default function ChatLayout() {
                 )}
               </div>
             </header>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621]" data-stealth-content="true">
+            <div 
+              className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative" 
+              data-stealth-content="true"
+              // Sugestão 23: Drag & drop de arquivos
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer.types.includes('Files')) {
+                  setIsDragging(true);
+                }
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Só desativar se realmente saiu da área (não apenas de um filho)
+                if (e.currentTarget === e.target) {
+                  setIsDragging(false);
+                  setDragPreview(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length === 0 || !selectedChat || !currentUser) return;
+                
+                // Sugestão 23: Preview antes de enviar
+                const imageFiles = files.filter(f => f.type.startsWith('image/'));
+                const videoFiles = files.filter(f => f.type.startsWith('video/'));
+                const audioFiles = files.filter(f => f.type.startsWith('audio/'));
+                const otherFiles = files.filter(f => 
+                  !f.type.startsWith('image/') && 
+                  !f.type.startsWith('video/') && 
+                  !f.type.startsWith('audio/')
+                );
+                
+                // Limite de tamanho: 50MB por arquivo
+                const maxSize = 50 * 1024 * 1024; // 50MB
+                const validFiles = files.filter(f => {
+                  if (f.size > maxSize) {
+                    toast.error(`Arquivo ${f.name} excede 50MB`);
+                    return false;
+                  }
+                  return true;
+                });
+                
+                if (validFiles.length === 0) return;
+                
+                // Mostrar preview
+                if (imageFiles.length > 0) {
+                  setDragPreview({ files: imageFiles, count: validFiles.length });
+                  // Enviar após pequeno delay para mostrar preview
+                  setTimeout(() => {
+                    imageFiles.forEach(file => handleMediaUpload(file, 'image'));
+                    setDragPreview(null);
+                  }, 300);
+                } else if (videoFiles.length > 0) {
+                  videoFiles.forEach(file => handleMediaUpload(file, 'video'));
+                } else if (audioFiles.length > 0) {
+                  audioFiles.forEach(file => handleMediaUpload(file, 'audio'));
+                } else if (otherFiles.length > 0) {
+                  toast.info('Arquivos não suportados. Use imagens, vídeos ou áudios.');
+                }
+              }}
+            >
+               {/* Sugestão 23: Overlay de drag & drop */}
+               {isDragging && (
+                 <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-lg z-50 flex items-center justify-center backdrop-blur-sm">
+                   <div className="text-center">
+                     <Paperclip className="w-12 h-12 text-blue-500 mx-auto mb-2" />
+                     <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">Solte os arquivos aqui</p>
+                     <p className="text-sm text-gray-600 dark:text-gray-400">Máx 50MB por arquivo</p>
+                   </div>
+                 </div>
+               )}
+               
+               {/* Sugestão 23: Preview de arquivos sendo enviados */}
+               {dragPreview && dragPreview.files.length > 0 && (
+                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                   <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                     Enviando {dragPreview.count} arquivo(s)...
+                   </p>
+                   <div className="flex gap-2 flex-wrap">
+                     {dragPreview.files.slice(0, 3).map((file, idx) => (
+                       <div key={idx} className="relative">
+                         {file.type.startsWith('image/') && (
+                           <img 
+                             src={URL.createObjectURL(file)} 
+                             alt={file.name}
+                             className="w-16 h-16 object-cover rounded"
+                           />
+                         )}
+                         <p className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[64px]">{file.name}</p>
+                       </div>
+                     ))}
+                     {dragPreview.count > 3 && (
+                       <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
+                         <span className="text-xs font-medium">+{dragPreview.count - 3}</span>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               )}
+               
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
                 {/* Sugestão 15: Botão para carregar mais mensagens antigas */}
                 {hasMoreMessages && messages.length > 0 && (

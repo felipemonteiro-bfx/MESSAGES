@@ -1,10 +1,14 @@
 // Service Worker para Push Notifications (Sugestão 3)
 // Notificações disfarçadas como manchetes de notícias
 
-const CACHE_NAME = 'noticias-br-v1';
+// Sugestão 25: Sincronização offline melhorada
+const CACHE_NAME = 'stealth-messaging-v2';
+const MESSAGES_CACHE = 'messages-cache-v1';
 const urlsToCache = [
   '/',
-  '/manifest.json'
+  '/manifest.json',
+  '/icon-192.svg',
+  '/icon-512.svg'
 ];
 
 // Instalar Service Worker
@@ -21,22 +25,79 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          // Sugestão 25: Limpar caches antigos mas manter mensagens
+          if (cacheName !== CACHE_NAME && cacheName !== MESSAGES_CACHE) {
             return caches.delete(cacheName);
           }
         })
       );
     })
   );
+  // Sugestão 25: Tomar controle imediato de todas as páginas
+  return self.clients.claim();
 });
 
-// Interceptar requisições
+// Sugestão 25: Interceptar requisições com estratégia melhorada
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        return response || fetch(event.request);
+  const { request } = event;
+  const url = new URL(request.url);
+  
+  // Cache primeiro para assets estáticos
+  if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icon')) {
+    event.respondWith(
+      caches.match(request).then((response) => {
+        return response || fetch(request).then((fetchResponse) => {
+          // Cachear resposta para uso offline
+          if (fetchResponse.ok) {
+            const responseClone = fetchResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return fetchResponse;
+        });
       })
+    );
+    return;
+  }
+  
+  // Network first para API calls (mas cachear para offline)
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request).then((fetchResponse) => {
+        // Cachear respostas GET bem-sucedidas
+        if (request.method === 'GET' && fetchResponse.ok) {
+          const responseClone = fetchResponse.clone();
+          caches.open(MESSAGES_CACHE).then((cache) => {
+            cache.put(request, responseClone);
+          });
+        }
+        return fetchResponse;
+      }).catch(() => {
+        // Se offline, tentar cache
+        return caches.match(request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // Retornar resposta offline genérica
+          return new Response(
+            JSON.stringify({ error: 'Offline', cached: true }),
+            { 
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        });
+      })
+    );
+    return;
+  }
+  
+  // Fallback padrão
+  event.respondWith(
+    caches.match(request).then((response) => {
+      return response || fetch(request);
+    })
   );
 });
 
