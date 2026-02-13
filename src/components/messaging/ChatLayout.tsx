@@ -706,7 +706,7 @@ export default function ChatLayout() {
             />
           </div>
           <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Configurações"><Settings className="w-5 h-5" /></button>
-          <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
+          <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato" data-testid="add-contact-button" aria-label="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
           {currentUser && (
             <button 
               onClick={async () => {
@@ -767,7 +767,9 @@ export default function ChatLayout() {
           ) : (
             filteredChats.map((chat) => (
               <div 
-                key={chat.id} 
+                key={chat.id}
+                data-chat="true"
+                data-chat-id={chat.id}
                 onClick={() => { 
                   setSelectedChat(chat); 
                   if (window.innerWidth < 768) setIsSidebarOpen(false); 
@@ -1073,6 +1075,8 @@ export default function ChatLayout() {
                       key={msg.id} 
                       className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
                       data-stealth-content="true"
+                      data-message="true"
+                      data-message-id={msg.id}
                     >
                       <img 
                         src={msg.sender_id === currentUser?.id 
@@ -1235,6 +1239,8 @@ export default function ChatLayout() {
                       placeholder="Adicione um comentário..." 
                       className="flex-1 bg-transparent border-none focus:ring-0 text-[14px] resize-none py-1 placeholder-gray-400 dark:placeholder-[#708499] text-gray-900 dark:text-white"
                       disabled={isSending}
+                      data-testid="message-input"
+                      data-stealth-content="true"
                     />
                   </div>
                   <button 
@@ -1249,6 +1255,8 @@ export default function ChatLayout() {
                     className={`w-11 h-11 min-w-[44px] min-h-[44px] bg-blue-600 dark:bg-[#2b5278] rounded-full flex items-center justify-center text-white transition-opacity touch-manipulation ${
                       !inputText.trim() || isSending ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700 dark:hover:bg-[#346290] active:scale-95'
                     }`}
+                    data-testid="send-button"
+                    aria-label="Enviar mensagem"
                   >
                     {isSending ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

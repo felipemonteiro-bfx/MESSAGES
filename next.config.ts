@@ -2,6 +2,11 @@
 const nextConfig = {
   // Configuração para Capacitor (gera export estático quando CAPACITOR=true)
   output: process.env.CAPACITOR === 'true' ? 'export' : undefined,
+  
+  // Configurar Turbopack para evitar conflito com webpack
+  experimental: {
+    turbo: {},
+  },
   images: {
     unoptimized: process.env.CAPACITOR === 'true', // Necessário para export estático
     remotePatterns: [

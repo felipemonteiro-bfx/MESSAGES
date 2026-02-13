@@ -68,9 +68,14 @@ export default defineConfig({
 
   // Servidor de desenvolvimento
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev -- --webpack', // Usar webpack explicitamente para evitar conflito
     url: 'http://localhost:3005',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key',
+      NEXT_PUBLIC_NEWS_API_KEY: process.env.NEXT_PUBLIC_NEWS_API_KEY || '',
+    },
   },
 });
