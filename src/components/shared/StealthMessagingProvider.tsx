@@ -40,6 +40,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const [escapePressCount, setEscapePressCount] = useState(0);
   const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Inicializar estado apenas uma vez na montagem
   useEffect(() => {
     // Verificar se já está desbloqueado antes de resetar
     const storedMode = localStorage.getItem('stealth_messaging_mode');
@@ -48,13 +49,16 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
       setIsStealthMode(false);
       setShowMessaging(true);
       document.title = 'Mensagens';
-      return;
+    } else {
+      // Sempre começar com portal de notícias (news first)
+      setIsStealthMode(true);
+      setShowMessaging(false);
+      document.title = 'Notícias em Tempo Real';
     }
-    
-    // Sempre começar com portal de notícias (news first)
-    setIsStealthMode(true);
-    setShowMessaging(false);
-    document.title = 'Notícias em Tempo Real';
+  }, []); // Executar apenas uma vez na montagem
+
+  useEffect(() => {
+    // Este useEffect só gerencia eventos de teclado e visibilidade
 
     // Sugestão 7: Atalho de teclado para bloquear (Ctrl+Shift+L ou Escape 2x)
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -157,7 +161,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
         clearTimeout(escapeTimeoutRef.current);
       }
     };
-  }, [isStealthMode]);
+  }, [isStealthMode, user]); // Adicionar user como dependência
 
   const unlockMessaging = () => {
     console.log('unlockMessaging chamado');
