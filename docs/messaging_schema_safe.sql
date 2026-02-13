@@ -1,7 +1,10 @@
--- Messaging App Schema (Stealth Mode)
--- IDEMPOTENTE: pode ser executado várias vezes sem erro (tabelas/policies já existentes são ignoradas ou recriadas)
+-- Messaging App Schema (Stealth Mode) - VERSÃO SEGURA E IDEMPOTENTE
+-- Este script pode ser executado múltiplas vezes sem erro
+-- Execute este arquivo no Supabase SQL Editor
 
--- 1. Profiles (Public user info)
+-- ============================================
+-- 1. PROFILES
+-- ============================================
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid references auth.users not null primary key,
   nickname text unique not null,
@@ -13,22 +16,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Remover políticas antigas se existirem
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+
+-- Criar políticas
 CREATE POLICY "Public profiles are viewable by everyone"
   ON public.profiles FOR SELECT
   USING ( true );
 
-DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING ( auth.uid() = id );
 
-DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   WITH CHECK ( auth.uid() = id );
 
--- 2. Chats (Conversations)
+-- ============================================
+-- 2. CHATS
+-- ============================================
 CREATE TABLE IF NOT EXISTS public.chats (
   id uuid default gen_random_uuid() primary key,
   type text default 'private' check (type in ('private', 'group')),
@@ -38,39 +46,9 @@ CREATE TABLE IF NOT EXISTS public.chats (
 
 ALTER TABLE public.chats ENABLE ROW LEVEL SECURITY;
 
--- 3. Chat Participants (Join table)
-CREATE TABLE IF NOT EXISTS public.chat_participants (
-  chat_id uuid references public.chats on delete cascade not null,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  role text default 'member',
-  joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  primary key (chat_id, user_id)
-);
-
-ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Users can view chats they are part of" ON public.chat_participants;
-CREATE POLICY "Users can view chats they are part of"
-  ON public.chat_participants FOR SELECT
-  USING ( auth.uid() = user_id );
-
-DROP POLICY IF EXISTS "Users can view other participants in their chats" ON public.chat_participants;
-CREATE POLICY "Users can view other participants in their chats"
-  ON public.chat_participants FOR SELECT
-  USING (
-    exists (
-      select 1 from public.chat_participants cp
-      where cp.chat_id = chat_participants.chat_id
-      and cp.user_id = auth.uid()
-    )
-  );
-
-DROP POLICY IF EXISTS "Users can insert participants" ON public.chat_participants;
-CREATE POLICY "Users can insert participants"
-  ON public.chat_participants FOR INSERT
-  WITH CHECK ( auth.uid() = user_id );
-
 DROP POLICY IF EXISTS "Users can view chats they belong to" ON public.chats;
+DROP POLICY IF EXISTS "Users can insert chats" ON public.chats;
+
 CREATE POLICY "Users can view chats they belong to"
   ON public.chats FOR SELECT
   USING (
@@ -81,12 +59,49 @@ CREATE POLICY "Users can view chats they belong to"
     )
   );
 
-DROP POLICY IF EXISTS "Users can insert chats" ON public.chats;
 CREATE POLICY "Users can insert chats"
   ON public.chats FOR INSERT
   WITH CHECK ( true );
 
--- 4. Messages
+-- ============================================
+-- 3. CHAT PARTICIPANTS
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.chat_participants (
+  chat_id uuid references public.chats on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  role text default 'member',
+  joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  muted boolean default false,
+  primary key (chat_id, user_id)
+);
+
+ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view chats they are part of" ON public.chat_participants;
+DROP POLICY IF EXISTS "Users can view other participants in their chats" ON public.chat_participants;
+DROP POLICY IF EXISTS "Users can insert participants" ON public.chat_participants;
+
+CREATE POLICY "Users can view chats they are part of"
+  ON public.chat_participants FOR SELECT
+  USING ( auth.uid() = user_id );
+
+CREATE POLICY "Users can view other participants in their chats"
+  ON public.chat_participants FOR SELECT
+  USING (
+    exists (
+      select 1 from public.chat_participants cp
+      where cp.chat_id = chat_participants.chat_id
+      and cp.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert participants"
+  ON public.chat_participants FOR INSERT
+  WITH CHECK ( auth.uid() = user_id );
+
+-- ============================================
+-- 4. MESSAGES
+-- ============================================
 CREATE TABLE IF NOT EXISTS public.messages (
   id uuid default gen_random_uuid() primary key,
   chat_id uuid references public.chats on delete cascade not null,
@@ -95,12 +110,16 @@ CREATE TABLE IF NOT EXISTS public.messages (
   media_url text,
   media_type text,
   is_encrypted boolean default false,
+  expires_at timestamp with time zone,
+  is_ephemeral boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view messages in their chats" ON public.messages;
+DROP POLICY IF EXISTS "Users can send messages to their chats" ON public.messages;
+
 CREATE POLICY "Users can view messages in their chats"
   ON public.messages FOR SELECT
   USING (
@@ -111,7 +130,6 @@ CREATE POLICY "Users can view messages in their chats"
     )
   );
 
-DROP POLICY IF EXISTS "Users can send messages to their chats" ON public.messages;
 CREATE POLICY "Users can send messages to their chats"
   ON public.messages FOR INSERT
   WITH CHECK (
@@ -123,12 +141,16 @@ CREATE POLICY "Users can send messages to their chats"
     )
   );
 
--- Storage for Media
+-- ============================================
+-- 5. STORAGE BUCKET
+-- ============================================
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('chat-media', 'chat-media', false)
 ON CONFLICT (id) DO NOTHING;
 
 DROP POLICY IF EXISTS "Participants can view media" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can upload media" ON storage.objects;
+
 CREATE POLICY "Participants can view media"
   ON storage.objects FOR SELECT
   USING (
@@ -136,10 +158,13 @@ CREATE POLICY "Participants can view media"
      and auth.role() = 'authenticated'
   );
 
-DROP POLICY IF EXISTS "Authenticated users can upload media" ON storage.objects;
 CREATE POLICY "Authenticated users can upload media"
   ON storage.objects FOR INSERT
   WITH CHECK ( bucket_id = 'chat-media' and auth.role() = 'authenticated' );
+
+-- ============================================
+-- 6. FUNÇÕES
+-- ============================================
 
 -- Função para atualizar nickname
 CREATE OR REPLACE FUNCTION update_user_nickname(
@@ -199,3 +224,34 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_user_by_email(TEXT) TO authenticated;
+
+-- ============================================
+-- VERIFICAÇÃO FINAL
+-- ============================================
+-- Verificar se tudo foi criado corretamente
+SELECT 
+  'profiles' as tabela,
+  COUNT(*) as registros
+FROM public.profiles
+UNION ALL
+SELECT 
+  'chats' as tabela,
+  COUNT(*) as registros
+FROM public.chats
+UNION ALL
+SELECT 
+  'chat_participants' as tabela,
+  COUNT(*) as registros
+FROM public.chat_participants
+UNION ALL
+SELECT 
+  'messages' as tabela,
+  COUNT(*) as registros
+FROM public.messages;
+
+-- Verificar funções
+SELECT 
+  proname as function_name,
+  pg_get_function_arguments(oid) as arguments
+FROM pg_proc
+WHERE proname IN ('get_user_by_email', 'update_user_nickname');

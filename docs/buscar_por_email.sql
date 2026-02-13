@@ -21,10 +21,10 @@ AS $$
 DECLARE
   user_id UUID;
 BEGIN
-  -- Buscar ID do usuário pelo email na tabela auth.users
+  -- Buscar ID do usuário pelo email na tabela auth.users (case-insensitive)
   SELECT id INTO user_id
   FROM auth.users
-  WHERE email = user_email
+  WHERE LOWER(email) = LOWER(user_email)
   LIMIT 1;
   
   -- Se não encontrou, retornar vazio
