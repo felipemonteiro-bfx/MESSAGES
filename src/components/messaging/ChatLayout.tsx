@@ -43,6 +43,10 @@ export default function ChatLayout() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [showEphemeralOption, setShowEphemeralOption] = useState(false);
   const [ephemeralSeconds, setEphemeralSeconds] = useState(30);
+  // Sugestão 15: Lazy loading de mensagens
+  const [messagesPage, setMessagesPage] = useState(1);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const MESSAGES_PER_PAGE = 50;
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,6 +157,34 @@ export default function ChatLayout() {
     }
   }, [messages.length, currentUser, fetchChats]);
 
+  // Sugestão 15: Lazy loading de mensagens
+  const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false) => {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: false })
+      .range((page - 1) * MESSAGES_PER_PAGE, page * MESSAGES_PER_PAGE - 1);
+    
+    if (error) {
+      console.error('Erro ao buscar mensagens:', error);
+      return;
+    }
+    
+    if (data) {
+      // Reverter ordem para mostrar mais antigas primeiro
+      const sortedData = [...data].reverse();
+      
+      if (append) {
+        setMessages(prev => [...sortedData, ...prev]);
+      } else {
+        setMessages(sortedData);
+      }
+      
+      // Verificar se há mais mensagens
+      setHasMoreMessages(data.length === MESSAGES_PER_PAGE);
+    }
+  }, [supabase]);
 
   useEffect(() => {
     if (selectedChat && currentUser) {
