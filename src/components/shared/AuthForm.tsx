@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
-import { Mail, Lock, Loader2, ArrowRight, Chrome, Github, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
@@ -26,28 +26,8 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
-
-  const handleGoogleLogin = async () => {
-    setSocialLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
-      logger.info('Google OAuth initiated');
-    } catch (err) {
-      const appError = normalizeError(err);
-      logError(appError);
-      toast.error(getUserFriendlyMessage(appError));
-      setSocialLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,24 +102,6 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
         </p>
       </CardHeader>
       <CardContent className="px-10 pb-12 space-y-8">
-        
-        <div className="space-y-3">
-          <Button 
-            onClick={handleGoogleLogin} 
-            disabled={socialLoading}
-            variant="outline" 
-            className="w-full h-14 rounded-2xl border-2 border-slate-100 dark:border-white/5 font-bold gap-3 hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
-          >
-            {socialLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Chrome className="h-5 w-5 text-red-500" />}
-            Continuar com Google
-          </Button>
-        </div>
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100 dark:border-white/5" /></div>
-          <div className="relative flex justify-center text-[10px] font-black uppercase"><span className="bg-white dark:bg-slate-900 px-4 text-slate-400">Ou use seu e-mail</span></div>
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-5">
           {type === 'signup' && (
             <Input 
