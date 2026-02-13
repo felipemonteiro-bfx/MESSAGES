@@ -66,11 +66,11 @@ export default defineConfig({
     },
   ],
 
-  // Servidor de desenvolvimento
-  webServer: {
+  // Servidor de desenvolvimento (desabilitado em CI - usar servidor externo ou build estático)
+  webServer: process.env.CI ? undefined : {
     command: 'npm run dev -- --webpack', // Usar webpack explicitamente para evitar conflito
     url: 'http://localhost:3005',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120 * 1000,
     env: {
       NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',

@@ -1,15 +1,14 @@
 name: Playwright Tests
 
 on:
-  workflow_dispatch: # Apenas execução manual - testes foram removidos
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
+  push:
+    branches: [ main, develop, staging ]
+  pull_request:
+    branches: [ main, develop, staging ]
+  workflow_dispatch: # Permite execução manual
 
 jobs:
   test:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
@@ -23,6 +22,64 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Skip tests - Playwright tests removed
-      run: echo "Playwright tests were removed from this project. This workflow is disabled."
-      continue-on-error: true
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps chromium
+    
+    - name: Build application
+      run: npm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+        NEXT_PUBLIC_NEWS_API_KEY: ${{ secrets.NEXT_PUBLIC_NEWS_API_KEY || '' }}
+        NODE_ENV: production
+    
+    - name: Start server
+      run: |
+        npm start &
+        echo $! > server.pid
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+        NEXT_PUBLIC_NEWS_API_KEY: ${{ secrets.NEXT_PUBLIC_NEWS_API_KEY || '' }}
+        PORT: 3005
+    
+    - name: Wait for server
+      run: |
+        npx wait-on http://localhost:3005 --timeout 60000 || sleep 10
+        curl -f http://localhost:3005 || exit 1
+    
+    - name: Run Playwright tests
+      run: npm run test:e2e -- --project=chromium
+      env:
+        CI: true
+        PLAYWRIGHT_BASE_URL: http://localhost:3005
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+        NEXT_PUBLIC_NEWS_API_KEY: ${{ secrets.NEXT_PUBLIC_NEWS_API_KEY || '' }}
+    
+    - name: Upload Playwright Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: playwright-report/
+        if-no-files-found: ignore
+        retention-days: 30
+    
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: test-results/
+        if-no-files-found: ignore
+        retention-days: 7
+    
+    - name: Stop server
+      if: always()
+      run: |
+        if [ -f server.pid ]; then
+          kill $(cat server.pid) || true
+          rm server.pid || true
+        fi
+        pkill -f "next start" || true
