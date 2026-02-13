@@ -43,18 +43,24 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   // Inicializar estado apenas uma vez na montagem
   useEffect(() => {
     // Verificar se já está desbloqueado antes de resetar
-    const storedMode = localStorage.getItem('stealth_messaging_mode');
-    if (storedMode === 'false' && user) {
-      // Se já estava desbloqueado e usuário está autenticado, manter desbloqueado
-      setIsStealthMode(false);
-      setShowMessaging(true);
-      document.title = 'Mensagens';
-    } else {
-      // Sempre começar com portal de notícias (news first)
-      setIsStealthMode(true);
-      setShowMessaging(false);
-      document.title = 'Notícias em Tempo Real';
-    }
+    const checkInitialState = async () => {
+      const storedMode = localStorage.getItem('stealth_messaging_mode');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (storedMode === 'false' && session?.user) {
+        // Se já estava desbloqueado e usuário está autenticado, manter desbloqueado
+        setIsStealthMode(false);
+        setShowMessaging(true);
+        document.title = 'Mensagens';
+      } else {
+        // Sempre começar com portal de notícias (news first)
+        setIsStealthMode(true);
+        setShowMessaging(false);
+        document.title = 'Notícias em Tempo Real';
+      }
+    };
+    
+    checkInitialState();
   }, []); // Executar apenas uma vez na montagem
 
   useEffect(() => {
