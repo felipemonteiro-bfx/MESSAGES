@@ -54,10 +54,12 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
     setLoading(true);
     try {
       if (type === 'signup') {
+        // Signup sem confirmação de email - aceita qualquer email
         const { data: signUpData, error } = await supabase.auth.signUp({
           email,
           password,
           options: { 
+            emailRedirectTo: undefined, // Não enviar email de confirmação
             data: { 
               nickname: nickname.toLowerCase().replace(/\s+/g, '_')
             } 
@@ -75,12 +77,14 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
           if (profileError) logger.error('Failed to create profile', profileError);
         }
 
+        // Após cadastro, ir direto para o portal (não para /login)
         toast.success('Conta criada! Configure seu PIN de acesso.');
         if (onSuccess) {
-          onSuccess();
+          onSuccess(); // Modal fecha e mostra PinPad
           router.refresh();
         } else {
-          router.push('/login?registered=1');
+          // Se não for modal, redireciona para portal
+          router.push('/');
           router.refresh();
         }
       } else {
@@ -149,7 +153,7 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
           <Input 
             label="E-mail" 
             type="text" 
-            placeholder="seu@email.com" 
+            placeholder="qualquer@email.com (sem validação)" 
             value={email} 
             onChange={(e) => setEmail(e.target.value)} 
             required 

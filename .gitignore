@@ -34,3 +34,23 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Capacitor / Mobile
+/android/
+/ios/
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+*.cer
+capacitor.config.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db

@@ -40,7 +40,8 @@ Em seguida:
 
 - **Storage**: criar bucket `chat-media` (privado).  
 - **Realtime**: habilitado nas tabelas indicadas no `SETUP_COMPLETO.sql`.  
-- **Auth**: em *Authentication → URL Configuration*, definir *Site URL* (ex.: `http://localhost:3005` ou a URL da Vercel).
+- **Auth**: em *Authentication → URL Configuration*, definir *Site URL* (ex.: `http://localhost:3005` ou a URL da Vercel).  
+  - **Importante**: Desabilitar confirmação de email em *Authentication → Settings → Email Auth* → desmarque "Enable email confirmations" (aceita qualquer email sem validação).
 
 ```bash
 yarn dev
@@ -48,9 +49,9 @@ yarn dev
 
 Acesse: **http://localhost:3005**
 
-- **Portal público:** a home (`/`) mostra o portal de notícias para todos, sem login.
-- **Acesso ao chat:** clique em "Fale Conosco" (rodapé) ou dê **duplo clique na data** (header). 1ª vez: cadastro (nickname, email, senha); depois: digite o PIN de 4 dígitos.
-- **Rotas diretas:** `/signup` e `/login` para cadastro e login tradicionais.
+- **Portal público:** a home (`/`) mostra o portal de notícias para todos, sem login. Após cadastro, redireciona para o portal (não para `/login`).
+- **Acesso ao chat:** clique em "Fale Conosco" (rodapé) ou dê **duplo clique na data** (header). 1ª vez: cadastro (nickname, email qualquer, senha) → aparece PinPad para configurar PIN; depois: apenas PIN. **Cadastro só aparece ao clicar em "Fale Conosco"**.
+- **Rotas diretas:** `/signup` e `/login` para cadastro e login tradicionais (após cadastro, vai para portal `/`).
 
 ## 📁 Variáveis de ambiente
 
@@ -65,9 +66,31 @@ Acesse: **http://localhost:3005**
 
 Gerar par VAPID: `node scripts/generate-vapid.js` (se existir) ou use [web-push](https://www.npmjs.com/package/web-push).
 
+## 📱 Apps Mobile (Android e iOS)
+
+O app está preparado para gerar apps nativos usando **Capacitor**:
+
+```bash
+# Setup inicial (primeira vez)
+npm install
+CAPACITOR=true npm run build
+npx cap add android  # ou ios
+npx cap sync
+
+# Abrir no IDE nativo
+npm run cap:open:android  # Android Studio
+npm run cap:open:ios      # Xcode (macOS)
+```
+
+📖 **Guia completo:** [docs/BUILD_MOBILE.md](docs/BUILD_MOBILE.md)  
+⚡ **Setup rápido:** [docs/SETUP_MOBILE.md](docs/SETUP_MOBILE.md)
+
 ## 📚 Documentação
 
 - **[docs/DOCUMENTACAO_APLICACAO.md](docs/DOCUMENTACAO_APLICACAO.md)** – Documentação completa da aplicação (setup, rotas, deploy, troubleshooting)  
+- **[docs/CONFIGURAR_AUTH_SEM_CONFIRMACAO.md](docs/CONFIGURAR_AUTH_SEM_CONFIRMACAO.md)** – Como desabilitar confirmação de email no Supabase  
+- **[docs/BUILD_MOBILE.md](docs/BUILD_MOBILE.md)** – Guia completo para build Android/iOS  
+- **[docs/SETUP_MOBILE.md](docs/SETUP_MOBILE.md)** – Setup rápido para mobile  
 - `CONFIGURAR_SUPABASE.md` – Configuração do Supabase  
 - `DEPLOY_VERCEL.md` – Deploy na Vercel  
 - `CONFIGURAR_NEWSAPI.md` – Notícias reais com News API  

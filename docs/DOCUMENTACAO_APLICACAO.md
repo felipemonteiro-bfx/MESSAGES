@@ -10,7 +10,7 @@ O **Stealth Messaging** é um app de mensagens em tempo real cuja interface púb
 
 ### Principais características
 
-- **Autenticação**: cadastro com email, senha e nickname; login com email/senha.
+- **Autenticação**: cadastro com email (qualquer email, sem confirmação), senha e nickname; login com email/senha. Após cadastro, redireciona para portal (`/`), não para `/login`. Cadastro só aparece ao clicar em "Fale Conosco".
 - **Perfil**: criado automaticamente no signup (tabela `profiles`), com nickname e avatar.
 - **Capa (notícias)**: lista de notícias; ao clicar, o link abre em **nova aba**.
 - **Menu lateral (☰)**: Início, Receber alertas de notícias (push), Sair.
@@ -31,8 +31,8 @@ O **Stealth Messaging** é um app de mensagens em tempo real cuja interface púb
 |------|--------|-----------|
 | `/` | Público | Home: portal de notícias (StealthNews) para todos. Acesso ao chat via botão oculto (Fale Conosco ou duplo clique na data) → signup/login ou PIN. |
 | `/login` | Público | Página de login (email/senha). Query `?registered=1` mostra toast de conta criada. |
-| `/signup` | Público | Cadastro (email, senha, nickname). Após sucesso, redireciona para `/login?registered=1`. |
-| `/auth/callback` | Público | Callback OAuth do Supabase (confirmação de email, etc.). |
+| `/signup` | Público | Cadastro (email qualquer, senha, nickname). Após sucesso, redireciona para portal (`/`), não para `/login`. |
+| `/auth/callback` | Público | Callback OAuth do Supabase. Redireciona para portal (`/`). |
 | `/api/push/subscribe` | POST | Registra inscrição Web Push do usuário. |
 | `/api/push/send` | POST | Envia notificação push (uso interno/admin). |
 
@@ -105,9 +105,11 @@ Execute no **SQL Editor** do projeto Supabase, **nesta ordem**:
   - **Site URL**: em desenvolvimento use `http://localhost:3005`; em produção use a URL do app (ex.: `https://seu-app.vercel.app`).
   - **Redirect URLs**: inclua `http://localhost:3005/**` e `https://seu-app.vercel.app/**` (ou o domínio real).
 
-- **Authentication → Email**
-  - Se **Confirm email** estiver ativo, o usuário precisa confirmar o email antes de logar; o link de confirmação usa o Redirect URL acima.
-  - Se desativar, o cadastro permite login imediato após signup.
+- **Authentication → Settings → Email Auth**
+  - **Desmarque "Enable email confirmations"** para aceitar qualquer email sem validação (recomendado para este app).
+  - Se confirmar email estiver ativo, o usuário precisa confirmar o email antes de logar; o link de confirmação usa o Redirect URL acima.
+  - Com confirmação desabilitada, o cadastro permite login imediato após signup e aceita qualquer email (mesmo inválido).
+  - 📖 **Guia completo:** [docs/CONFIGURAR_AUTH_SEM_CONFIRMACAO.md](CONFIGURAR_AUTH_SEM_CONFIRMACAO.md)
 
 ### 3.6 Rodar localmente
 
@@ -118,8 +120,9 @@ yarn dev
 
 Acesse: **http://localhost:3005**
 
-- Ir em `/signup` para criar conta (email, senha, nickname).
-- Em seguida fazer login em `/login` e usar o app (notícias, menu lateral, push, chat).
+- Portal público (`/`) mostra notícias para todos.
+- Clique em "Fale Conosco" para cadastro/login (1ª vez) ou apenas PIN (depois).
+- Após cadastro, redireciona para portal (`/`), não para `/login`.
 
 ---
 
