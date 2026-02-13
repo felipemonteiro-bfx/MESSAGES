@@ -63,7 +63,7 @@ class MonitoringService {
     if (typeof window !== 'undefined') {
       try {
         const supabase = require('@/lib/supabase/client').createClient();
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(({ data: { session } }: { data: { session: any } }) => {
           if (session?.user) {
             entry.userId = session.user.id;
           }
