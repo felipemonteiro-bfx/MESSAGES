@@ -25,7 +25,15 @@ Guia completo para gerar apps nativos Android (.apk/.aab) e iOS (.ipa) usando Ca
 ### 1. Instalar dependências
 
 ```bash
+# Instalar dependências principais do projeto
 npm install
+
+# Instalar dependências do Capacitor (apenas quando necessário para builds mobile)
+# Windows PowerShell:
+.\scripts\install-capacitor.ps1
+
+# Linux/Mac:
+bash scripts/install-capacitor.sh
 ```
 
 Isso instalará:
@@ -34,6 +42,8 @@ Isso instalará:
 - `@capacitor/android` - Plataforma Android
 - `@capacitor/ios` - Plataforma iOS
 - Plugins nativos (câmera, push notifications, etc.)
+
+**Nota:** As dependências do Capacitor não estão no `package.json` principal para evitar erros no build web (Vercel). Instale-as apenas quando for fazer builds mobile.
 
 ### 2. Build do Next.js para mobile
 

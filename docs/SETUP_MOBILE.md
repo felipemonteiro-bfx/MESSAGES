@@ -15,13 +15,23 @@ Converter o app Next.js em apps nativos Android (.apk/.aab) e iOS (.ipa) usando 
 ### 1. Instalar dependências do Capacitor
 
 ```bash
+# Instalar dependências principais do projeto
 npm install
+
+# Instalar dependências do Capacitor (apenas quando necessário para builds mobile)
+# Windows PowerShell:
+.\scripts\install-capacitor.ps1
+
+# Linux/Mac:
+bash scripts/install-capacitor.sh
 ```
 
-Isso instalará automaticamente:
+Isso instalará:
 - Capacitor Core e CLI
 - Plataformas Android e iOS
 - Plugins nativos (câmera, push, etc.)
+
+**Nota:** As dependências do Capacitor não estão no `package.json` principal para evitar erros no build web (Vercel). Instale-as apenas quando for fazer builds mobile.
 
 ### 2. Build para mobile
 
