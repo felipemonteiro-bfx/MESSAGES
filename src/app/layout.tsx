@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className="light" style={{ colorScheme: 'light' }}>
       <head>
         <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/icon-192.svg" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegistration />

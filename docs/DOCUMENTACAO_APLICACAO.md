@@ -6,7 +6,7 @@ Documentação completa do sistema: visão geral, rotas, setup e deploy.
 
 ## 1. Visão geral
 
-O **Stealth Messaging** é um app de mensagens em tempo real cuja interface pública se apresenta como um **aplicativo de notícias**. Quem não está logado vê apenas a tela de login; após autenticação, o usuário acessa a área de notícias (capa) e, a partir dela, o chat e as demais funções.
+O **Stealth Messaging** é um app de mensagens em tempo real cuja interface pública se apresenta como um **aplicativo de notícias**. A home (`/`) é **pública**: qualquer pessoa vê o portal de notícias. O acesso ao chat é secreto: botão "Fale Conosco" (rodapé) ou **duplo clique na data** (header). Na 1ª vez: cadastro (nickname, email, senha) ou login; depois: apenas o PIN de 4 dígitos.
 
 ### Principais características
 
@@ -23,7 +23,7 @@ O **Stealth Messaging** é um app de mensagens em tempo real cuja interface púb
 
 | Rota | Acesso | Descrição |
 |------|--------|-----------|
-| `/` | Autenticado | Home: se não houver sessão, redireciona para `/login`. Exibe StealthNews + ChatLayout. |
+| `/` | Público | Home: portal de notícias (StealthNews) para todos. Acesso ao chat via botão oculto (Fale Conosco ou duplo clique na data) → signup/login ou PIN. |
 | `/login` | Público | Página de login (email/senha). Query `?registered=1` mostra toast de conta criada. |
 | `/signup` | Público | Cadastro (email, senha, nickname). Após sucesso, redireciona para `/login?registered=1`. |
 | `/auth/callback` | Público | Callback OAuth do Supabase (confirmação de email, etc.). |
@@ -129,12 +129,12 @@ Detalhes adicionais: **DEPLOY_VERCEL.md** e **VERCEL_ENV_VARS.md** na raiz do pr
 
 ## 5. Fluxo do usuário
 
-1. Acessa o app → se não houver sessão, vai para **/login**.
-2. Em **Cadastrar** (ou `/signup`): preenche email, senha e nickname → signup Supabase → trigger cria perfil → redireciona para `/login?registered=1`.
-3. Faz **login** em `/login` → redireciona para `/`.
-4. Na home: vê a capa de notícias e pode abrir o **menu lateral (☰)** para Início, Receber alertas (push), Sair.
-5. Clique em uma notícia → abre em **nova aba**.
-6. A partir da interface, acessa o chat e as demais funcionalidades.
+1. **Acessa o app** → portal de notícias (home pública, sem login).
+2. **Acesso ao chat:** clica em "Fale Conosco" (rodapé) ou dá **duplo clique na data** (header).
+3. **1ª vez (não logado):** modal de cadastro ou login (nickname, email, senha). Após sucesso → configura PIN de 4 dígitos.
+4. **Depois (já logado):** só digita o PIN.
+5. PIN correto → abre o chat. Menu lateral (☰): Início, Receber alertas (push), Sair.
+6. Clique em qualquer notícia → abre em **nova aba**.
 
 ---
 
@@ -144,7 +144,7 @@ Detalhes adicionais: **DEPLOY_VERCEL.md** e **VERCEL_ENV_VARS.md** na raiz do pr
 |----------|------------------|
 | Cadastro não cria usuário/perfil | Supabase: trigger `trigger_create_profile.sql` instalado; RLS em `profiles` permite INSERT para o próprio usuário. |
 | Login não redireciona / sessão não persiste | Site URL e Redirect URLs no Supabase; cookies em produção (domínio e HTTPS). |
-| “Não tem nada” após cadastrar | Garantir que as rotas `/login` e `/signup` existem e que a home redireciona para `/login` quando não há sessão. |
+| “Não tem nada” após cadastrar | Garantir que as rotas `/login` e `/signup` existem e que a home é pública; o acesso ao chat é pelo botão oculto (Fale Conosco ou duplo clique na data). |
 | Menu lateral não abre | Verificar componente StealthNews (sidebar e estado de abertura). |
 | Notícias não abrem em nova aba | Lista de notícias deve usar `window.open(url, '_blank')` ou `<a target="_blank">` com `url` definido. |
 | Push não funciona | Tabela `push_subscriptions` criada; envs VAPID na Vercel; HTTPS; Service Worker e `/api/push/subscribe` sendo chamados. |

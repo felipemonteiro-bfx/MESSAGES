@@ -6,7 +6,7 @@ Aplicativo de **mensagens em tempo real** disfarçado como app de **notícias**.
 
 | Funcionalidade | Descrição |
 |----------------|-----------|
-| **Login e cadastro** | Cadastro com email, senha e nickname em `/signup`; login em `/login`. Home exige sessão. |
+| **Login e cadastro** | Cadastro/login pelo **botão oculto** (Fale Conosco ou duplo clique na data). 1ª vez: signup (nickname, email, senha); depois: só PIN. Rotas `/login` e `/signup` também disponíveis. |
 | **Menu lateral** | Ícone ☰ abre sidebar com: Início, Receber alertas de notícias (push), Sair. |
 | **Notícias em nova aba** | Clique em qualquer notícia abre o link em nova aba (inclui mocks com URL). |
 | **Push disfarçado** | “Receber alertas de notícias” inscreve o dispositivo para notificações (Web Push). |
@@ -42,8 +42,9 @@ yarn dev
 
 Acesse: **http://localhost:3005**
 
-- Sem sessão: redireciona para `/login`.  
-- Cadastro: `/signup` → preencha email, senha e nickname.
+- **Portal público:** a home (`/`) mostra o portal de notícias para todos, sem login.
+- **Acesso ao chat:** clique em "Fale Conosco" (rodapé) ou dê **duplo clique na data** (header). 1ª vez: cadastro (nickname, email, senha); depois: digite o PIN de 4 dígitos.
+- **Rotas diretas:** `/signup` e `/login` para cadastro e login tradicionais.
 
 ## 📁 Variáveis de ambiente
 

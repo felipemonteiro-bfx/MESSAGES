@@ -9,6 +9,16 @@ import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { createClient } from '@/lib/supabase/client';
 
 const SAVED_NEWS_KEY = 'stealth_news_saved';
+const ALERTAS_ULTIMA_HORA_KEY = 'stealth_alertas_ultima_hora';
+function getAlertasUltimaHora(): boolean {
+  if (typeof window === 'undefined') return true;
+  const v = localStorage.getItem(ALERTAS_ULTIMA_HORA_KEY);
+  return v === null || v === 'true';
+}
+function saveAlertasUltimaHora(on: boolean) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ALERTAS_ULTIMA_HORA_KEY, String(on));
+}
 type SavedItem = { id: string; title: string; url?: string; source: string; time: string };
 function getSavedList(): SavedItem[] {
   if (typeof window === 'undefined') return [];
@@ -71,6 +81,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [showSaved, setShowSaved] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [articleMenuId, setArticleMenuId] = useState<string | null>(null);
+  const [alertasUltimaHora, setAlertasUltimaHora] = useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
@@ -78,6 +89,10 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   useEffect(() => {
     setSavedIds(getSavedIds());
   }, [showSaved]);
+
+  useEffect(() => {
+    setAlertasUltimaHora(getAlertasUltimaHora());
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!articleMenuId) return;
@@ -207,20 +222,19 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     return `${randomTemplate} - ${randomSource}`;
   };
 
-  // Notificações "última hora" periódicas (mais notícias em destaque)
+  // Notificações "última hora" periódicas (respeita preferência)
   useEffect(() => {
-    if (news.length === 0 || showSaved) return;
+    if (news.length === 0 || showSaved || !getAlertasUltimaHora()) return;
     const interval = setInterval(() => {
+      if (!getAlertasUltimaHora()) return;
       const item = news[Math.floor(Math.random() * news.length)];
       if (!item) return;
-      const labels = ['Última hora', 'Em destaque', 'Agora'];
-      const label = labels[Math.floor(Math.random() * labels.length)];
       toast.info(item.title, {
         duration: 5000,
         icon: '📰',
         description: `${item.source} • ${item.time}`,
       });
-    }, 45000); // a cada 45 segundos
+    }, 45000);
     return () => clearInterval(interval);
   }, [news, showSaved]);
 
@@ -566,6 +580,17 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                   </button>
                 )}
                 <button
+                  onClick={() => {
+                    const next = !getAlertasUltimaHora();
+                    setAlertasUltimaHora(next);
+                    saveAlertasUltimaHora(next);
+                  }}
+                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                >
+                  <span className="flex items-center gap-3"><span>📰</span>Alertas &quot;última hora&quot;</span>
+                  <span className={`text-xs font-medium px-2 py-1 rounded ${getAlertasUltimaHora() ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{getAlertasUltimaHora() ? 'Ligado' : 'Desligado'}</span>
+                </button>
+                <button
                   onClick={handleSair}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-red-600 font-medium mt-auto"
                 >
@@ -634,16 +659,14 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         </div>
       </header>
 
-      {/* Botão Secreto: "Fale Conosco" + Ativar push disfarçado */}
-      <div className="px-4 py-2 border-b border-gray-100 space-y-2">
-        <button
-          onClick={handleSecretButton}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors text-blue-600 font-medium text-sm shadow-sm"
-        >
-          <MessageCircle className="w-4 h-4" />
+      {/* Botão secreto discreto (duplo clique na data é o principal) */}
+      <div className="px-4 py-1.5 border-b border-gray-100 flex items-center justify-between gap-2">
+        <span />
+        <button onClick={handleSecretButton} className="text-xs text-gray-500 hover:text-gray-700 transition-colors py-1">
           Fale Conosco
-          <span className="text-xs text-blue-400 ml-auto">Suporte 24/7</span>
         </button>
+      </div>
+      <div className="px-4 py-2 border-b border-gray-100">
         {isSupported && (
           <button
             type="button"
@@ -906,3 +929,4 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     </div>
   );
 }
+
