@@ -9,6 +9,7 @@ import { AuthForm } from './AuthForm';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
+import { getAutoLockTimeout } from '@/lib/settings';
 
 const StealthMessagingContext = createContext({
   isStealthMode: true,
@@ -105,13 +106,16 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     };
 
     const handleBlur = () => {
-      // Se sair do foco por mais de 10 segundos, bloquear
+      // Sugestão 5: Usar tempo configurável de auto-lock
+      const timeoutSeconds = getAutoLockTimeout();
+      if (timeoutSeconds === 0) return; // Nunca bloquear se configurado como 0
+      
       visibilityTimeoutRef.current = setTimeout(() => {
         if (!document.hasFocus() && !isStealthMode) {
           lockMessaging();
           toast.success('Sistema bloqueado automaticamente', { duration: 2000 });
         }
-      }, 10000); // 10 segundos
+      }, timeoutSeconds * 1000); // Converter segundos para milissegundos
     };
 
     const handleFocus = () => {

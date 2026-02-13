@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -11,7 +11,9 @@ import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-ha
 import { checkRateLimit, getRateLimitIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import EditNicknameModal from '@/components/shared/EditNicknameModal';
+import SettingsModal from '@/components/shared/SettingsModal';
 import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
+import { isIncognitoMode, clearIncognitoData } from '@/lib/settings';
 
 export default function ChatLayout() {
   const { lockMessaging } = useStealthMessaging();
@@ -31,9 +33,11 @@ export default function ChatLayout() {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [showEditNicknameModal, setShowEditNicknameModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingNickname, setEditingNickname] = useState<string>('');
   const [currentUserProfile, setCurrentUserProfile] = useState<{ nickname: string; avatar_url?: string | null } | null>(null);
+  const [mutedChats, setMutedChats] = useState<Set<string>>(new Set());
   const [isTyping, setIsTyping] = useState(false);
   const [otherUserTyping, setOtherUserTyping] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
@@ -49,15 +53,16 @@ export default function ChatLayout() {
   const fetchChats = useCallback(async (userId: string) => {
     try {
       setIsLoading(true);
+      // Sugestão 12: Buscar campo muted também
       const { data: participants, error } = await supabase
         .from('chat_participants')
-        .select('chat_id, chats (*)')
+        .select('chat_id, muted, chats (*)')
         .eq('user_id', userId);
       
       if (error) throw error;
       
       if (participants) {
-        const formattedChats = await Promise.all(participants.map(async (p: { chat_id: string; chats: unknown }) => {
+        const formattedChats = await Promise.all(participants.map(async (p: { chat_id: string; muted?: boolean; chats: unknown }) => {
           const chat = (Array.isArray(p.chats) ? p.chats[0] : p.chats) as { id: string; type: 'private' | 'group'; name?: string | null };
           
           const { data: otherParticipant } = await supabase
@@ -83,6 +88,11 @@ export default function ChatLayout() {
             .limit(1)
             .single();
 
+          // Sugestão 12: Armazenar muted no estado
+          if (p.muted) {
+            setMutedChats(prev => new Set(prev).add(p.chat_id));
+          }
+
           return {
             id: p.chat_id,
             type: chat.type,
@@ -93,8 +103,9 @@ export default function ChatLayout() {
               avatar_url: profile.avatar_url
             } : undefined,
             lastMessage: lastMessage?.content || undefined,
-            time: lastMessage?.created_at || undefined
-          } as ChatWithRecipient;
+            time: lastMessage?.created_at || undefined,
+            muted: p.muted || false
+          } as ChatWithRecipient & { muted?: boolean };
         }));
         
         // Ordenar por última mensagem (mais recente primeiro)
@@ -142,20 +153,26 @@ export default function ChatLayout() {
     }
   }, [messages.length, currentUser, fetchChats]);
 
-  const fetchMessages = useCallback(async (chatId: string) => {
-    const { data } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('chat_id', chatId)
-      .order('created_at', { ascending: true });
-    
-    if (data) setMessages(data);
-  }, [supabase]);
 
   useEffect(() => {
     if (selectedChat && currentUser) {
-      fetchMessages(selectedChat.id);
+      // Sugestão 15: Reset paginação ao mudar de chat
+      setMessagesPage(1);
+      setHasMoreMessages(true);
+      fetchMessages(selectedChat.id, 1, false);
       
+      // Sugestão 3: Limpar mensagens se modo incógnito estiver ativo ao fechar chat anterior
+      return () => {
+        if (isIncognitoMode()) {
+          setMessages([]);
+          clearIncognitoData();
+        }
+      };
+    }
+  }, [selectedChat?.id, currentUser?.id, fetchMessages]);
+
+  useEffect(() => {
+    if (selectedChat && currentUser) {
       // Sugestão 8: Indicador digitando e status online
       const channel = supabase
         .channel(`chat:${selectedChat.id}`)
@@ -166,8 +183,8 @@ export default function ChatLayout() {
           filter: `chat_id=eq.${selectedChat.id}` 
         }, payload => {
           const newMessage = payload.new as Message;
-          // Notificação: toast quando receber mensagem de outro usuário
-          if (newMessage.sender_id !== currentUser?.id) {
+          // Sugestão 12: Notificação apenas se conversa não estiver silenciada
+          if (newMessage.sender_id !== currentUser?.id && !mutedChats.has(selectedChat.id)) {
             const senderName = selectedChat?.recipient?.nickname || 'Alguém';
             const preview = typeof newMessage.content === 'string'
               ? (newMessage.content.length > 50 ? newMessage.content.slice(0, 50) + '…' : newMessage.content)
@@ -227,7 +244,7 @@ export default function ChatLayout() {
         supabase.removeChannel(channel);
       };
     }
-  }, [selectedChat, fetchMessages, supabase, currentUser]);
+  }, [selectedChat, supabase, currentUser, mutedChats]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -636,6 +653,7 @@ export default function ChatLayout() {
               className="bg-transparent border-none focus:ring-0 text-sm w-full text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
             />
           </div>
+          <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Configurações"><Settings className="w-5 h-5" /></button>
           <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
           {currentUser && (
             <button 
@@ -778,10 +796,55 @@ export default function ChatLayout() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Sugestão 12: Botão para silenciar/ativar notificações */}
+                {selectedChat.recipient && (
+                  <button
+                    onClick={async () => {
+                      if (!currentUser || !selectedChat) return;
+                      const newMutedState = !mutedChats.has(selectedChat.id);
+                      try {
+                        const { error } = await supabase
+                          .from('chat_participants')
+                          .update({ muted: newMutedState })
+                          .eq('chat_id', selectedChat.id)
+                          .eq('user_id', currentUser.id);
+                        
+                        if (error) throw error;
+                        
+                        if (newMutedState) {
+                          setMutedChats(prev => new Set(prev).add(selectedChat.id));
+                          toast.success('Notificações silenciadas', { duration: 2000 });
+                        } else {
+                          setMutedChats(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(selectedChat.id);
+                            return newSet;
+                          });
+                          toast.success('Notificações ativadas', { duration: 2000 });
+                        }
+                      } catch (error) {
+                        toast.error('Erro ao alterar notificações');
+                      }
+                    }}
+                    className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+                    title={mutedChats.has(selectedChat.id) ? 'Ativar notificações' : 'Silenciar notificações'}
+                  >
+                    {mutedChats.has(selectedChat.id) ? (
+                      <BellOff className="w-4 h-4" />
+                    ) : (
+                      <Bell className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
                 {/* Sugestão 18: Botão discreto "Esconder agora" - volta ao portal imediatamente */}
                 <button
                   onClick={() => {
                     if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                    // Sugestão 3: Limpar mensagens se modo incógnito estiver ativo
+                    if (isIncognitoMode()) {
+                      setMessages([]);
+                      clearIncognitoData();
+                    }
                     lockMessaging();
                   }}
                   className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
@@ -807,6 +870,21 @@ export default function ChatLayout() {
             </header>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621]" data-stealth-content="true">
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
+                {/* Sugestão 15: Botão para carregar mais mensagens antigas */}
+                {hasMoreMessages && messages.length > 0 && (
+                  <div className="flex justify-center py-2">
+                    <button
+                      onClick={() => {
+                        const nextPage = messagesPage + 1;
+                        setMessagesPage(nextPage);
+                        fetchMessages(selectedChat.id, nextPage, true);
+                      }}
+                      className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                    >
+                      Carregar mensagens anteriores
+                    </button>
+                  </div>
+                )}
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-12">
                     <MessageSquare className="w-16 h-16 text-gray-400 dark:text-[#708499] mb-4 opacity-50" />
@@ -1107,6 +1185,12 @@ export default function ChatLayout() {
                 }
             }
           }}
+        />
+      )}
+      {showSettingsModal && (
+        <SettingsModal 
+          isOpen={showSettingsModal} 
+          onClose={() => setShowSettingsModal(false)} 
         />
       )}
     </div>
