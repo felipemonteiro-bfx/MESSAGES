@@ -16,6 +16,8 @@ O **Stealth Messaging** é um app de mensagens em tempo real cuja interface púb
 - **Menu lateral (☰)**: Início, Receber alertas de notícias (push), Sair.
 - **Push disfarçado**: notificações Web Push configuradas como “alertas de notícias”.
 - **Chat**: mensagens em tempo real (Supabase Realtime), mídia (fotos, vídeo, áudio), mensagens efêmeras (opcional).
+- **Rate limit no PIN**: após 5 tentativas erradas, bloqueio de 1 minuto (anti brute-force).
+- **Botão "Esconder agora"**: ícone discreto no header do chat que volta ao portal imediatamente (situações de risco).
 
 ---
 
@@ -134,7 +136,8 @@ Detalhes adicionais: **DEPLOY_VERCEL.md** e **VERCEL_ENV_VARS.md** na raiz do pr
 3. **1ª vez (não logado):** modal de cadastro ou login (nickname, email, senha). Após sucesso → configura PIN de 4 dígitos.
 4. **Depois (já logado):** só digita o PIN.
 5. PIN correto → abre o chat. Menu lateral (☰): Início, Receber alertas (push), Sair.
-6. Clique em qualquer notícia → abre em **nova aba**.
+6. **Esconder rapidamente**: ícone de jornal no header do chat volta ao portal a qualquer momento.
+7. Clique em qualquer notícia → abre em **nova aba**.
 
 ---
 

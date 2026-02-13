@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -750,21 +750,17 @@ export default function ChatLayout() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* Botão de Pânico - Voltar para Notícias (iPhone Optimized) */}
+                {/* Sugestão 18: Botão discreto "Esconder agora" - volta ao portal imediatamente */}
                 <button
                   onClick={() => {
-                    // Sugestão iPhone: Haptic Feedback forte no botão de pânico
-                    if (navigator.vibrate) {
-                      navigator.vibrate([50, 30, 50]); // Vibração padrão-alerta-padrão
-                    }
+                    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
                     lockMessaging();
-                    toast.success('Bom trabalho! Modo notícias ativado.', { duration: 2000 });
                   }}
-                  className="px-4 py-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-xl text-sm font-bold transition-all touch-manipulation min-w-[70px] min-h-[44px] flex items-center justify-center gap-1.5 shadow-lg active:scale-95"
-                  title="Botão de Pânico - Voltar para Notícias"
+                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+                  title="Ver notícias"
+                  aria-label="Esconder agora"
                 >
-                  <span className="text-lg">📰</span>
-                  <span className="hidden sm:inline font-semibold">Notícias</span>
+                  <Newspaper className="w-5 h-5" />
                 </button>
                 {selectedChat.recipient && (
                   <button

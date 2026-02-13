@@ -18,12 +18,12 @@ Documento gerado com base nas suas necessidades: app disfarçado de notícias, f
 | Notificações | ✅ Push disfarçado, toasts "última hora" a cada 45s, muitas fontes |
 | Menu lateral | ✅ Início, Receber alertas, Sair |
 | Notícias em nova aba | ✅ Todos os links abrem em nova aba |
-| PWA / manifest | ⚠️ Configurado, mas ícones `icon-192.png` e `icon-512.png` **não existem** em `public/` |
+| PWA / manifest | ✅ Ícones SVG em `public/icon-192.svg` e `public/icon-512.svg` |
 
 ### Pontos de atenção
 
-1. **Ícones PWA** – `manifest.json` e `layout.tsx` referenciam `icon-192.png` e `icon-512.png`, que não estão em `public/`. Pode causar aviso ou falha em "Adicionar à tela inicial".
-2. **Documentação** – README e DOCUMENTACAO_APLICACAO ainda dizem que a home redireciona para login. Na prática, `/` é público e mostra o portal.
+1. ~~**Ícones PWA**~~ – ✅ Resolvido (SVG).
+2. ~~**Documentação**~~ – ✅ Atualizada.
 3. **Busca por email** – Depende da função `get_user_by_email` no Supabase. É necessário rodar `docs/buscar_por_email.sql` para funcionar.
 
 ---
@@ -89,6 +89,71 @@ Documento gerado com base nas suas necessidades: app disfarçado de notícias, f
 
 ---
 
+---
+
+## 10 Sugestões Adicionais (2ª rodada)
+
+### 11. "Esqueci o PIN"
+**Problema:** Se o usuário esquecer o PIN, só consegue voltar limpando o `localStorage` manualmente.  
+**Sugestão:** Botão "Esqueci o PIN" no PinPad que abre o formulário de login (email/senha). Após autenticar, permite redefinir o PIN e continua o fluxo.
+
+### 12. SEO e meta tags para compartilhamento
+**Problema:** Links compartilhados podem exibir título/descrição genéricos.  
+**Sugestão:** Adicionar `metadata` no layout: `openGraph`, `twitter:card`, `og:image` com imagem de notícias. O site parece mais real quando compartilhado.
+
+### 13. Modo escuro opcional
+**Problema:** O portal está sempre em modo claro.  
+**Sugestão:** Toggle no menu lateral: "Tema escuro". Salvar preferência em localStorage. Facilita leitura noturna.
+
+### 14. Checklist de deploy
+**Problema:** Muitas configurações podem ser esquecidas em novos deploys.  
+**Sugestão:** Criar `docs/CHECKLIST_DEPLOY.md` com: ordem dos SQLs, variáveis na Vercel, Site URL no Supabase, teste de push. Útil para onboarding.
+
+### 15. Página 404 disfarçada
+**Problema:** Erro 404 padrão do Next.js pode revelar que não é só um portal de notícias.  
+**Sugestão:** Customizar `not-found.tsx` com layout de notícias ("Página não encontrada") e link para home.
+
+### 16. Rate limit no PIN (anti brute-force) ✅
+**Problema:** PIN de 4 dígitos permite 10.000 combinações; sem limite, alguém pode tentar forçar.  
+**Sugestão:** Após 5 tentativas erradas, bloquear por 1 minuto (ou exigir login por email/senha). Contador em localStorage.  
+**Implementado:** `src/lib/pin.ts` (recordFailedAttempt, clearFailedAttempts, isLockedOut) e `PinPad.tsx` com bloqueio de 1 min e contador visual.
+
+### 17. Tempo de auto-lock configurável
+**Problema:** Hoje o app volta ao modo notícias após 10 segundos sem foco; valor fixo.  
+**Sugestão:** Opção no menu: "Bloquear após: 10s / 30s / 1min / 5min / Nunca". Salvar em localStorage.
+
+### 18. Botão "Esconder agora" (atalho rápido) ✅
+**Problema:** Escape 2x ou Ctrl+Shift+L exigem atalho de teclado; em mobile é difícil.  
+**Sugestão:** Botão discreto no header do chat (ex.: ícone de notícia pequeno) que volta ao portal imediatamente. Útil em situação de risco.  
+**Implementado:** `ChatLayout.tsx` – ícone Newspaper discreto no header (tooltip "Ver notícias"), mesmo estilo dos demais ícones.
+
+### 19. Vibração ao digitar PIN (mobile)
+**Problema:** Em alguns celulares, feedback tátil melhora a confiança ao digitar.  
+**Sugestão:** `navigator.vibrate(10)` ao pressionar cada dígito do PIN (se a API existir). Opcional, pode ser ligado/desligado.
+
+### 20. "Esqueci minha senha" no login
+**Problema:** Se o usuário esquece a senha, não há fluxo de recuperação.  
+**Sugestão:** Link "Esqueci minha senha" na tela de login que chama `supabase.auth.resetPasswordForEmail(email)`. Supabase envia email com link de redefinição.
+
+---
+
+## Priorização – 2ª rodada
+
+| Prioridade | Sugestão | Esforço |
+|------------|----------|---------|
+| Alta | 11. Esqueci o PIN | Médio |
+| Alta | 16. Rate limit no PIN | ✅ Feito |
+| Média | 12. SEO/meta tags | Baixo |
+| Média | 18. Botão esconder agora | ✅ Feito |
+| Média | 20. Esqueci minha senha | Baixo |
+| Baixa | 13. Modo escuro | Médio |
+| Baixa | 14. Checklist deploy | Baixo |
+| Baixa | 15. 404 disfarçado | Baixo |
+| Baixa | 17. Auto-lock configurável | Médio |
+| Baixa | 19. Vibração no PIN | Baixo |
+
+---
+
 ## Conclusão
 
-O app está alinhado com o conceito stealth: portal de notícias funcional, fluxo de cadastro/login via hidden button, PIN para acesso rápido e busca por nickname/email. As sugestões acima priorizam correções importantes (PWA, docs, fluxo de PIN), ajustes de UX (notificações, stealth visual) e detalhes de produção (SEO, checklist de deploy).
+O app está alinhado com o conceito stealth: portal de notícias funcional, fluxo de cadastro/login via hidden button, PIN para acesso rápido e busca por nickname/email. As sugestões adicionais priorizam segurança (rate limit PIN, esqueci PIN), UX (modo escuro, atalho esconder, recuperação de senha) e detalhes de produção (SEO, checklist, 404).

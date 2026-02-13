@@ -13,6 +13,8 @@ Aplicativo de **mensagens em tempo real** disfarçado como app de **notícias**.
 | **Mensagens em tempo real** | Chat com Supabase Realtime. |
 | **Upload de mídia** | Fotos, vídeos e áudio no chat. |
 | **Auto-lock** | Volta ao modo notícias após inatividade. |
+| **Rate limit PIN** | Após 5 tentativas erradas, bloqueio de 1 minuto. |
+| **Esconder agora** | Ícone discreto no header do chat que volta ao portal imediatamente. |
 
 ## 🚀 Instalação rápida
 

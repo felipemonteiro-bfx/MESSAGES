@@ -16,6 +16,10 @@ function hashPin(pin: string): string {
 
 const PIN_STORAGE_KEY = 'stealth_messaging_pin_hash';
 const PIN_SETUP_KEY = 'stealth_messaging_pin_setup';
+const PIN_FAILED_ATTEMPTS_KEY = 'stealth_pin_failed_attempts';
+const PIN_LOCKOUT_UNTIL_KEY = 'stealth_pin_lockout_until';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 60_000; // 1 minuto
 
 /**
  * Verifica se o PIN já foi configurado
@@ -84,4 +88,46 @@ export function changePin(oldPin: string, newPin: string): boolean {
   }
   
   return setupPin(newPin);
+}
+
+/**
+ * Rate limit anti brute-force: grava tentativa falha e aplica bloqueio após 5 erros
+ */
+export function recordFailedAttempt(): void {
+  if (typeof window === 'undefined') return;
+  const count = parseInt(localStorage.getItem(PIN_FAILED_ATTEMPTS_KEY) ?? '0', 10) + 1;
+  localStorage.setItem(PIN_FAILED_ATTEMPTS_KEY, String(count));
+  if (count >= MAX_ATTEMPTS) {
+    localStorage.setItem(PIN_LOCKOUT_UNTIL_KEY, String(Date.now() + LOCKOUT_MS));
+  }
+}
+
+/**
+ * Limpa tentativas falhas (chamar após PIN correto)
+ */
+export function clearFailedAttempts(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(PIN_FAILED_ATTEMPTS_KEY);
+  localStorage.removeItem(PIN_LOCKOUT_UNTIL_KEY);
+}
+
+/**
+ * Verifica se está em período de bloqueio
+ */
+export function isLockedOut(): boolean {
+  if (typeof window === 'undefined') return false;
+  const until = localStorage.getItem(PIN_LOCKOUT_UNTIL_KEY);
+  if (!until) return false;
+  return Date.now() < parseInt(until, 10);
+}
+
+/**
+ * Retorna ms restantes de bloqueio (0 se não bloqueado)
+ */
+export function getRemainingLockoutMs(): number {
+  if (typeof window === 'undefined') return 0;
+  const until = localStorage.getItem(PIN_LOCKOUT_UNTIL_KEY);
+  if (!until) return 0;
+  const remaining = parseInt(until, 10) - Date.now();
+  return Math.max(0, remaining);
 }
