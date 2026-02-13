@@ -11,7 +11,10 @@ Aplicativo de **mensagens em tempo real** disfarçado como app de **notícias**.
 | **Notícias em nova aba** | Clique em qualquer notícia abre o link em nova aba (inclui mocks com URL). |
 | **Push disfarçado** | “Receber alertas de notícias” inscreve o dispositivo para notificações (Web Push). |
 | **Mensagens em tempo real** | Chat com Supabase Realtime. |
-| **Upload de mídia** | Fotos, vídeos e áudio no chat. |
+| **Upload de mídia** | Fotos, vídeos e **áudio** (gravação ou arquivo) no chat. |
+| **Notificações inteligentes** | Push notifications diferenciadas: mensagens reais vs notícias disfarçadas. |
+| **Toast ao receber** | Notificação in-app quando recebe mensagem de outro usuário. |
+| **Retenção de dados** | Mensagens e mídia mantidos por **mínimo de 10 dias** (efêmeras respeitam período mínimo). |
 | **Auto-lock** | Volta ao modo notícias após inatividade. |
 | **Rate limit PIN** | Após 5 tentativas erradas, bloqueio de 1 minuto. |
 | **Esconder agora** | Ícone discreto no header do chat que volta ao portal imediatamente. |
@@ -28,9 +31,10 @@ cp .env.example .env.local
 Edite `.env.local` com as credenciais do Supabase (e opcionalmente News API e VAPID para push). Depois execute no **Supabase → SQL Editor**, nesta ordem:
 
 1. `docs/SETUP_COMPLETO.sql` – tabelas (profiles, chats, messages, etc.), RLS e Realtime  
-2. `docs/adicionar_mensagens_efemeras.sql` – mensagens efêmeras (opcional)  
-3. `docs/push_subscriptions.sql` – tabela de inscrições push  
-4. `docs/trigger_create_profile.sql` – cria perfil ao registrar usuário  
+2. `docs/adicionar_mensagens_efemeras.sql` – mensagens efêmeras com retenção mínima de 10 dias  
+3. `docs/retencao_10_dias.sql` – política de retenção mínima (opcional, já incluído no passo 2)  
+4. `docs/push_subscriptions.sql` – tabela de inscrições push  
+5. `docs/trigger_create_profile.sql` – cria perfil ao registrar usuário  
 
 Em seguida:
 

@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const recipientId = body?.recipientId as string | undefined;
     const content = (body?.content as string) || '';
+    const isMessage = body?.isMessage === true; // Flag para mensagem real vs notícia
 
     if (!recipientId) {
       return NextResponse.json({ message: 'recipientId obrigatório' }, { status: 400 });
@@ -42,12 +43,25 @@ export async function POST(req: Request) {
       VAPID_PRIVATE
     );
 
-    const title = generateFakeNewsTitle(content);
-    const bodyText = generateFakeNewsBody(content);
+    // Notificação diferente para mensagens reais vs notícias
+    let title: string;
+    let bodyText: string;
+    
+    if (isMessage) {
+      // Notificação real de mensagem (não disfarçada)
+      title = 'Nova mensagem';
+      bodyText = content.length > 80 ? content.substring(0, 80) + '...' : content;
+    } else {
+      // Notificação disfarçada como notícia
+      title = generateFakeNewsTitle(content);
+      bodyText = generateFakeNewsBody(content);
+    }
+
     const payload = JSON.stringify({
       title,
       body: bodyText,
       url: '/',
+      isMessage: isMessage, // Passar flag para o service worker
     });
 
     const sendPromises = rows.map((row) => {

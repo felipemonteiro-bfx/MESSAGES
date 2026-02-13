@@ -75,13 +75,18 @@ Execute no **SQL Editor** do projeto Supabase, **nesta ordem**:
 
 2. **`docs/adicionar_mensagens_efemeras.sql`**  
    - Colunas e lógica para mensagens efêmeras.  
+   - **Retenção mínima de 10 dias** garantida (mesmo para efêmeras).  
    - **Opcional.**
 
 3. **`docs/push_subscriptions.sql`**  
    - Tabela `push_subscriptions` e RLS.  
    - **Obrigatório** se for usar push.
 
-4. **`docs/trigger_create_profile.sql`**  
+4. **`docs/retencao_10_dias.sql`** (opcional)  
+   - Política de retenção mínima de 10 dias para mensagens e mídia.  
+   - Já incluído em `adicionar_mensagens_efemeras.sql`, mas disponível como arquivo standalone.
+
+5. **`docs/trigger_create_profile.sql`**  
    - Trigger em `auth.users`: ao criar usuário, insere perfil em `profiles` (nickname e avatar).  
    - **Obrigatório** para cadastro com nickname.
 
@@ -136,8 +141,11 @@ Detalhes adicionais: **DEPLOY_VERCEL.md** e **VERCEL_ENV_VARS.md** na raiz do pr
 3. **1ª vez (não logado):** modal de cadastro ou login (nickname, email, senha). Após sucesso → configura PIN de 4 dígitos.
 4. **Depois (já logado):** só digita o PIN.
 5. PIN correto → abre o chat. Menu lateral (☰): Início, Receber alertas (push), Sair.
-6. **Esconder rapidamente**: ícone de jornal no header do chat volta ao portal a qualquer momento.
-7. Clique em qualquer notícia → abre em **nova aba**.
+6. **Enviar mensagens**: texto, fotos, vídeos ou **áudio** (gravação ou arquivo).
+7. **Receber mensagens**: toast in-app + push notification (se habilitado). Notificações de mensagens reais são diferenciadas de notícias.
+8. **Esconder rapidamente**: ícone de jornal no header do chat volta ao portal a qualquer momento.
+9. Clique em qualquer notícia → abre em **nova aba**.
+10. **Retenção**: todas as mensagens e mídia são mantidas por **mínimo de 10 dias**.
 
 ---
 

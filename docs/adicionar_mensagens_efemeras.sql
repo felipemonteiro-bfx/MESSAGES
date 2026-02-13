@@ -11,15 +11,21 @@ CREATE INDEX IF NOT EXISTS idx_messages_expires_at ON public.messages(expires_at
 WHERE expires_at IS NOT NULL;
 
 -- Função para limpar mensagens expiradas automaticamente
+-- Garante retenção mínima de 10 dias para todas as mensagens
 CREATE OR REPLACE FUNCTION cleanup_expired_messages()
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  -- Deletar apenas mensagens efêmeras que:
+  -- 1. Têm expires_at definido (são efêmeras)
+  -- 2. Já expiraram (expires_at < NOW())
+  -- 3. Foram criadas há mais de 10 dias (retenção mínima garantida)
   DELETE FROM public.messages
   WHERE expires_at IS NOT NULL 
-    AND expires_at < NOW();
+    AND expires_at < NOW()
+    AND created_at < NOW() - INTERVAL '10 days';
 END;
 $$;
 

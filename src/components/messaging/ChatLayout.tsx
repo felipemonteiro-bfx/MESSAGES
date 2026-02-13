@@ -166,6 +166,18 @@ export default function ChatLayout() {
           filter: `chat_id=eq.${selectedChat.id}` 
         }, payload => {
           const newMessage = payload.new as Message;
+          // Notificação: toast quando receber mensagem de outro usuário
+          if (newMessage.sender_id !== currentUser?.id) {
+            const senderName = selectedChat?.recipient?.nickname || 'Alguém';
+            const preview = typeof newMessage.content === 'string'
+              ? (newMessage.content.length > 50 ? newMessage.content.slice(0, 50) + '…' : newMessage.content)
+              : (newMessage.media_type === 'image' ? '📷 Imagem' : newMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio');
+            toast.info(`Nova mensagem de ${senderName}`, {
+              description: preview,
+              duration: 4000,
+              icon: '💬',
+            });
+          }
           setMessages(prev => [...prev, newMessage]);
           
           // Sugestão 4: Remover mensagens efêmeras expiradas
@@ -260,14 +272,22 @@ export default function ChatLayout() {
 
       if (messageError) throw messageError;
 
+      // Enviar notificação push para o destinatário (marcar como mensagem real)
       const mediaContent = type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio';
       const recipientId = selectedChat.recipient?.id;
       if (recipientId) {
         fetch('/api/push/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recipientId, content: mediaContent }),
-        }).catch(() => {});
+          body: JSON.stringify({ 
+            recipientId, 
+            content: mediaContent,
+            isMessage: true // Flag para notificação de mensagem real
+          }),
+        }).catch((err) => {
+          // Log silencioso - push é opcional
+          console.warn('Push notification failed:', err);
+        });
       }
 
       await fetchChats(currentUser.id);
@@ -398,13 +418,21 @@ export default function ChatLayout() {
 
       if (error) throw error;
 
+      // Enviar notificação push para o destinatário (marcar como mensagem real)
       const recipientId = selectedChat.recipient?.id;
       if (recipientId) {
         fetch('/api/push/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recipientId, content: messageContent }),
-        }).catch(() => {});
+          body: JSON.stringify({ 
+            recipientId, 
+            content: messageContent,
+            isMessage: true // Flag para notificação de mensagem real
+          }),
+        }).catch((err) => {
+          // Log silencioso - push é opcional
+          console.warn('Push notification failed:', err);
+        });
       }
       
       logger.info('Message sent', {

@@ -43,22 +43,39 @@ self.addEventListener('fetch', (event) => {
 // Sugestão 3: Receber Push Notifications disfarçadas
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
-  const newsSources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo'];
-  const randomSource = newsSources[Math.floor(Math.random() * newsSources.length)];
-
-  const title = data.title || 'BREAKING: Nova informação importante';
-  const options = {
-    body: data.body || `${randomSource} • Agora`,
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    tag: 'news-notification',
-    requireInteraction: false,
-    data: {
-      url: '/',
-      isMessage: data.isMessage || false,
-      messageId: data.messageId || null
-    },
-    actions: [
+  const isMessage = data.isMessage === true; // Mensagem real vs notícia
+  
+  let title, body, icon, badge, tag, requireInteraction, actions;
+  
+  if (isMessage) {
+    // Notificação de mensagem real (não disfarçada)
+    title = data.title || 'Nova mensagem';
+    body = data.body || 'Você recebeu uma nova mensagem';
+    icon = '/icon-192.svg'; // Usar ícone do app
+    badge = '/icon-192.svg';
+    tag = 'message-notification';
+    requireInteraction = false;
+    actions = [
+      {
+        action: 'view',
+        title: 'Abrir Mensagem'
+      },
+      {
+        action: 'dismiss',
+        title: 'Fechar'
+      }
+    ];
+  } else {
+    // Notificação disfarçada como notícia
+    const newsSources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo'];
+    const randomSource = newsSources[Math.floor(Math.random() * newsSources.length)];
+    title = data.title || 'BREAKING: Nova informação importante';
+    body = data.body || `${randomSource} • Agora`;
+    icon = '/icon-192.svg';
+    badge = '/icon-192.svg';
+    tag = 'news-notification';
+    requireInteraction = false;
+    actions = [
       {
         action: 'view',
         title: 'Ver Notícia'
@@ -67,7 +84,21 @@ self.addEventListener('push', (event) => {
         action: 'dismiss',
         title: 'Fechar'
       }
-    ]
+    ];
+  }
+
+  const options = {
+    body: body,
+    icon: icon,
+    badge: badge,
+    tag: tag,
+    requireInteraction: requireInteraction,
+    data: {
+      url: '/',
+      isMessage: isMessage,
+      messageId: data.messageId || null
+    },
+    actions: actions
   };
 
   event.waitUntil(
