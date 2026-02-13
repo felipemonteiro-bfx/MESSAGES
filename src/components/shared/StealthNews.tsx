@@ -144,6 +144,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   };
 
   useEffect(() => {
+    // Atualizar data apenas no cliente para evitar hydration mismatch
     const updateDate = () => {
       const now = new Date();
       setCurrentDate(now.toLocaleDateString('pt-BR', { 
@@ -215,8 +216,10 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       'AO VIVO: Acompanhe a cobertura completa'
     ];
     const sources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo', 'Estadão', 'Reuters', 'AFP', 'Valor', 'R7', 'Terra', 'Jovem Pan', 'Gazeta do Povo', 'InfoMoney', 'TecMundo', 'Lance!', 'GE', 'AdoroCinema', 'Space.com', 'Nature'];
-    const randomTemplate = newsTemplates[Math.floor(Math.random() * newsTemplates.length)];
-    const randomSource = sources[Math.floor(Math.random() * sources.length)];
+    // Usar hash do conteúdo para seleção determinística (evita hydration mismatch)
+    const hash = content.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const randomTemplate = newsTemplates[hash % newsTemplates.length];
+    const randomSource = sources[hash % sources.length];
     const truncated = content.substring(0, 40);
     return `${randomTemplate} - ${randomSource}`;
   };
@@ -226,7 +229,9 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     if (news.length === 0 || showSaved || !getAlertasUltimaHora()) return;
     const interval = setInterval(() => {
       if (!getAlertasUltimaHora()) return;
-      const item = news[Math.floor(Math.random() * news.length)];
+      // Usar índice baseado em timestamp para seleção determinística
+      const index = Math.floor((Date.now() / 1000) % news.length);
+      const item = news[index];
       if (!item) return;
       toast.info(item.title, {
         duration: 5000,
@@ -306,12 +311,23 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           for (const result of responses) {
             if (result.status === 'fulfilled') {
               try {
-                const data = await result.value.json();
+                const response = result.value as Response;
+                // Verificar se é erro 426 (Upgrade Required)
+                if (response.status === 426) {
+                  console.warn('NewsAPI requer upgrade de plano (426). Pulando esta requisição.');
+                  continue;
+                }
+                if (!response.ok) {
+                  console.warn(`NewsAPI retornou status ${response.status}. Pulando esta requisição.`);
+                  continue;
+                }
+                const data = await response.json();
                 if (data.articles && Array.isArray(data.articles)) {
                   allArticles.push(...data.articles);
                 }
               } catch (e) {
                 // Ignorar erros de parsing
+                console.warn('Erro ao processar resposta da NewsAPI:', e);
               }
             }
           }
@@ -322,8 +338,10 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           ).slice(0, 30);
           
           if (uniqueArticles.length > 0) {
+            // Usar índice estável em vez de Date.now() para evitar hydration mismatch
+            const baseId = typeof window !== 'undefined' ? Date.now() : 0;
             fetchedNews = uniqueArticles.map((article: any, index: number) => ({
-              id: `news-${index}-${Date.now()}`,
+              id: `news-${index}-${baseId}`,
               title: article.title || 'Sem título',
               source: article.source?.name || 'Fonte desconhecida',
               time: getTimeAgo(new Date(article.publishedAt)),
@@ -333,8 +351,13 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
               description: article.description
             }));
           }
-        } catch (apiError) {
-          console.error('NewsAPI error:', apiError);
+        } catch (apiError: any) {
+          // Tratar erro 426 (Upgrade Required) da NewsAPI
+          if (apiError?.status === 426 || apiError?.message?.includes('426')) {
+            console.warn('NewsAPI requer upgrade de plano. Usando notícias mock.');
+          } else {
+            console.error('NewsAPI error:', apiError);
+          }
         }
       }
 
@@ -471,12 +494,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   };
 
   const getDefaultImage = (): string => {
-    const images = [
-      'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=60',
-      'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&auto=format&fit=crop&q=60',
-      'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=60'
-    ];
-    return images[Math.floor(Math.random() * images.length)];
+    // Usar imagem fixa para evitar hydration mismatch e 404s
+    return 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=60';
   };
 
   // Botão oculto: "Fale Conosco" ou duplo clique na data — resposta instantânea
@@ -646,6 +665,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 className="flex items-center gap-1 text-sm text-gray-500 font-medium cursor-pointer select-none hover:text-gray-700 transition-colors shrink-0"
                 onClick={handleSecretButton}
                 title="Data e Hora"
+                suppressHydrationWarning
               >
                 <Clock className="w-4 h-4" />
                 <span className="capitalize hidden sm:inline">{currentDate}</span>
