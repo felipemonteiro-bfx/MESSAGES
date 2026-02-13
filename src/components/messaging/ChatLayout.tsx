@@ -292,8 +292,25 @@ export default function ChatLayout() {
   const handleMediaUpload = useCallback(async (file: File, type: 'image' | 'video' | 'audio') => {
     if (!selectedChat || !currentUser) return;
 
+    // Sugestão 29: Monitorar performance de upload
+    const startTime = performance.now();
+
     try {
       setIsSending(true);
+      
+      // Sugestão 29: Log de início de upload
+      if (typeof window !== 'undefined') {
+        try {
+          const { monitoring } = await import('@/lib/monitoring');
+          monitoring?.info('Media upload started', { 
+            type, 
+            fileName: file.name, 
+            fileSize: file.size 
+          });
+        } catch {
+          // Ignorar se monitoring não disponível
+        }
+      }
       const fileExt = file.name.split('.').pop();
       const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
       const filePath = `chat-media/${selectedChat.id}/${fileName}`;
@@ -953,19 +970,29 @@ export default function ChatLayout() {
                 
                 if (validFiles.length === 0) return;
                 
-                // Mostrar preview
-                if (imageFiles.length > 0) {
-                  setDragPreview({ files: imageFiles, count: validFiles.length });
+                // Filtrar apenas arquivos válidos por tipo
+                const validImageFiles = validFiles.filter(f => f.type.startsWith('image/'));
+                const validVideoFiles = validFiles.filter(f => f.type.startsWith('video/'));
+                const validAudioFiles = validFiles.filter(f => f.type.startsWith('audio/'));
+                const validOtherFiles = validFiles.filter(f => 
+                  !f.type.startsWith('image/') && 
+                  !f.type.startsWith('video/') && 
+                  !f.type.startsWith('audio/')
+                );
+                
+                // Mostrar preview e enviar
+                if (validImageFiles.length > 0) {
+                  setDragPreview({ files: validImageFiles, count: validFiles.length });
                   // Enviar após pequeno delay para mostrar preview
                   setTimeout(() => {
-                    imageFiles.forEach(file => handleMediaUpload(file, 'image'));
+                    validImageFiles.forEach(file => handleMediaUpload(file, 'image'));
                     setDragPreview(null);
                   }, 300);
-                } else if (videoFiles.length > 0) {
-                  videoFiles.forEach(file => handleMediaUpload(file, 'video'));
-                } else if (audioFiles.length > 0) {
-                  audioFiles.forEach(file => handleMediaUpload(file, 'audio'));
-                } else if (otherFiles.length > 0) {
+                } else if (validVideoFiles.length > 0) {
+                  validVideoFiles.forEach(file => handleMediaUpload(file, 'video'));
+                } else if (validAudioFiles.length > 0) {
+                  validAudioFiles.forEach(file => handleMediaUpload(file, 'audio'));
+                } else if (validOtherFiles.length > 0) {
                   toast.info('Arquivos não suportados. Use imagens, vídeos ou áudios.');
                 }
               }}

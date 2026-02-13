@@ -85,9 +85,26 @@ export function normalizeError(error: unknown): AppErrorClass {
 
 /**
  * Log de erro (não loga dados sensíveis em produção)
+ * Sugestão 29: Integrado com sistema de monitoramento
  */
 export function logError(error: AppErrorClass, context?: Record<string, unknown>): void {
   const isDevelopment = process.env.NODE_ENV === 'development';
+
+  // Integrar com sistema de monitoramento se disponível
+  if (typeof window !== 'undefined') {
+    try {
+      const { monitoring } = require('@/lib/monitoring');
+      if (monitoring) {
+        monitoring.error(`[${error.type}] ${error.message}`, {
+          code: error.code,
+          statusCode: error.statusCode,
+          ...context,
+        });
+      }
+    } catch {
+      // Ignorar se monitoring não estiver disponível
+    }
+  }
 
   if (isDevelopment) {
     console.error('[AppError]', {
