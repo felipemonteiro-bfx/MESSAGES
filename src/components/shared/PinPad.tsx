@@ -21,9 +21,11 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
     setIsFirstTime(!isPinConfigured());
   }, []);
 
+  const locked = isLockedOut();
+
   // Atualiza segundos restantes quando bloqueado
   useEffect(() => {
-    if (!isLockedOut()) {
+    if (!locked) {
       setRemainingSecs(0);
       return;
     }
@@ -32,8 +34,6 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
     const id = setInterval(tick, 500);
     return () => clearInterval(id);
   }, [locked]);
-
-  const locked = isLockedOut();
 
   useEffect(() => {
     if (pin.length !== 4 || locked) return;
