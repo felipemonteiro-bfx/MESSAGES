@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
-import { getAutoLockTimeout } from '@/lib/settings';
+import { getAutoLockTimeout, getAutoLockOnScreenLock } from '@/lib/settings';
 
 const StealthMessagingContext = createContext({
   isStealthMode: true,
@@ -102,11 +102,15 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
       }
     };
 
-    // Sugestão 6: Proteção contra screenshot/gravação
+    // Sugestão 1: Modo de Tela Bloqueada Automático
     const handleVisibilityChange = () => {
       if (document.hidden && !isStealthMode) {
-        // Usuário saiu da página - voltar para modo stealth
-        lockMessaging();
+        // Verificar se auto-lock ao bloquear tela está ativo
+        if (getAutoLockOnScreenLock()) {
+          // Bloquear imediatamente quando tela é bloqueada ou app vai para background
+          lockMessaging();
+          toast.info('Sistema bloqueado automaticamente', { duration: 2000 });
+        }
       }
     };
 

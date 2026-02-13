@@ -10,6 +10,9 @@ import { validateAndSanitizeNickname, validateAndSanitizeMessage } from '@/lib/v
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
 import { checkRateLimit, getRateLimitIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
+import { optimizeImage } from '@/lib/image-optimization';
+import { cacheMedia, fetchMediaWithCache } from '@/lib/media-cache';
+import { queueMessage, syncPendingMessages } from '@/lib/background-sync';
 import EditNicknameModal from '@/components/shared/EditNicknameModal';
 import SettingsModal from '@/components/shared/SettingsModal';
 import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
@@ -199,6 +202,22 @@ export default function ChatLayout() {
       setCurrentUser(user);
       if (user) {
         await fetchChats(user.id);
+        
+        // Sugestão 15: Sincronizar mensagens pendentes ao inicializar
+        try {
+          await syncPendingMessages(async (pendingMsg) => {
+            const { error } = await supabase.from('messages').insert({
+              chat_id: pendingMsg.chatId,
+              sender_id: user.id,
+              content: pendingMsg.content,
+              media_url: pendingMsg.mediaUrl,
+              media_type: pendingMsg.type !== 'text' ? pendingMsg.type : undefined,
+            });
+            return !error;
+          });
+        } catch (error) {
+          logger.warn('Erro ao sincronizar mensagens pendentes', { error });
+        }
         // Buscar perfil do usuário atual
         const { data: profile } = await supabase
           .from('profiles')
@@ -314,27 +333,59 @@ export default function ChatLayout() {
             setTimeout(() => setOtherUserTyping(null), 3000);
           }
         })
-        // Sugestão 8: Escutar status online
+        // Sugestão 7: Escutar status online melhorado
         .on('presence', { event: 'sync' }, () => {
           const presenceState = channel.presenceState();
           const online = new Set<string>();
           Object.values(presenceState).forEach((presences: any[]) => {
             presences.forEach((presence: any) => {
-              if (presence.userId) online.add(presence.userId);
+              if (presence.userId && presence.online !== false) {
+                online.add(presence.userId);
+              }
             });
           });
           setOnlineUsers(online);
         })
+        .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+          // Usuário ficou online
+          newPresences.forEach((presence: any) => {
+            if (presence.userId) {
+              setOnlineUsers(prev => new Set(prev).add(presence.userId));
+            }
+          });
+        })
+        .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+          // Usuário ficou offline
+          leftPresences.forEach((presence: any) => {
+            if (presence.userId) {
+              setOnlineUsers(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(presence.userId);
+                return newSet;
+              });
+            }
+          });
+        })
         .subscribe();
 
-      // Sugestão 8: Enviar presença online
+      // Sugestão 7: Enviar presença online periodicamente
       channel.track({
         userId: currentUser.id,
         online: true,
         lastSeen: new Date().toISOString()
       });
+      
+      // Atualizar presença a cada 30 segundos
+      const presenceIntervalId = setInterval(() => {
+        channel.track({
+          userId: currentUser.id,
+          online: true,
+          lastSeen: new Date().toISOString()
+        });
+      }, 30000);
 
       return () => {
+        if (presenceIntervalId) clearInterval(presenceIntervalId);
         channel.untrack();
         supabase.removeChannel(channel);
       };
@@ -350,6 +401,21 @@ export default function ChatLayout() {
   }, [messages]);
 
   const handleMediaUpload = useCallback(async (file: File, type: 'image' | 'video' | 'audio') => {
+    // Sugestão 14: Otimizar imagem antes de upload
+    let fileToUpload = file;
+    if (type === 'image') {
+      try {
+        fileToUpload = await optimizeImage(file, {
+          maxWidth: 1920,
+          maxHeight: 1920,
+          quality: 0.8,
+          maxSizeMB: 5,
+        });
+      } catch (error) {
+        logger.warn('Erro ao otimizar imagem, usando original', { error });
+        // Continuar com arquivo original em caso de erro
+      }
+    }
     if (!selectedChat || !currentUser) return;
 
     // Sugestão 29: Monitorar performance de upload
@@ -375,10 +441,10 @@ export default function ChatLayout() {
       const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
       const filePath = `chat-media/${selectedChat.id}/${fileName}`;
 
-      // Upload para Supabase Storage
+      // Upload para Supabase Storage (usar arquivo otimizado se for imagem)
       const { error: uploadError } = await supabase.storage
         .from('chat-media')
-        .upload(filePath, file, {
+        .upload(filePath, fileToUpload, {
           cacheControl: '3600',
           upsert: false
         });
@@ -389,6 +455,18 @@ export default function ChatLayout() {
       const { data: { publicUrl } } = supabase.storage
         .from('chat-media')
         .getPublicUrl(filePath);
+
+      // Sugestão 13: Cachear mídia após upload bem-sucedido
+      if (publicUrl && (type === 'image' || type === 'video')) {
+        try {
+          const response = await fetch(publicUrl);
+          const blob = await response.blob();
+          await cacheMedia(publicUrl, blob);
+        } catch (error) {
+          logger.warn('Erro ao cachear mídia', { error });
+          // Não bloquear upload se cache falhar
+        }
+      }
 
       // Enviar mensagem com mídia
       const { error: messageError } = await supabase.from('messages').insert({
@@ -536,6 +614,8 @@ export default function ChatLayout() {
       ? new Date(Date.now() + ephemeralSeconds * 1000).toISOString()
       : null;
     
+    // Sugestão 15: Tentar enviar mensagem, se falhar adicionar à fila de sync
+    let messageSent = false;
     try {
       const { error } = await supabase.from('messages').insert({
         chat_id: selectedChat.id,
@@ -546,7 +626,36 @@ export default function ChatLayout() {
       });
 
       if (error) throw error;
+      messageSent = true;
+    } catch (error) {
+      // Se falhar (ex: offline), adicionar à fila de sincronização
+      const networkError = error instanceof Error && (
+        error.message.includes('fetch') || 
+        error.message.includes('network') ||
+        error.message.includes('Failed to fetch')
+      );
+      
+      if (networkError) {
+        // Adicionar à fila para sincronização quando conexão voltar
+        await queueMessage({
+          chatId: selectedChat.id,
+          content: messageContent,
+          type: 'text',
+        });
+        
+        toast.info('Mensagem será enviada quando conexão voltar', { duration: 3000 });
+        setIsSending(false);
+        return; // Não continuar com o código abaixo
+      } else {
+        // Erro não relacionado a rede, propagar
+        throw error;
+      }
+    }
+    
+    // Continuar apenas se mensagem foi enviada com sucesso
+    if (!messageSent) return;
 
+    try {
       // Enviar notificação push para o destinatário (marcar como mensagem real)
       const recipientId = selectedChat.recipient?.id;
       if (recipientId) {
@@ -924,15 +1033,30 @@ export default function ChatLayout() {
                 }} 
                 className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#202b36] transition-colors touch-manipulation ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-[#2b5278]' : ''}`}
               >
-                <img 
-                  src={chat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
-                  alt={chat.recipient?.nickname || 'Avatar'} 
-                  className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                  loading="lazy"
-                  onLoad={(e) => {
-                    e.currentTarget.classList.add('loaded');
-                  }}
-                />
+                <div className="relative">
+                  <img 
+                    src={chat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
+                    alt={chat.recipient?.nickname || 'Avatar'} 
+                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                    loading="lazy"
+                    onLoad={async (e) => {
+                      e.currentTarget.classList.add('loaded');
+                      // Sugestão 13: Cachear avatar
+                      const imgSrc = e.currentTarget.src;
+                      if (imgSrc && imgSrc.startsWith('http')) {
+                        try {
+                          await fetchMediaWithCache(imgSrc);
+                        } catch (error) {
+                          // Ignorar erros de cache
+                        }
+                      }
+                    }}
+                  />
+                  {/* Sugestão 7: Indicador de status online na lista */}
+                  {chat.recipient && onlineUsers.has(chat.recipient.id) && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#17212b] rounded-full"></span>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <h3 className="font-bold truncate text-sm text-gray-900 dark:text-white">
@@ -969,27 +1093,48 @@ export default function ChatLayout() {
             <header className="p-3 border-b border-gray-200 dark:border-[#17212b] flex items-center justify-between bg-white dark:bg-[#17212b] z-10">
               <div className="flex items-center gap-3">
                 <button className="md:hidden p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors" onClick={() => setIsSidebarOpen(true)}><ArrowLeft className="w-5 h-5" /></button>
-                <img 
-                  src={selectedChat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
-                  alt={selectedChat.recipient?.nickname || 'Avatar'} 
-                  className="w-10 h-10 rounded-full object-cover"
-                  loading="lazy"
-                  onLoad={(e) => {
-                    e.currentTarget.classList.add('loaded');
-                  }}
-                />
+                <div className="relative">
+                  <img 
+                    src={selectedChat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
+                    alt={selectedChat.recipient?.nickname || 'Avatar'} 
+                    className="w-10 h-10 rounded-full object-cover"
+                    loading="lazy"
+                    onLoad={async (e) => {
+                      e.currentTarget.classList.add('loaded');
+                      // Sugestão 13: Cachear avatar
+                      const imgSrc = e.currentTarget.src;
+                      if (imgSrc && imgSrc.startsWith('http')) {
+                        try {
+                          await fetchMediaWithCache(imgSrc);
+                        } catch (error) {
+                          // Ignorar erros de cache
+                        }
+                      }
+                    }}
+                  />
+                  {/* Sugestão 7: Indicador de status online no header */}
+                  {selectedChat.recipient && onlineUsers.has(selectedChat.recipient.id) && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0e1621] rounded-full"></span>
+                  )}
+                </div>
                 <div>
                   <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-white">
                     Discussão • {selectedChat.recipient?.nickname || selectedChat.name || 'Tópico'}
                   </h2>
                   <p className="text-[11px] text-gray-500 dark:text-[#4c94d5] flex items-center gap-1">
-                    {selectedChat.recipient && onlineUsers.has(selectedChat.recipient.id) ? (
-                      <>
-                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                        Online
-                      </>
-                    ) : (
-                      'Leitores ativos'
+                    {/* Sugestão 7: Status Online/Offline melhorado */}
+                    {selectedChat.recipient && (
+                      onlineUsers.has(selectedChat.recipient.id) ? (
+                        <div className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                          <span className="text-green-500 font-medium">Online</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                          <span>Offline</span>
+                        </div>
+                      )
                     )}
                     {otherUserTyping === selectedChat.recipient?.id && (
                       <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">digitando...</span>
@@ -1231,11 +1376,21 @@ export default function ChatLayout() {
                           ? (currentUserProfile?.avatar_url || 'https://i.pravatar.cc/150')
                           : (selectedChat.recipient?.avatar_url || 'https://i.pravatar.cc/150')
                         }
-                        alt="Avatar"
-                        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                        alt="Avatar" 
+                        className="w-8 h-8 rounded-full object-cover flex-shrink-0" 
                         loading="lazy"
-                        onLoad={(e) => {
+                        onLoad={async (e) => {
                           e.currentTarget.classList.add('loaded');
+                          // Sugestão 13: Cachear avatar após carregar
+                          const imgSrc = e.currentTarget.src;
+                          if (imgSrc && imgSrc.startsWith('http')) {
+                            try {
+                              const cached = await fetchMediaWithCache(imgSrc);
+                              // Se cache funcionou, pode usar URL do blob para melhor performance
+                            } catch (error) {
+                              // Ignorar erros de cache silenciosamente
+                            }
+                          }
                         }}
                       />
                       <div className={`flex-1 max-w-[75%] ${msg.sender_id === currentUser?.id ? 'items-end' : 'items-start'} flex flex-col`}>

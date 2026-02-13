@@ -101,6 +101,189 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// Sugestão 15: Background Sync para sincronizar mensagens pendentes
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(
+      syncPendingMessages()
+    );
+  }
+});
+
+async function syncPendingMessages() {
+  try {
+    // Buscar mensagens pendentes do IndexedDB
+    const db = await openMessagesDB();
+    const pendingMessages = await getPendingMessages(db);
+    
+    // Tentar enviar cada mensagem pendente
+    for (const message of pendingMessages) {
+      try {
+        const response = await fetch('/api/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(message),
+        });
+        
+        if (response.ok) {
+          // Remover da fila de pendentes
+          await removePendingMessage(db, message.id);
+        }
+      } catch (error) {
+        console.error('Erro ao sincronizar mensagem:', error);
+        // Manter na fila para próxima tentativa
+      }
+    }
+  } catch (error) {
+    console.error('Erro no background sync:', error);
+  }
+}
+
+function openMessagesDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('messages-queue', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('pending')) {
+        db.createObjectStore('pending', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+function getPendingMessages(db) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pending'], 'readonly');
+    const store = transaction.objectStore('pending');
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function removePendingMessage(db, id) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pending'], 'readwrite');
+    const store = transaction.objectStore('pending');
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Sugestão 15: Background Sync para sincronizar mensagens pendentes
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(
+      // Sincronizar mensagens pendentes quando conexão voltar
+      syncPendingMessages()
+    );
+  }
+});
+
+async function syncPendingMessages() {
+  try {
+    // Buscar mensagens pendentes do IndexedDB
+    const db = await openMessagesDB();
+    const pendingMessages = await getPendingMessages(db);
+    
+    // Tentar enviar cada mensagem pendente
+    for (const message of pendingMessages) {
+      try {
+        const response = await fetch('/api/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(message),
+        });
+        
+        if (response.ok) {
+          // Remover da fila de pendentes
+          await removePendingMessage(db, message.id);
+        }
+      } catch (error) {
+        console.error('Erro ao sincronizar mensagem:', error);
+        // Manter na fila para próxima tentativa
+      }
+    }
+  } catch (error) {
+    console.error('Erro no background sync:', error);
+  }
+}
+
+function openMessagesDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('messages-queue', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('pending')) {
+        db.createObjectStore('pending', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+function getPendingMessages(db) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pending'], 'readonly');
+    const store = transaction.objectStore('pending');
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function removePendingMessage(db, id) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pending'], 'readwrite');
+    const store = transaction.objectStore('pending');
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Sugestão 13: Cache de mídia melhorado
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+  
+  // Cache de mídia (imagens, vídeos) com estratégia cache-first
+  if (url.pathname.includes('/storage/v1/object/public/chat-media/') || 
+      url.pathname.match(/\.(jpg|jpeg|png|gif|webp|mp4|webm)$/i)) {
+    event.respondWith(
+      caches.open(MESSAGES_CACHE).then((cache) => {
+        return cache.match(request).then((cachedResponse) => {
+          if (cachedResponse) {
+            // Retornar do cache e atualizar em background
+            fetch(request).then((fetchResponse) => {
+              if (fetchResponse.ok) {
+                cache.put(request, fetchResponse.clone());
+              }
+            }).catch(() => {
+              // Ignorar erros de atualização
+            });
+            return cachedResponse;
+          }
+          // Se não estiver em cache, buscar e cachear
+          return fetch(request).then((fetchResponse) => {
+            if (fetchResponse.ok) {
+              cache.put(request, fetchResponse.clone());
+            }
+            return fetchResponse;
+          });
+        });
+      })
+    );
+    return;
+  }
+  
+  // ... resto do código de fetch existente
+});
+
 // Sugestão 3: Receber Push Notifications disfarçadas
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};

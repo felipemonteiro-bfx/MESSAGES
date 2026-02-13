@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Lock, EyeOff, Bell, BellOff } from 'lucide-react';
-import { getAutoLockTimeout, setAutoLockTimeout, isIncognitoMode, setIncognitoMode, type AutoLockTimeout } from '@/lib/settings';
+import { getAutoLockTimeout, setAutoLockTimeout, isIncognitoMode, setIncognitoMode, getAutoLockOnScreenLock, setAutoLockOnScreenLock, type AutoLockTimeout } from '@/lib/settings';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -13,11 +13,13 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [autoLockTimeout, setAutoLockTimeoutState] = useState<AutoLockTimeout>(10);
   const [incognitoMode, setIncognitoModeState] = useState(false);
+  const [autoLockOnScreenLock, setAutoLockOnScreenLockState] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
       setAutoLockTimeoutState(getAutoLockTimeout());
       setIncognitoModeState(isIncognitoMode());
+      setAutoLockOnScreenLockState(getAutoLockOnScreenLock());
     }
   }, [isOpen]);
 
@@ -30,6 +32,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const newValue = !incognitoMode;
     setIncognitoMode(newValue);
     setIncognitoModeState(newValue);
+  };
+
+  const handleAutoLockOnScreenLockToggle = () => {
+    const newValue = !autoLockOnScreenLock;
+    setAutoLockOnScreenLock(newValue);
+    setAutoLockOnScreenLockState(newValue);
   };
 
   const timeoutOptions: { value: AutoLockTimeout; label: string }[] = [
@@ -125,6 +133,33 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* Sugestão 1: Auto-lock ao bloquear tela */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                      <label className="font-semibold text-sm text-gray-900 dark:text-white">
+                        Bloquear ao minimizar/bloquear tela
+                      </label>
+                    </div>
+                    <button
+                      onClick={handleAutoLockOnScreenLockToggle}
+                      className={`relative w-12 h-6 rounded-full transition-colors ${
+                        autoLockOnScreenLock ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                          autoLockOnScreenLock ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Bloqueia automaticamente quando o app vai para segundo plano ou a tela é bloqueada.
+                  </p>
                 </div>
             </div>
           </motion.div>
