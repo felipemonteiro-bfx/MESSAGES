@@ -35,11 +35,18 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
     try {
       if (type === 'signup') {
         // Signup sem confirmação de email - aceita qualquer email
+        // IMPORTANTE: Para não receber emails, desabilite "Enable email confirmations" 
+        // no Supabase Dashboard → Authentication → Settings → Email Auth
         const { data: signUpData, error } = await supabase.auth.signUp({
           email,
           password,
           options: { 
-            emailRedirectTo: undefined, // Não enviar email de confirmação
+            // Não enviar email de confirmação (mas Supabase ainda pode enviar se configurado no Dashboard)
+            emailRedirectTo: undefined,
+            // Desabilitar confirmação via opções (pode não funcionar se habilitado no Dashboard)
+            email: {
+              shouldCreateUser: true,
+            },
             data: { 
               nickname: nickname.toLowerCase().replace(/\s+/g, '_')
             } 
