@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -50,11 +50,13 @@ export default function ChatLayout() {
   // Sugestão 23: Drag & drop de arquivos
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreview, setDragPreview] = useState<{ files: File[]; count: number } | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
 
   const fetchChats = useCallback(async (userId: string) => {
@@ -743,6 +745,43 @@ export default function ChatLayout() {
     }
   };
 
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
+  // Handler para voltar ao portal de notícias
+  const handleGoToNews = () => {
+    setIsMenuOpen(false);
+    lockMessaging(); // Volta para o modo stealth (portal de notícias)
+  };
+
+  // Handler para logout
+  const handleLogout = async () => {
+    try {
+      setIsMenuOpen(false);
+      await supabase.auth.signOut();
+      lockMessaging();
+      toast.success('Logout realizado com sucesso');
+    } catch (error) {
+      const appError = normalizeError(error);
+      logError(appError);
+      toast.error(getUserFriendlyMessage(appError));
+    }
+  };
+
   return (
     <div 
       className="flex h-screen bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans"
@@ -751,8 +790,59 @@ export default function ChatLayout() {
       onTouchEnd={onTouchEnd}
     >
       <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-all duration-300 md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b]`}>
-        <div className="p-4 flex items-center gap-4 border-b border-[#0e1621]">
-          <Menu className="w-6 h-6 text-[#708499] cursor-pointer hover:text-white" />
+        <div className="p-4 flex items-center gap-4 border-b border-[#0e1621] relative">
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation"
+              aria-label="Menu"
+              aria-expanded={isMenuOpen}
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            
+            {/* Menu Dropdown */}
+            <AnimatePresence>
+              {isMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#17212b] overflow-hidden z-50"
+                >
+                  <button
+                    onClick={handleGoToNews}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
+                  >
+                    <Home className="w-4 h-4" />
+                    <span>Voltar para Notícias</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setShowSettingsModal(true);
+                    }}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>Configurações</span>
+                  </button>
+                  
+                  <div className="border-t border-gray-200 dark:border-[#17212b]" />
+                  
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sair</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <div className="flex-1 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center px-3 py-2">
             <Search className="w-4 h-4 text-gray-400 dark:text-[#708499] mr-2" />
             <input 
