@@ -66,70 +66,128 @@ export default function ChatLayout() {
         .select('chat_id, muted, chats (*)')
         .eq('user_id', userId);
       
-      if (error) throw error;
+      if (error) {
+        logger.error('Error fetching chat participants', error);
+        throw error;
+      }
       
-      if (participants) {
+      if (participants && participants.length > 0) {
         const formattedChats = await Promise.all(participants.map(async (p: { chat_id: string; muted?: boolean; chats: unknown }) => {
-          const chat = (Array.isArray(p.chats) ? p.chats[0] : p.chats) as { id: string; type: 'private' | 'group'; name?: string | null };
-          
-          const { data: otherParticipant } = await supabase
-            .from('chat_participants')
-            .select('profiles!chat_participants_user_id_fkey (*)')
-            .eq('chat_id', p.chat_id)
-            .neq('user_id', userId)
-            .maybeSingle();
+          try {
+            const chat = (Array.isArray(p.chats) ? p.chats[0] : p.chats) as { id: string; type: 'private' | 'group'; name?: string | null };
+            
+            if (!chat || !chat.id) {
+              logger.warn('Invalid chat data', { chat_id: p.chat_id, chat });
+              return null;
+            }
+            
+            let profile: { id: string; nickname: string; avatar_url: string } | null = null;
+            
+            // Buscar outro participante apenas para chats privados
+            if (chat.type === 'private') {
+              try {
+                const { data: otherParticipant, error: participantError } = await supabase
+                  .from('chat_participants')
+                  .select('user_id, profiles!chat_participants_user_id_fkey (*)')
+                  .eq('chat_id', p.chat_id)
+                  .neq('user_id', userId)
+                  .maybeSingle();
 
-          const profileData = otherParticipant as { profiles: unknown } | null;
-          const profile = (profileData?.profiles && !Array.isArray(profileData.profiles) 
-            ? profileData.profiles 
-            : Array.isArray(profileData?.profiles) 
-              ? profileData.profiles[0] 
-              : null) as { id: string; nickname: string; avatar_url: string } | null;
+              if (participantError) {
+                logger.warn('Error fetching other participant', { error: participantError.message });
+              } else if (otherParticipant) {
+                  const profileData = otherParticipant as { user_id: string; profiles: unknown } | null;
+                  const profileObj = (profileData?.profiles && !Array.isArray(profileData.profiles) 
+                    ? profileData.profiles 
+                    : Array.isArray(profileData?.profiles) 
+                      ? profileData.profiles[0] 
+                      : null) as { id: string; nickname: string; avatar_url: string } | null;
+                  
+                  if (profileObj) {
+                    profile = profileObj;
+                  }
+                }
+              } catch (err) {
+                logger.warn('Error processing participant profile', { error: err instanceof Error ? err.message : String(err) });
+                // Continuar mesmo se falhar ao buscar perfil
+              }
+            }
 
-          // Buscar última mensagem do chat
-          const { data: lastMessage } = await supabase
-            .from('messages')
-            .select('content, created_at')
-            .eq('chat_id', p.chat_id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+            // Buscar última mensagem do chat
+            let lastMessage: { content: string; created_at: string } | null = null;
+            try {
+              const { data: lastMsg, error: msgError } = await supabase
+                .from('messages')
+                .select('content, created_at')
+                .eq('chat_id', p.chat_id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              
+              if (msgError && msgError.code !== 'PGRST116') { // PGRST116 = no rows returned
+                logger.warn('Error fetching last message', { error: msgError.message });
+              } else if (lastMsg) {
+                lastMessage = lastMsg;
+              }
+            } catch (err) {
+              logger.warn('Error processing last message', { error: err instanceof Error ? err.message : String(err) });
+              // Continuar mesmo se falhar ao buscar última mensagem
+            }
 
-          // Sugestão 12: Armazenar muted no estado
-          if (p.muted) {
-            setMutedChats(prev => new Set(prev).add(p.chat_id));
+            // Sugestão 12: Armazenar muted no estado
+            if (p.muted) {
+              setMutedChats(prev => new Set(prev).add(p.chat_id));
+            }
+
+            return {
+              id: p.chat_id,
+              type: chat.type,
+              name: chat.name || undefined,
+              recipient: profile ? {
+                id: profile.id,
+                nickname: profile.nickname,
+                avatar_url: profile.avatar_url
+              } : undefined,
+              lastMessage: lastMessage?.content || undefined,
+              time: lastMessage?.created_at || undefined,
+              muted: p.muted || false
+            } as ChatWithRecipient & { muted?: boolean };
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            logger.error('Error processing chat', error, { chat_id: p.chat_id });
+            return null; // Retornar null para chats com erro
           }
-
-          return {
-            id: p.chat_id,
-            type: chat.type,
-            name: chat.name || undefined,
-            recipient: profile ? {
-              id: profile.id,
-              nickname: profile.nickname,
-              avatar_url: profile.avatar_url
-            } : undefined,
-            lastMessage: lastMessage?.content || undefined,
-            time: lastMessage?.created_at || undefined,
-            muted: p.muted || false
-          } as ChatWithRecipient & { muted?: boolean };
         }));
         
-        // Ordenar por última mensagem (mais recente primeiro)
-        formattedChats.sort((a, b) => {
+        // Filtrar chats nulos e ordenar por última mensagem (mais recente primeiro)
+        const validChats = formattedChats.filter((chat): chat is ChatWithRecipient & { muted?: boolean } => chat !== null);
+        
+        validChats.sort((a, b) => {
           const timeA = a.time ? new Date(a.time).getTime() : 0;
           const timeB = b.time ? new Date(b.time).getTime() : 0;
           return timeB - timeA;
         });
         
-        setChats(formattedChats);
+        setChats(validChats);
+      } else {
+        // Nenhuma conversa encontrada - não é erro, apenas estado vazio
+        setChats([]);
       }
       setIsLoading(false);
     } catch (error) {
       setIsLoading(false);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error('Error in fetchChats', err, { userId });
       const appError = normalizeError(error);
-      logError(appError);
-      toast.error(getUserFriendlyMessage(appError));
+      logError(appError, { userId });
+      
+      // Mensagem mais específica baseada no tipo de erro
+      let errorMessage = getUserFriendlyMessage(appError);
+      if (appError.type === 'UNKNOWN' && appError.message === 'Erro desconhecido') {
+        errorMessage = 'Erro ao carregar conversas. Verifique sua conexão e tente novamente.';
+      }
+      
+      toast.error(errorMessage);
     }
   }, [supabase]);
 
