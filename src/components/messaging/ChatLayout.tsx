@@ -727,10 +727,10 @@ export default function ChatLayout() {
           const errorCode = rpcError.code || '';
           const errorMessage = rpcError.message || '';
           
-          logger.error('Erro ao buscar usuário por email', { 
-            error: rpcError, 
+          logger.error('Erro ao buscar usuário por email', rpcError instanceof Error ? rpcError : new Error(String(rpcError)), { 
             code: errorCode,
-            message: errorMessage 
+            message: errorMessage,
+            email: searchTerm
           });
           
           // Códigos de erro do PostgreSQL para função não encontrada
