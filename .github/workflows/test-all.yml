@@ -17,20 +17,20 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20.x
-        cache: 'yarn'
+        cache: 'npm'
     
     - name: Install dependencies
-      run: yarn install --frozen-lockfile
+      run: npm ci
     
     - name: Type check
-      run: yarn type-check
+      run: npm run type-check
     
     - name: Lint
-      run: yarn lint
+      run: npm run lint
       continue-on-error: true
     
     - name: Build
-      run: yarn build
+      run: npm run build
       env:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}

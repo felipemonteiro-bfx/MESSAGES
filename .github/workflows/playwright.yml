@@ -18,10 +18,10 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: 20.x
-        cache: 'yarn'
+        cache: 'npm'
     
     - name: Install dependencies
-      run: yarn install --frozen-lockfile
+      run: npm ci
     
     - name: Skip tests - Playwright tests removed
       run: echo "Playwright tests were removed from this project. This workflow is disabled."
