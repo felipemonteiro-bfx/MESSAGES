@@ -3,10 +3,10 @@
  * Usa Web Crypto API (PBKDF2) para hash criptográfico do PIN
  */
 
-const PIN_STORAGE_KEY = 'stealth_messaging_pin_hash';
-const PIN_SALT_KEY = 'stealth_messaging_pin_salt';
-const PIN_SETUP_KEY = 'stealth_messaging_pin_setup';
-const PIN_FAILED_ATTEMPTS_KEY = 'stealth_pin_failed_attempts';
+const PIN_STORAGE_KEY = 'n24h_pin_hash';
+const PIN_SALT_KEY = 'n24h_pin_salt';
+const PIN_SETUP_KEY = 'n24h_pin_setup';
+const PIN_FAILED_ATTEMPTS_KEY = 'n24h_pin_failed_attempts';
 const PIN_LOCKOUT_UNTIL_KEY = 'stealth_pin_lockout_until';
 const MAX_ATTEMPTS = 5;
 const BASE_LOCKOUT_MS = 60_000; // 1 minuto base

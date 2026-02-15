@@ -1,8 +1,8 @@
 // Capacitor config - será usado após instalar @capacitor/cli
 // Para instalar: npm install
 const config = {
-  appId: 'com.stealthmessaging.app',
-  appName: 'Notícias BR',
+  appId: 'com.noticias24h.app',
+  appName: 'Noticias24h',
   webDir: 'out',
   server: {
     androidScheme: 'https',
@@ -45,7 +45,7 @@ const config = {
     allowMixedContent: false,
   },
   ios: {
-    scheme: 'NoticiasBR',
+    scheme: 'Noticias24h',
     contentInset: 'automatic',
   },
 };

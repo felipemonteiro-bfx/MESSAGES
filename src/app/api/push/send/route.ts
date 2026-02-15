@@ -14,7 +14,7 @@ function getSupabaseAdmin() {
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
-const VAPID_MAILTO = process.env.VAPID_MAILTO || 'mailto:admin@stealthmessaging.app';
+const VAPID_MAILTO = process.env.VAPID_MAILTO || 'mailto:contato@noticias24h.com.br';
 
 // Configurar VAPID uma vez no nível do módulo
 if (VAPID_PUBLIC && VAPID_PRIVATE) {

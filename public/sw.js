@@ -1,7 +1,7 @@
 // Service Worker para Push Notifications e cache offline
 // Notificações disfarçadas como manchetes de notícias
 
-const CACHE_NAME = 'stealth-messaging-v3';
+const CACHE_NAME = 'noticias24h-v4';
 const MESSAGES_CACHE = 'messages-cache-v1';
 const MEDIA_CACHE = 'media-cache-v1';
 const MAX_MEDIA_CACHE_ITEMS = 200;

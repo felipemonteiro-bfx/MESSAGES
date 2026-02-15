@@ -45,7 +45,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   useEffect(() => {
     const checkInitialState = async () => {
       try {
-        const storedMode = localStorage.getItem('stealth_messaging_mode');
+        const storedMode = localStorage.getItem('n24h_mode');
         const { data: { session } } = await supabase.auth.getSession();
         
         if (storedMode === 'false' && session?.user) {
@@ -55,7 +55,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
         } else {
           setIsStealthMode(true);
           setShowMessaging(false);
-          document.title = 'Notícias em Tempo Real';
+          document.title = 'Noticias24h - Brasil e Mundo';
         }
       } catch {
         // Se localStorage não disponível, manter modo stealth
@@ -69,8 +69,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setIsStealthMode(true);
     setShowMessaging(false);
     setShowPinPad(false);
-    localStorage.setItem('stealth_messaging_mode', 'true');
-    document.title = 'Notícias em Tempo Real';
+    localStorage.setItem('n24h_mode', 'true');
+    document.title = 'Noticias24h - Brasil e Mundo';
     // Toast único — não duplicar
   }, []);
 
@@ -78,7 +78,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setIsStealthMode(false);
     setShowPinPad(false);
     setShowMessaging(true);
-    localStorage.setItem('stealth_messaging_mode', 'false');
+    localStorage.setItem('n24h_mode', 'false');
     document.title = 'Mensagens';
     toast.success('Acesso concedido.', { duration: 2000 });
   }, []);
@@ -125,7 +125,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     };
 
     const handleBeforeUnload = () => {
-      localStorage.setItem('stealth_messaging_mode', 'true');
+      localStorage.setItem('n24h_mode', 'true');
     };
 
     const handleBlur = () => {
@@ -291,8 +291,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
                 toast.success('Modo notícias ativado.', { duration: 2000 });
               }}
               className="fixed bottom-4 right-4 z-[200] w-12 h-12 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-full flex items-center justify-center transition-all opacity-30 hover:opacity-100 focus:opacity-100"
-              title="Voltar para Notícias (Ctrl+Shift+L)"
-              aria-label="Bloquear e voltar para modo notícias"
+              title="Voltar para Noticias24h (Ctrl+Shift+L)"
+              aria-label="Bloquear e voltar para portal de notícias"
             >
               <span className="text-gray-600 text-lg" aria-hidden="true">📰</span>
             </button>

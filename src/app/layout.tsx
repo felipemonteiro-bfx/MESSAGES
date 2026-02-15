@@ -9,10 +9,10 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Notícias em Tempo Real",
-  description: "Sua fonte diária de notícias e atualizações.",
+  title: "Noticias24h - Brasil e Mundo",
+  description: "Portal de notícias atualizado 24 horas. Cobertura completa do Brasil e do mundo.",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Notícias" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Noticias24h" },
 };
 
 export const viewport: Viewport = { 

@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { createClient } from '@/lib/supabase/client';
 
-const SAVED_NEWS_KEY = 'stealth_news_saved';
-const ALERTAS_ULTIMA_HORA_KEY = 'stealth_alertas_ultima_hora';
+const SAVED_NEWS_KEY = 'n24h_saved_articles';
+const ALERTAS_ULTIMA_HORA_KEY = 'n24h_breaking_alerts';
 function getAlertasUltimaHora(): boolean {
   if (typeof window === 'undefined') return true;
   const v = localStorage.getItem(ALERTAS_ULTIMA_HORA_KEY);
@@ -678,8 +678,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold tracking-tight text-gray-900 truncate">Notícias em Tempo Real</h1>
-                <p className="text-[10px] text-gray-400 font-medium">Atualizado a cada 5 min • Brasil e Mundo</p>
+                <h1 className="text-xl font-bold tracking-tight text-gray-900 truncate">Noticias24h</h1>
+                <p className="text-[10px] text-gray-400 font-medium">Atualizado 24h • Brasil e Mundo</p>
               </div>
               <button onClick={() => setSearchOpen(true)} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Buscar">
                 <Search className="w-5 h-5 text-gray-600" />

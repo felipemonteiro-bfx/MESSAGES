@@ -45,7 +45,7 @@ export default function PanicProvider({ children }: { children: React.ReactNode 
       setShowUnlock(false);
       setInputPw('');
       localStorage.setItem('panic_mode', 'false');
-      document.title = "Notícias em Tempo Real";
+      document.title = "Noticias24h - Brasil e Mundo";
       toast.success('Cofre restaurado com sucesso.');
     } else {
       toast.error('Senha de acesso incorreta.');

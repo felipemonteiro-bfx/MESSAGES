@@ -11,10 +11,10 @@ export const Footer = () => {
               <div className="h-8 w-8 bg-emerald-600 rounded-lg flex items-center justify-center">
                 <ShieldCheck className="h-5 w-5 text-white" />
               </div>
-              <span className="text-lg font-black text-slate-900">Notícias<span className="text-emerald-600">.</span></span>
+              <span className="text-lg font-black text-slate-900">Noticias<span className="text-emerald-600">24h</span></span>
             </div>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              Sua fonte diária de notícias e atualizações em tempo real. Informação de qualidade ao seu alcance.
+              Portal de notícias atualizado 24 horas. Cobertura completa do Brasil e do mundo ao seu alcance.
             </p>
             <div className="flex items-center gap-2 text-emerald-600 text-[10px] font-black uppercase tracking-widest">
               <ShieldCheck className="h-4 w-4" /> Dados Criptografados
@@ -42,7 +42,7 @@ export const Footer = () => {
                   </div>
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase">E-mail</p>
-                    <p className="text-xs font-bold text-slate-700">contato@noticiasbr.com.br</p>
+                    <p className="text-xs font-bold text-slate-700">contato@noticias24h.com.br</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 group">
@@ -70,7 +70,7 @@ export const Footer = () => {
 
         <div className="mt-16 pt-8 border-t border-teal-50 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-[10px] font-bold text-slate-400 uppercase">
-            © {new Date().getFullYear()} Notícias BR. Todos os direitos reservados.
+            © {new Date().getFullYear()} Noticias24h. Todos os direitos reservados.
           </p>
           <div className="flex gap-6 text-[10px] font-black text-emerald-600 uppercase tracking-tighter">
             <span>Brasil</span>

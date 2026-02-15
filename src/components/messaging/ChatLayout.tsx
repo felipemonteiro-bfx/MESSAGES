@@ -957,7 +957,7 @@ export default function ChatLayout() {
                     className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
                   >
                     <Home className="w-4 h-4" />
-                    <span>Voltar para Notícias</span>
+                    <span>Voltar para Noticias24h</span>
                   </button>
                   
                   <button

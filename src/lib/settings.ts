@@ -2,9 +2,9 @@
  * Gerenciamento de configurações do usuário
  */
 
-const AUTO_LOCK_TIMEOUT_KEY = 'stealth_auto_lock_timeout';
-const INCOGNITO_MODE_KEY = 'stealth_incognito_mode';
-const AUTO_LOCK_ON_SCREEN_LOCK_KEY = 'stealth_auto_lock_on_screen_lock';
+const AUTO_LOCK_TIMEOUT_KEY = 'n24h_auto_lock_timeout';
+const INCOGNITO_MODE_KEY = 'n24h_incognito_mode';
+const AUTO_LOCK_ON_SCREEN_LOCK_KEY = 'n24h_auto_lock_on_screen_lock';
 
 export type AutoLockTimeout = 10 | 30 | 60 | 300 | 0; // 10s, 30s, 1min, 5min, Nunca (0)
 
