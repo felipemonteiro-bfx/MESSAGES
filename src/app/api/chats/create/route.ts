@@ -5,11 +5,13 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 // Server-side API to create a new chat
 // Uses service role to bypass RLS issues
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the recipient by nickname
-    const { data: recipient, error: recipientError } = await supabaseAdmin
+    const { data: recipient, error: recipientError } = await getSupabaseAdmin()
       .from('profiles')
       .select('id, nickname')
       .eq('nickname', recipientNickname.trim())
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     // Check if a private chat already exists between these users
     if (type === 'private') {
-      const { data: existingChats } = await supabaseAdmin
+      const { data: existingChats } = await getSupabaseAdmin()
         .from('chat_participants')
         .select('chat_id')
         .eq('user_id', user.id);
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
       if (existingChats && existingChats.length > 0) {
         const chatIds = existingChats.map(c => c.chat_id);
         
-        const { data: recipientChats } = await supabaseAdmin
+        const { data: recipientChats } = await getSupabaseAdmin()
           .from('chat_participants')
           .select('chat_id')
           .eq('user_id', recipient.id)
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
         if (recipientChats && recipientChats.length > 0) {
           // Check if any of these are private chats
           const commonChatIds = recipientChats.map(c => c.chat_id);
-          const { data: privateChats } = await supabaseAdmin
+          const { data: privateChats } = await getSupabaseAdmin()
             .from('chats')
             .select('id')
             .in('id', commonChatIds)
@@ -81,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the chat
-    const { data: chat, error: chatError } = await supabaseAdmin
+    const { data: chat, error: chatError } = await getSupabaseAdmin()
       .from('chats')
       .insert({ type })
       .select('id')
@@ -93,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add both participants
-    const { error: participantsError } = await supabaseAdmin
+    const { error: participantsError } = await getSupabaseAdmin()
       .from('chat_participants')
       .insert([
         { chat_id: chat.id, user_id: user.id },
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
     if (participantsError) {
       console.error('Error adding participants:', participantsError);
       // Cleanup: delete the chat
-      await supabaseAdmin.from('chats').delete().eq('id', chat.id);
+      await getSupabaseAdmin().from('chats').delete().eq('id', chat.id);
       return NextResponse.json({ error: 'Failed to add participants' }, { status: 500 });
     }
 

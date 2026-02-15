@@ -5,11 +5,13 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 // Server-side API to fetch and send messages
 // Uses service role to bypass RLS recursion on chat_participants
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 
 // GET /api/messages?chatId=xxx&page=1&limit=50
 export async function GET(request: NextRequest) {
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user is a participant of this chat
-    const { data: participation } = await supabaseAdmin
+    const { data: participation } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id')
       .eq('chat_id', chatId)
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * limit;
     const to = page * limit - 1;
 
-    const { data: messages, error: msgError } = await supabaseAdmin
+    const { data: messages, error: msgError } = await getSupabaseAdmin()
       .from('messages')
       .select('*')
       .eq('chat_id', chatId)
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user is a participant of this chat
-    const { data: participation } = await supabaseAdmin
+    const { data: participation } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id')
       .eq('chat_id', chatId)
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
     // Nota: expires_at e is_ephemeral podem não existir na tabela ainda
     // Só incluir se tiverem valor real (não null/false/undefined)
 
-    const { data: message, error: msgError } = await supabaseAdmin
+    const { data: message, error: msgError } = await getSupabaseAdmin()
       .from('messages')
       .insert(insertData)
       .select('*')

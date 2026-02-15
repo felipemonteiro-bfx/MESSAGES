@@ -5,11 +5,13 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 // Server-side API to fetch user's chats with participants
 // Uses service role to bypass RLS recursion on chat_participants
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
     const userId = user.id;
 
     // 1. Get user's chat participations (using admin to bypass RLS)
-    const { data: myParticipations, error: partError } = await supabaseAdmin
+    const { data: myParticipations, error: partError } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id, muted')
       .eq('user_id', userId);
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
     const chatIds = myParticipations.map(p => p.chat_id);
 
     // 2. Get chat details
-    const { data: chats, error: chatsError } = await supabaseAdmin
+    const { data: chats, error: chatsError } = await getSupabaseAdmin()
       .from('chats')
       .select('id, type, name')
       .in('id', chatIds);
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Get other participants for all chats (batch query)
-    const { data: allParticipants, error: allPartError } = await supabaseAdmin
+    const { data: allParticipants, error: allPartError } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id, user_id')
       .in('chat_id', chatIds)
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
     let profilesMap: Record<string, { id: string; nickname: string; avatar_url: string | null }> = {};
 
     if (otherUserIds.length > 0) {
-      const { data: profiles, error: profilesError } = await supabaseAdmin
+      const { data: profiles, error: profilesError } = await getSupabaseAdmin()
         .from('profiles')
         .select('id, nickname, avatar_url')
         .in('id', otherUserIds);
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     // 5. Get last messages for all chats (batch query)
     // Use a single query with DISTINCT ON to get the latest message per chat
-    const { data: lastMessages, error: msgError } = await supabaseAdmin
+    const { data: lastMessages, error: msgError } = await getSupabaseAdmin()
       .from('messages')
       .select('chat_id, content, created_at')
       .in('chat_id', chatIds)

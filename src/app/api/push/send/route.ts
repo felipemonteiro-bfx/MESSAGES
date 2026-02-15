@@ -3,12 +3,14 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import webPush from 'web-push';
 
-// Admin client para queries que precisam bypass RLS
-const supabaseAdmin = createAdminClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+// Lazy admin client — env vars not available at build time on Vercel
+function getSupabaseAdmin() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
     }
 
     // Verificar se o remetente está no mesmo chat que o destinatário (usando admin para bypass RLS)
-    const { data: sharedChats, error: chatError } = await supabaseAdmin
+    const { data: sharedChats, error: chatError } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id')
       .eq('user_id', user.id);
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
     }
 
     const chatIds = sharedChats.map(c => c.chat_id);
-    const { data: recipientChats } = await supabaseAdmin
+    const { data: recipientChats } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id')
       .eq('user_id', recipientId)
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Sem permissão para enviar notificação a este usuário' }, { status: 403 });
     }
 
-    const { data: rows, error } = await supabaseAdmin
+    const { data: rows, error } = await getSupabaseAdmin()
       .from('push_subscriptions')
       .select('id, subscription_json')
       .eq('user_id', recipientId);
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
 
     // Limpar subscriptions expiradas (usando admin para bypass RLS)
     if (expiredSubscriptionIds.length > 0) {
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('push_subscriptions')
         .delete()
         .in('id', expiredSubscriptionIds);

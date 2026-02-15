@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 
 // GET /api/messages/unread — lightweight endpoint for checking unread messages
 // Returns up to 5 most recent unread messages across all chats
@@ -20,7 +22,7 @@ export async function GET() {
     }
 
     // Get user's chat IDs
-    const { data: participations } = await supabaseAdmin
+    const { data: participations } = await getSupabaseAdmin()
       .from('chat_participants')
       .select('chat_id')
       .eq('user_id', user.id);
@@ -32,7 +34,7 @@ export async function GET() {
     const chatIds = participations.map(p => p.chat_id);
 
     // Fetch unread messages not sent by this user
-    const { data: unread } = await supabaseAdmin
+    const { data: unread } = await getSupabaseAdmin()
       .from('messages')
       .select('id, content, sender_id, chat_id, created_at')
       .in('chat_id', chatIds)
@@ -46,7 +48,7 @@ export async function GET() {
     let profiles: Record<string, string> = {};
 
     if (senderIds.length > 0) {
-      const { data: profileData } = await supabaseAdmin
+      const { data: profileData } = await getSupabaseAdmin()
         .from('profiles')
         .select('id, nickname')
         .in('id', senderIds);
