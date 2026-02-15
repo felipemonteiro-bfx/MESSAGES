@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /**
  * Hook para gerenciar estado no localStorage
+ * Corrigido: stale closure, cross-tab sync, key changes
  */
 export function useLocalStorage<T>(
   key: string,
@@ -21,20 +22,56 @@ export function useLocalStorage<T>(
     }
   });
 
-  // Função para atualizar o valor
-  const setValue = (value: T | ((val: T) => T)) => {
+  // Re-ler do localStorage quando key muda
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
-      // Permite que value seja uma função para manter a mesma API do useState
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      const item = window.localStorage.getItem(key);
+      if (item) {
+        setStoredValue(JSON.parse(item));
+      } else {
+        setStoredValue(initialValue);
       }
+    } catch (error) {
+      console.error(`Error reading localStorage key "${key}":`, error);
+      setStoredValue(initialValue);
+    }
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sincronizar entre abas
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === key && e.newValue !== null) {
+        try {
+          setStoredValue(JSON.parse(e.newValue));
+        } catch {
+          // Ignorar JSON inválido
+        }
+      } else if (e.key === key && e.newValue === null) {
+        setStoredValue(initialValue);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [key, initialValue]);
+
+  // Função para atualizar o valor — usa functional setState para evitar stale closures
+  const setValue = useCallback((value: T | ((val: T) => T)) => {
+    try {
+      setStoredValue(prev => {
+        const valueToStore = value instanceof Function ? value(prev) : value;
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        }
+        return valueToStore;
+      });
     } catch (error) {
       console.error(`Error setting localStorage key "${key}":`, error);
     }
-  };
+  }, [key]);
 
   return [storedValue, setValue];
 }

@@ -45,7 +45,7 @@ export default function PanicProvider({ children }: { children: React.ReactNode 
       setShowUnlock(false);
       setInputPw('');
       localStorage.setItem('panic_mode', 'false');
-      document.title = "Guardião de Notas - Gestão Patrimonial";
+      document.title = "Notícias em Tempo Real";
       toast.success('Cofre restaurado com sucesso.');
     } else {
       toast.error('Senha de acesso incorreta.');
@@ -164,5 +164,3 @@ export default function PanicProvider({ children }: { children: React.ReactNode 
     </PanicContext.Provider>
   );
 }
-
-import { Pencil as PencilIcon } from 'lucide-react';

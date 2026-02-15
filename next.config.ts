@@ -1,18 +1,15 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   // Configuração para Capacitor (gera export estático quando CAPACITOR=true)
   output: process.env.CAPACITOR === 'true' ? 'export' : undefined,
   
   images: {
-    unoptimized: process.env.CAPACITOR === 'true', // Necessário para export estático
+    unoptimized: process.env.CAPACITOR === 'true',
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'moaxyoqjedgrfnxeskku.supabase.co',
-      },
-      {
-        protocol: 'https',
-        hostname: '**.supabase.co',
       },
       {
         protocol: 'https',
@@ -24,53 +21,15 @@ const nextConfig = {
       },
     ],
   },
-  trailingSlash: process.env.CAPACITOR === 'true', // Melhor compatibilidade com Capacitor
-  distDir: process.env.CAPACITOR === 'true' ? 'out' : '.next', // Diretório de saída (usado pelo Capacitor)
+  trailingSlash: process.env.CAPACITOR === 'true',
+  distDir: process.env.CAPACITOR === 'true' ? 'out' : '.next',
   
-  // Sugestão 28: Otimização de bundle e code splitting
+  // Otimização de imports para tree-shaking
   experimental: {
-    optimizePackageImports: ['lucide-react', 'framer-motion'],
+    optimizePackageImports: ['lucide-react', 'date-fns'],
   },
   
-  // Webpack config para code splitting
-  webpack: (config: any, { isServer }: { isServer: boolean }) => {
-    if (!isServer) {
-      // Otimizar chunks
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          chunks: 'all',
-          cacheGroups: {
-            default: false,
-            vendors: false,
-            // Vendor chunk separado
-            vendor: {
-              name: 'vendor',
-              chunks: 'all',
-              test: /node_modules/,
-              priority: 20,
-            },
-            // Chunk para componentes pesados
-            components: {
-              name: 'components',
-              chunks: 'all',
-              test: /[\\/]src[\\/]components[\\/]/,
-              priority: 10,
-              minChunks: 2,
-            },
-            // Chunk para libs grandes
-            framerMotion: {
-              name: 'framer-motion',
-              test: /[\\/]node_modules[\\/]framer-motion[\\/]/,
-              chunks: 'all',
-              priority: 30,
-            },
-          },
-        },
-      };
-    }
-    return config;
-  },
+  // Não sobrescrever webpack splitChunks — usar os defaults otimizados do Next.js
 };
 
 export default nextConfig;

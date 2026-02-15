@@ -63,15 +63,17 @@ export function normalizeError(error: unknown): AppErrorClass {
   }
 
   if (error instanceof Error) {
-    // Erros do Supabase
-    if (error.message.includes('JWT') || error.message.includes('session')) {
+    const msg = error.message.toLowerCase();
+    
+    // Erros de autenticação do Supabase
+    if (msg.includes('jwt') || msg.includes('session') || msg.includes('refresh_token') || msg.includes('not authenticated')) {
       return createError(ErrorType.AUTHENTICATION, 'Sessão expirada. Por favor, faça login novamente.', {
         originalError: error,
       });
     }
 
     // Erros de rede
-    if (error.message.includes('fetch') || error.message.includes('network')) {
+    if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('net::err')) {
       return createError(ErrorType.NETWORK, 'Erro de conexão. Verifique sua internet.', {
         originalError: error,
       });
@@ -80,31 +82,18 @@ export function normalizeError(error: unknown): AppErrorClass {
     return createError(ErrorType.UNKNOWN, error.message, { originalError: error });
   }
 
+  if (typeof error === 'string') {
+    return createError(ErrorType.UNKNOWN, error);
+  }
+
   return createError(ErrorType.UNKNOWN, 'Erro desconhecido', { originalError: error });
 }
 
 /**
- * Log de erro (não loga dados sensíveis em produção)
- * Sugestão 29: Integrado com sistema de monitoramento
+ * Log de erro — usa monitoring se disponível, sem require() dinâmico
  */
 export function logError(error: AppErrorClass, context?: Record<string, unknown>): void {
   const isDevelopment = process.env.NODE_ENV === 'development';
-
-  // Integrar com sistema de monitoramento se disponível
-  if (typeof window !== 'undefined') {
-    try {
-      const { monitoring } = require('@/lib/monitoring');
-      if (monitoring) {
-        monitoring.error(`[${error.type}] ${error.message}`, {
-          code: error.code,
-          statusCode: error.statusCode,
-          ...context,
-        });
-      }
-    } catch {
-      // Ignorar se monitoring não estiver disponível
-    }
-  }
 
   if (isDevelopment) {
     console.error('[AppError]', {
@@ -116,14 +105,9 @@ export function logError(error: AppErrorClass, context?: Record<string, unknown>
       originalError: error.originalError,
     });
   } else {
-    // Em produção, logar apenas informações seguras
-    console.error('[AppError]', {
-      type: error.type,
-      message: error.message,
-      code: error.code,
-      statusCode: error.statusCode,
-      // Não logar originalError ou context em produção
-    });
+    // Em produção, não logar detalhes sensíveis no console
+    // O monitoring service (se configurado) captura automaticamente via error handlers
+    console.error(`[AppError] ${error.type}: ${error.message}`);
   }
 }
 

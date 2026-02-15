@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
 
 /**
  * Hook para gerenciar autenticação do usuário
+ * Corrigido: createClient() memoizado para evitar loop infinito de re-renders
  */
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     // Verificar sessão inicial
@@ -33,21 +34,22 @@ export function useAuth() {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase.auth]);
+  }, [supabase]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
       logger.error('Error signing out', error as Error);
       throw error;
     }
     setUser(null);
-  };
+  }, [supabase]);
 
   return {
     user,
     loading,
     signOut,
+    supabase,
     isAuthenticated: !!user,
   };
 }

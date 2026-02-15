@@ -43,9 +43,16 @@ CREATE TABLE IF NOT EXISTS public.chat_participants (
   chat_id uuid references public.chats on delete cascade not null,
   user_id uuid references public.profiles(id) on delete cascade not null,
   role text default 'member',
+  muted boolean default false,
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
   primary key (chat_id, user_id)
 );
+
+-- Adicionar coluna muted se tabela já existir
+DO $$ BEGIN
+  ALTER TABLE public.chat_participants ADD COLUMN IF NOT EXISTS muted boolean DEFAULT false;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
 ALTER TABLE public.chat_participants ENABLE ROW LEVEL SECURITY;
 
@@ -58,10 +65,10 @@ DROP POLICY IF EXISTS "Users can view other participants in their chats" ON publ
 CREATE POLICY "Users can view other participants in their chats"
   ON public.chat_participants FOR SELECT
   USING (
-    exists (
-      select 1 from public.chat_participants cp
-      where cp.chat_id = chat_participants.chat_id
-      and cp.user_id = auth.uid()
+    chat_id IN (
+      SELECT chat_id 
+      FROM public.chat_participants 
+      WHERE user_id = auth.uid()
     )
   );
 
@@ -76,7 +83,7 @@ CREATE POLICY "Users can view chats they belong to"
   USING (
     exists (
       select 1 from public.chat_participants cp
-      where cp.chat_id = id
+      where cp.chat_id = public.chats.id
       and cp.user_id = auth.uid()
     )
   );

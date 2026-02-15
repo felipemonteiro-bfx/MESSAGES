@@ -7,23 +7,20 @@ export async function middleware(request: NextRequest) {
   // Atualizar sessão do Supabase primeiro
   const supabaseResponse = await updateSession(request);
 
-  // Rate limiting para rotas de API (pular em modo de teste)
-  const isTestMode = request.cookies.get('test-bypass')?.value === 'true';
-  
-  if (!isTestMode && request.nextUrl.pathname.startsWith('/api/')) {
+  if (request.nextUrl.pathname.startsWith('/api/')) {
     const identifier = getRateLimitIdentifier(request);
     
     // Determinar qual limite usar baseado no endpoint
     const pathname = request.nextUrl.pathname;
     let config: { maxRequests: number; windowMs: number } = RATE_LIMITS.default;
     
-    if (pathname.includes('/checkout')) {
-      config = RATE_LIMITS.checkout;
-    } else if (pathname.includes('/billing-portal')) {
-      config = RATE_LIMITS.billingPortal;
+    if (pathname.includes('/push/send')) {
+      config = RATE_LIMITS.pushSend;
+    } else if (pathname.includes('/push/subscribe')) {
+      config = RATE_LIMITS.pushSubscribe;
     }
     
-    const rateLimit = checkRateLimit(identifier, config);
+    const rateLimit = checkRateLimit(`${identifier}:${pathname}`, config);
     
     if (!rateLimit.allowed) {
       logger.warn('Rate limit exceeded', {
@@ -52,7 +49,7 @@ export async function middleware(request: NextRequest) {
     }
     
     // Adicionar headers de rate limit na resposta
-    const response = supabaseResponse.clone();
+    const response = supabaseResponse;
     response.headers.set('X-RateLimit-Limit', config.maxRequests.toString());
     response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
     response.headers.set('X-RateLimit-Reset', new Date(rateLimit.resetAt).toISOString());
@@ -60,14 +57,15 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Rate limiting para rotas de autenticação
-  if (request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup')) {
+  // Rate limiting para rotas de autenticação (apenas se não já tem erro de rate limit)
+  if ((request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup'))
+      && !request.nextUrl.searchParams.has('error')) {
     const identifier = getRateLimitIdentifier(request);
     const authConfig: { maxRequests: number; windowMs: number } = request.nextUrl.pathname.startsWith('/login') 
       ? RATE_LIMITS.login 
       : RATE_LIMITS.signup;
     
-    const rateLimit = checkRateLimit(identifier, authConfig);
+    const rateLimit = checkRateLimit(`${identifier}:auth`, authConfig);
     
     if (!rateLimit.allowed) {
       logger.warn('Auth rate limit exceeded', {
@@ -75,7 +73,6 @@ export async function middleware(request: NextRequest) {
         pathname: request.nextUrl.pathname,
       });
       
-      // Redirecionar com mensagem de erro
       const url = request.nextUrl.clone();
       url.searchParams.set('error', 'rate_limit');
       url.searchParams.set('message', 'Muitas tentativas. Tente novamente em alguns minutos.');
@@ -93,8 +90,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder
+     * - public folder assets (svg, png, jpg, etc.)
+     * - sw.js (service worker)
+     * - manifest.json (PWA manifest)
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

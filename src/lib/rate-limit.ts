@@ -1,6 +1,9 @@
 /**
- * Sistema básico de rate limiting usando Map em memória
- * Para produção, considere usar @upstash/ratelimit ou Redis
+ * Sistema de rate limiting
+ * 
+ * Nota: Em ambientes serverless (Vercel), o Map em memória é por instância.
+ * Para rate limiting global, integre com Upstash Redis (@upstash/ratelimit).
+ * Este módulo funciona como fallback local e é eficaz em ambientes tradicionais.
  */
 
 interface RateLimitConfig {
@@ -13,8 +16,7 @@ interface RateLimitStore {
   resetTime: number;
 }
 
-// Store em memória (resetado a cada restart do servidor)
-// Em produção, use Redis ou Upstash
+// Store em memória (por instância em serverless)
 const rateLimitStore = new Map<string, RateLimitStore>();
 
 // Configurações de rate limiting por endpoint
@@ -26,9 +28,9 @@ export const RATE_LIMITS = {
   // Mensagens
   sendMessage: { maxRequests: 30, windowMs: 60 * 1000 }, // 30 mensagens por minuto
   
-  // API
-  checkout: { maxRequests: 10, windowMs: 60 * 1000 }, // 10 por minuto
-  billingPortal: { maxRequests: 5, windowMs: 60 * 1000 }, // 5 por minuto
+  // Push notifications
+  pushSend: { maxRequests: 60, windowMs: 60 * 1000 }, // 60 por minuto
+  pushSubscribe: { maxRequests: 10, windowMs: 60 * 1000 }, // 10 por minuto
   
   // Geral
   default: { maxRequests: 100, windowMs: 60 * 1000 }, // 100 por minuto
@@ -55,11 +57,13 @@ export function checkRateLimit(
     rateLimitStore.set(key, store);
   }
   
-  // Incrementar contador
-  store.count++;
+  // Verificar se excedeu o limite ANTES de incrementar
+  const allowed = store.count < config.maxRequests;
   
-  // Verificar se excedeu o limite
-  const allowed = store.count <= config.maxRequests;
+  if (allowed) {
+    store.count++;
+  }
+  
   const remaining = Math.max(0, config.maxRequests - store.count);
   
   return {
@@ -70,7 +74,7 @@ export function checkRateLimit(
 }
 
 /**
- * Limpa entradas expiradas do store (chamado periodicamente)
+ * Limpa entradas expiradas do store
  */
 export function cleanupExpiredEntries(): void {
   const now = Date.now();
@@ -81,27 +85,31 @@ export function cleanupExpiredEntries(): void {
   }
 }
 
-// Limpar entradas expiradas a cada 5 minutos
-if (typeof setInterval !== 'undefined') {
-  setInterval(cleanupExpiredEntries, 5 * 60 * 1000);
+// Limpar entradas expiradas a cada 5 minutos (apenas em ambientes com setInterval)
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+if (typeof setInterval !== 'undefined' && !cleanupInterval) {
+  cleanupInterval = setInterval(cleanupExpiredEntries, 5 * 60 * 1000);
+  // Permitir que o processo termine sem esperar pelo interval
+  if (cleanupInterval && typeof cleanupInterval === 'object' && 'unref' in cleanupInterval) {
+    cleanupInterval.unref();
+  }
 }
 
 /**
  * Obtém identificador único para rate limiting
- * Pode ser IP, user ID, ou combinação
+ * Prioriza user ID, fallback para IP (primeiro valor do x-forwarded-for)
  */
 export function getRateLimitIdentifier(
   request: Request,
   userId?: string
 ): string {
-  // Priorizar user ID se disponível (mais preciso)
   if (userId) {
     return `user:${userId}`;
   }
   
-  // Fallback para IP
+  // Usar apenas o primeiro IP do x-forwarded-for (set pelo proxy confiável)
   const forwarded = request.headers.get('x-forwarded-for');
-  const ip = forwarded ? forwarded.split(',')[0] : 
+  const ip = forwarded ? forwarded.split(',')[0].trim() : 
              request.headers.get('x-real-ip') || 
              'unknown';
   

@@ -28,12 +28,6 @@ export const messageContentSchema = z
 // Validação de email
 export const emailSchema = z.string().email('Email inválido');
 
-// Validação de checkout request (removido - não usado mais)
-// export const checkoutRequestSchema = z.object({
-//   priceId: z.string().min(1, 'Price ID é obrigatório'),
-//   planName: z.string().min(1, 'Nome do plano é obrigatório'),
-// });
-
 // Validação de chat ID
 export const chatIdSchema = z.string().uuid('ID de chat inválido');
 
@@ -41,13 +35,29 @@ export const chatIdSchema = z.string().uuid('ID de chat inválido');
 export const userIdSchema = z.string().uuid('ID de usuário inválido');
 
 /**
- * Sanitiza string removendo caracteres perigosos
+ * Sanitiza string para exibição segura usando HTML encoding
+ * Não destrói conteúdo legítimo (ex: "3 < 5" é preservado como "3 &lt; 5")
+ */
+export function sanitizeForDisplay(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/**
+ * Sanitiza string removendo padrões perigosos para armazenamento
+ * Mais conservador — remove apenas vetores de ataque conhecidos
  */
 export function sanitizeString(input: string): string {
   return input
-    .replace(/[<>]/g, '') // Remove < e >
-    .replace(/javascript:/gi, '') // Remove javascript:
-    .replace(/on\w+=/gi, '') // Remove event handlers
+    .replace(/javascript\s*:/gi, '')
+    .replace(/data\s*:\s*text\/html/gi, '')
+    .replace(/vbscript\s*:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .replace(/expression\s*\(/gi, '')
     .trim();
 }
 

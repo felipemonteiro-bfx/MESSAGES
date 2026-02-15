@@ -1,23 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
-import { Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
+import { Lock, Loader2, ArrowRight, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
 import { logger } from '@/lib/logger';
 
 interface AuthFormProps {
   type: 'login' | 'signup';
-  /** Usado em modal: ao ter sucesso, chama callback em vez de redirecionar */
   onSuccess?: () => void;
-  /** Em modal: alternar entre signup e login sem navegar */
   onSwitchMode?: () => void;
 }
 
@@ -27,48 +24,44 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       if (type === 'signup') {
-        // Signup sem confirmação de email - aceita qualquer email
-        // IMPORTANTE: Para não receber emails, desabilite "Enable email confirmations" 
-        // no Supabase Dashboard → Authentication → Settings → Email Auth
+        // Validar nickname antes de criar conta
+        const cleanNickname = nickname.toLowerCase().replace(/\s+/g, '_');
+        if (!cleanNickname || cleanNickname.length < 3 || cleanNickname.length > 20) {
+          throw new Error('Nickname deve ter entre 3 e 20 caracteres');
+        }
+        if (!/^[a-z0-9_]+$/.test(cleanNickname)) {
+          throw new Error('Nickname deve conter apenas letras minúsculas, números e underscore');
+        }
+
+        // Verificar se nickname já existe ANTES de criar conta
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('nickname', cleanNickname)
+          .single();
+        
+        if (existingProfile) {
+          throw new Error('Este nickname já está em uso. Escolha outro.');
+        }
+
         const { data: signUpData, error } = await supabase.auth.signUp({
           email,
           password,
           options: { 
-            // Não enviar email de confirmação (mas Supabase ainda pode enviar se configurado no Dashboard)
             emailRedirectTo: undefined,
-            data: { 
-              nickname: nickname.toLowerCase().replace(/\s+/g, '_')
-            } 
+            data: { nickname: cleanNickname }
           },
         });
         if (error) throw error;
 
         if (signUpData.user) {
-          const cleanNickname = nickname.toLowerCase().replace(/\s+/g, '_');
-          
-          // Validar nickname antes de criar perfil
-          if (!cleanNickname || cleanNickname.length < 3 || cleanNickname.length > 20) {
-            throw new Error('Nickname deve ter entre 3 e 20 caracteres');
-          }
-          
-          // Verificar se nickname já existe
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('nickname', cleanNickname)
-            .single();
-          
-          if (existingProfile && existingProfile.id !== signUpData.user.id) {
-            throw new Error('Este nickname já está em uso. Escolha outro.');
-          }
-          
           const { error: profileError } = await supabase.from('profiles').upsert({
             id: signUpData.user.id,
             nickname: cleanNickname,
@@ -77,7 +70,6 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
           
           if (profileError) {
             logger.error('Failed to create profile', profileError);
-            // Se erro de nickname duplicado, informar usuário
             if (profileError.code === '23505' || profileError.message?.includes('unique')) {
               throw new Error('Este nickname já está em uso. Escolha outro.');
             }
@@ -85,21 +77,15 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
           }
           
           logger.info('Profile created successfully', { userId: signUpData.user.id, nickname: cleanNickname });
-          
-          // Aguardar um pouco para garantir que a sessão está estabelecida
-          await new Promise(resolve => setTimeout(resolve, 500));
         }
 
-        // Após cadastro, ir direto para o portal (não para /login)
         toast.success('Conta criada! Configure seu PIN de acesso.');
         if (onSuccess) {
-          // Aguardar um pouco mais para garantir que o estado do usuário foi atualizado
-          setTimeout(() => {
-            onSuccess(); // Modal fecha e mostra PinPad
-            router.refresh();
-          }, 300);
+          // Aguardar sessão ser estabelecida
+          await new Promise(resolve => setTimeout(resolve, 500));
+          onSuccess();
+          router.refresh();
         } else {
-          // Se não for modal, redireciona para portal
           router.push('/');
           router.refresh();
         }
@@ -145,17 +131,20 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
               placeholder="Ex: shadow_runner" 
               value={nickname} 
               onChange={(e) => setNickname(e.target.value)} 
-              required 
+              required
+              autoComplete="username"
+              id="nickname-input"
             />
           )}
           <Input 
             label="E-mail" 
-            type="text" 
-            placeholder="qualquer@email.com (sem validação)" 
+            type="email" 
+            placeholder="seu@email.com" 
             value={email} 
             onChange={(e) => setEmail(e.target.value)} 
             required 
-            autoComplete="username"
+            autoComplete={type === 'signup' ? 'email' : 'username'}
+            id="email-input"
           />
           <Input 
             label="Senha" 
@@ -163,7 +152,9 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
             placeholder="••••••••" 
             value={password} 
             onChange={(e) => setPassword(e.target.value)} 
-            required 
+            required
+            autoComplete={type === 'signup' ? 'new-password' : 'current-password'}
+            id="password-input"
           />
           
           <Button type="submit" disabled={loading} className="w-full h-16 rounded-[24px] text-lg font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 group">

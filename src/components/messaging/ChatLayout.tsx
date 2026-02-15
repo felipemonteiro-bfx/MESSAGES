@@ -46,11 +46,9 @@ export default function ChatLayout() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [showEphemeralOption, setShowEphemeralOption] = useState(false);
   const [ephemeralSeconds, setEphemeralSeconds] = useState(30);
-  // Sugestão 15: Lazy loading de mensagens
   const [messagesPage, setMessagesPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const MESSAGES_PER_PAGE = 50;
-  // Sugestão 23: Drag & drop de arquivos
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreview, setDragPreview] = useState<{ files: File[]; count: number } | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -60,131 +58,44 @@ export default function ChatLayout() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  // Memoizar cliente Supabase para evitar re-criação a cada render
+  const supabase = useMemo(() => createClient(), []);
 
-  const fetchChats = useCallback(async (userId: string) => {
+  const fetchChats = useCallback(async (_userId: string) => {
     try {
       setIsLoading(true);
-      // Sugestão 12: Buscar campo muted também
-      const { data: participants, error } = await supabase
-        .from('chat_participants')
-        .select('chat_id, muted, chats (*)')
-        .eq('user_id', userId);
       
-      if (error) {
-        logger.error('Error fetching chat participants', error);
-        throw error;
+      // Usar API server-side para evitar problemas de RLS recursivo
+      const response = await fetch('/api/chats');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
       
-      if (participants && participants.length > 0) {
-        const formattedChats = await Promise.all(participants.map(async (p: { chat_id: string; muted?: boolean; chats: unknown }) => {
-          try {
-            const chat = (Array.isArray(p.chats) ? p.chats[0] : p.chats) as { id: string; type: 'private' | 'group'; name?: string | null };
-            
-            if (!chat || !chat.id) {
-              logger.warn('Invalid chat data', { chat_id: p.chat_id, chat });
-              return null;
-            }
-            
-            let profile: { id: string; nickname: string; avatar_url: string } | null = null;
-            
-            // Buscar outro participante apenas para chats privados
-            if (chat.type === 'private') {
-              try {
-                const { data: otherParticipant, error: participantError } = await supabase
-                  .from('chat_participants')
-                  .select('user_id, profiles!chat_participants_user_id_fkey (*)')
-                  .eq('chat_id', p.chat_id)
-                  .neq('user_id', userId)
-                  .maybeSingle();
-
-              if (participantError) {
-                logger.warn('Error fetching other participant', { error: participantError.message });
-              } else if (otherParticipant) {
-                  const profileData = otherParticipant as { user_id: string; profiles: unknown } | null;
-                  const profileObj = (profileData?.profiles && !Array.isArray(profileData.profiles) 
-                    ? profileData.profiles 
-                    : Array.isArray(profileData?.profiles) 
-                      ? profileData.profiles[0] 
-                      : null) as { id: string; nickname: string; avatar_url: string } | null;
-                  
-                  if (profileObj) {
-                    profile = profileObj;
-                  }
-                }
-              } catch (err) {
-                logger.warn('Error processing participant profile', { error: err instanceof Error ? err.message : String(err) });
-                // Continuar mesmo se falhar ao buscar perfil
-              }
-            }
-
-            // Buscar última mensagem do chat
-            let lastMessage: { content: string; created_at: string } | null = null;
-            try {
-              const { data: lastMsg, error: msgError } = await supabase
-                .from('messages')
-                .select('content, created_at')
-                .eq('chat_id', p.chat_id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              
-              if (msgError && msgError.code !== 'PGRST116') { // PGRST116 = no rows returned
-                logger.warn('Error fetching last message', { error: msgError.message });
-              } else if (lastMsg) {
-                lastMessage = lastMsg;
-              }
-            } catch (err) {
-              logger.warn('Error processing last message', { error: err instanceof Error ? err.message : String(err) });
-              // Continuar mesmo se falhar ao buscar última mensagem
-            }
-
-            // Sugestão 12: Armazenar muted no estado
-            if (p.muted) {
-              setMutedChats(prev => new Set(prev).add(p.chat_id));
-            }
-
-            return {
-              id: p.chat_id,
-              type: chat.type,
-              name: chat.name || undefined,
-              recipient: profile ? {
-                id: profile.id,
-                nickname: profile.nickname,
-                avatar_url: profile.avatar_url
-              } : undefined,
-              lastMessage: lastMessage?.content || undefined,
-              time: lastMessage?.created_at || undefined,
-              muted: p.muted || false
-            } as ChatWithRecipient & { muted?: boolean };
-          } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            logger.error('Error processing chat', error, { chat_id: p.chat_id });
-            return null; // Retornar null para chats com erro
+      const { chats: fetchedChats } = await response.json();
+      
+      if (fetchedChats && fetchedChats.length > 0) {
+        // Atualizar muted chats
+        const newMuted = new Set<string>();
+        for (const chat of fetchedChats) {
+          if (chat.muted) {
+            newMuted.add(chat.id);
           }
-        }));
+        }
+        setMutedChats(newMuted);
         
-        // Filtrar chats nulos e ordenar por última mensagem (mais recente primeiro)
-        const validChats = formattedChats.filter((chat): chat is ChatWithRecipient & { muted?: boolean } => chat !== null);
-        
-        validChats.sort((a, b) => {
-          const timeA = a.time ? new Date(a.time).getTime() : 0;
-          const timeB = b.time ? new Date(b.time).getTime() : 0;
-          return timeB - timeA;
-        });
-        
-        setChats(validChats);
+        setChats(fetchedChats as (ChatWithRecipient & { muted?: boolean })[]);
       } else {
-        // Nenhuma conversa encontrada - não é erro, apenas estado vazio
         setChats([]);
       }
       setIsLoading(false);
     } catch (error) {
       setIsLoading(false);
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('Error in fetchChats', err, { userId });
+      logger.error('Error in fetchChats', err, { userId: _userId });
       const appError = normalizeError(error);
-      logError(appError, { userId });
+      logError(appError, { userId: _userId });
       
       // Mensagem mais específica baseada no tipo de erro
       let errorMessage = getUserFriendlyMessage(appError);
@@ -194,7 +105,7 @@ export default function ChatLayout() {
       
       toast.error(errorMessage);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -221,17 +132,20 @@ export default function ChatLayout() {
         
         await fetchChats(user.id);
         
-        // Sugestão 15: Sincronizar mensagens pendentes ao inicializar
+        // Sugestão 15: Sincronizar mensagens pendentes ao inicializar (via API)
         try {
           await syncPendingMessages(async (pendingMsg) => {
-            const { error } = await supabase.from('messages').insert({
-              chat_id: pendingMsg.chatId,
-              sender_id: user.id,
-              content: pendingMsg.content,
-              media_url: pendingMsg.mediaUrl,
-              media_type: pendingMsg.type !== 'text' ? pendingMsg.type : undefined,
+            const response = await fetch('/api/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chatId: pendingMsg.chatId,
+                content: pendingMsg.content,
+                mediaUrl: pendingMsg.mediaUrl,
+                mediaType: pendingMsg.type !== 'text' ? pendingMsg.type : undefined,
+              }),
             });
-            return !error;
+            return response.ok;
           });
         } catch (error) {
           logger.warn('Erro ao sincronizar mensagens pendentes', { error });
@@ -243,40 +157,51 @@ export default function ChatLayout() {
   }, [supabase, fetchChats]);
 
   // Atualizar lista de chats quando uma nova mensagem chegar
+  // Debounced: evita refetch a cada mensagem individual em sequência rápida
+  const lastMessageCountRef = useRef(0);
   useEffect(() => {
-    if (currentUser && messages.length > 0) {
+    if (!currentUser || messages.length === 0) return;
+    // Só refetch se o número de mensagens realmente mudou (nova mensagem)
+    if (messages.length === lastMessageCountRef.current) return;
+    lastMessageCountRef.current = messages.length;
+    
+    const timeout = setTimeout(() => {
       fetchChats(currentUser.id);
-    }
+    }, 1000); // Debounce de 1s para evitar N+1 em rajadas
+    
+    return () => clearTimeout(timeout);
   }, [messages.length, currentUser, fetchChats]);
 
-  // Sugestão 15: Lazy loading de mensagens
+  // Sugestão 15: Lazy loading de mensagens (via API server-side)
   const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false) => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('chat_id', chatId)
-      .order('created_at', { ascending: false })
-      .range((page - 1) * MESSAGES_PER_PAGE, page * MESSAGES_PER_PAGE - 1);
-    
-    if (error) {
-      console.error('Erro ao buscar mensagens:', error);
-      return;
-    }
-    
-    if (data) {
-      // Reverter ordem para mostrar mais antigas primeiro
-      const sortedData = [...data].reverse();
+    try {
+      const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`);
       
-      if (append) {
-        setMessages(prev => [...sortedData, ...prev]);
-      } else {
-        setMessages(sortedData);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Erro ao buscar mensagens:', errorData);
+        return;
       }
       
-      // Verificar se há mais mensagens
-      setHasMoreMessages(data.length === MESSAGES_PER_PAGE);
+      const { messages: data, hasMore } = await response.json();
+      
+      if (data) {
+        // Reverter ordem para mostrar mais antigas primeiro
+        const sortedData = [...data].reverse();
+        
+        if (append) {
+          setMessages(prev => [...sortedData, ...prev]);
+        } else {
+          setMessages(sortedData);
+        }
+        
+        // Verificar se há mais mensagens
+        setHasMoreMessages(hasMore);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar mensagens:', err);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (selectedChat && currentUser) {
@@ -478,16 +403,22 @@ export default function ChatLayout() {
         }
       }
 
-      // Enviar mensagem com mídia
-      const { error: messageError } = await supabase.from('messages').insert({
-        chat_id: selectedChat.id,
-        sender_id: currentUser.id,
-        content: type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio',
-        media_url: publicUrl,
-        media_type: type
+      // Enviar mensagem com mídia via API
+      const msgResponse = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId: selectedChat.id,
+          content: type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio',
+          mediaUrl: publicUrl,
+          mediaType: type,
+        }),
       });
 
-      if (messageError) throw messageError;
+      if (!msgResponse.ok) {
+        const errorData = await msgResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erro ao enviar mensagem com mídia');
+      }
 
       // Enviar notificação push para o destinatário (marcar como mensagem real)
       const mediaContent = type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio';
@@ -624,18 +555,33 @@ export default function ChatLayout() {
       ? new Date(Date.now() + ephemeralSeconds * 1000).toISOString()
       : null;
     
-    // Sugestão 15: Tentar enviar mensagem, se falhar adicionar à fila de sync
+    // Sugestão 15: Tentar enviar mensagem via API, se falhar adicionar à fila de sync
     let messageSent = false;
     try {
-      const { error } = await supabase.from('messages').insert({
-        chat_id: selectedChat.id,
-        sender_id: currentUser.id,
+      const msgBody: Record<string, unknown> = {
+        chatId: selectedChat.id,
         content: messageContent,
-        expires_at: expiresAt,
-        is_ephemeral: showEphemeralOption && ephemeralSeconds > 0
+      };
+      // Só incluir campos efêmeros se realmente configurados
+      if (expiresAt) msgBody.expiresAt = expiresAt;
+      if (showEphemeralOption && ephemeralSeconds > 0) msgBody.isEphemeral = true;
+      
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgBody),
       });
 
-      if (error) throw error;
+      const responseData = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        throw new Error(responseData.error || `HTTP ${response.status}`);
+      }
+      
+      // Atualização otimista: adicionar mensagem à lista imediatamente
+      if (responseData.message) {
+        setMessages(prev => [...prev, responseData.message]);
+      }
       messageSent = true;
     } catch (error) {
       // Se falhar (ex: offline), adicionar à fila de sincronização
@@ -691,7 +637,8 @@ export default function ChatLayout() {
       
       toast.success('Mensagem enviada!', { duration: 1500 });
       
-      // Atualizar lista de chats
+      // Atualizar mensagens do chat atual e lista de chats
+      await fetchMessages(selectedChat.id, 1, false);
       await fetchChats(currentUser.id);
     } catch (error) {
       const appError = normalizeError(error);
@@ -701,7 +648,7 @@ export default function ChatLayout() {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, selectedChat, currentUser, supabase, isSending, fetchChats]);
+  }, [inputText, selectedChat, currentUser, supabase, isSending, fetchChats, fetchMessages]);
 
   const handleAddContact = useCallback(async () => {
     if (!nicknameSearch.trim() || !currentUser || isAddingContact) return;
@@ -839,91 +786,44 @@ export default function ChatLayout() {
         return;
       }
 
-      // Verificar se já existe um chat entre esses dois usuários
-      const { data: existingChats } = await supabase
-        .from('chat_participants')
-        .select('chat_id')
-        .eq('user_id', currentUser.id);
-      
-      if (existingChats && existingChats.length > 0) {
-        const chatIds = existingChats.map(cp => cp.chat_id);
-        const { data: existingChatWithUser } = await supabase
-          .from('chat_participants')
-          .select('chat_id')
-          .eq('user_id', targetUser.id)
-          .in('chat_id', chatIds)
-          .single();
-        
-        if (existingChatWithUser) {
-          // Chat já existe, apenas selecionar
-          const { data: existingChat } = await supabase
-            .from('chats')
-            .select('*')
-            .eq('id', existingChatWithUser.chat_id)
-            .single();
-          
-          if (existingChat) {
-            toast.info('Chat já existe com este usuário');
-            await fetchChats(currentUser.id);
-            setSelectedChat({
-              ...existingChat,
-              recipient: {
-                id: targetUser.id,
-                nickname: targetUser.nickname,
-                avatar_url: targetUser.avatar_url || ''
-              }
-            } as ChatWithRecipient);
-            setIsAddContactOpen(false);
-            setNicknameSearch('');
-            setIsAddingContact(false);
-            return;
-          }
-        }
+      // Usar API server-side para criar chat (evita problemas de RLS recursivo)
+      const createResponse = await fetch('/api/chats/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientNickname: targetUser.nickname }),
+      });
+
+      const createResult = await createResponse.json();
+
+      if (!createResponse.ok) {
+        throw new Error(createResult.error || 'Erro ao criar chat');
       }
 
-      const { data: newChat, error: chatError } = await supabase
-        .from('chats')
-        .insert({ type: 'private' })
-        .select()
-        .single();
-
-      if (chatError) {
-        logger.error('Error creating chat', chatError);
-        throw chatError;
-      }
-
-      if (newChat) {
-        const { error: participantsError } = await supabase.from('chat_participants').insert([
-          { chat_id: newChat.id, user_id: currentUser.id },
-          { chat_id: newChat.id, user_id: targetUser.id }
-        ]);
-        
-        if (participantsError) {
-          logger.error('Error adding participants', participantsError);
-          // Tentar deletar o chat criado se falhar ao adicionar participantes
-          await supabase.from('chats').delete().eq('id', newChat.id);
-          throw participantsError;
-        }
-        
-        logger.info('Chat created successfully', { 
-          chatId: newChat.id, 
-          userId: currentUser.id, 
-          targetUserId: targetUser.id 
-        });
-        
+      if (createResult.existing) {
+        toast.info('Chat já existe com este usuário');
+      } else {
         toast.success('Bom trabalho! Chat criado com sucesso.', { duration: 2000 });
-        await fetchChats(currentUser.id);
-        setSelectedChat({
-          ...newChat,
-          recipient: {
-            id: targetUser.id,
-            nickname: targetUser.nickname,
-            avatar_url: targetUser.avatar_url || ''
-          }
-        } as ChatWithRecipient);
-        setIsAddContactOpen(false);
-        setNicknameSearch('');
       }
+
+      logger.info('Chat created/found via API', { 
+        chatId: createResult.chatId, 
+        existing: createResult.existing,
+        userId: currentUser.id, 
+        targetUserId: targetUser.id 
+      });
+
+      await fetchChats(currentUser.id);
+      setSelectedChat({
+        id: createResult.chatId,
+        type: 'private',
+        recipient: {
+          id: targetUser.id,
+          nickname: targetUser.nickname,
+          avatar_url: targetUser.avatar_url || ''
+        }
+      } as ChatWithRecipient);
+      setIsAddContactOpen(false);
+      setNicknameSearch('');
     } catch (error) {
       const appError = normalizeError(error);
       logError(appError);
@@ -1253,25 +1153,25 @@ export default function ChatLayout() {
                   <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-white">
                     Discussão • {selectedChat.recipient?.nickname || selectedChat.name || 'Tópico'}
                   </h2>
-                  <p className="text-[11px] text-gray-500 dark:text-[#4c94d5] flex items-center gap-1">
+                  <div className="text-[11px] text-gray-500 dark:text-[#4c94d5] flex items-center gap-1">
                     {/* Sugestão 7: Status Online/Offline melhorado */}
                     {selectedChat.recipient && (
                       onlineUsers.has(selectedChat.recipient.id) ? (
-                        <div className="flex items-center gap-1">
+                        <span className="flex items-center gap-1">
                           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                           <span className="text-green-500 font-medium">Online</span>
-                        </div>
+                        </span>
                       ) : (
-                        <div className="flex items-center gap-1">
+                        <span className="flex items-center gap-1">
                           <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
                           <span>Offline</span>
-                        </div>
+                        </span>
                       )
                     )}
                     {otherUserTyping === selectedChat.recipient?.id && (
                       <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">digitando...</span>
                     )}
-                  </p>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">

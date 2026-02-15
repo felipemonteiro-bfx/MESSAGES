@@ -1,10 +1,23 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import webPush from 'web-push';
-import { generateFakeNewsTitle, generateFakeNewsBody } from '@/lib/push-disguise';
+
+// Admin client para queries que precisam bypass RLS
+const supabaseAdmin = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+const VAPID_MAILTO = process.env.VAPID_MAILTO || 'mailto:admin@stealthmessaging.app';
+
+// Configurar VAPID uma vez no nível do módulo
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  webPush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, VAPID_PRIVATE);
+}
 
 export async function POST(req: Request) {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
@@ -22,58 +35,89 @@ export async function POST(req: Request) {
     const body = await req.json();
     const recipientId = body?.recipientId as string | undefined;
     const content = (body?.content as string) || '';
-    const isMessage = body?.isMessage === true; // Flag para mensagem real vs notícia
 
     if (!recipientId) {
       return NextResponse.json({ message: 'recipientId obrigatório' }, { status: 400 });
     }
 
-    const { data: rows, error } = await supabase
+    // Validar tamanho do conteúdo
+    if (content.length > 5000) {
+      return NextResponse.json({ message: 'Conteúdo muito longo' }, { status: 400 });
+    }
+
+    // Verificar se o remetente está no mesmo chat que o destinatário (usando admin para bypass RLS)
+    const { data: sharedChats, error: chatError } = await supabaseAdmin
+      .from('chat_participants')
+      .select('chat_id')
+      .eq('user_id', user.id);
+
+    if (chatError || !sharedChats?.length) {
+      return NextResponse.json({ message: 'Sem permissão para enviar notificação' }, { status: 403 });
+    }
+
+    const chatIds = sharedChats.map(c => c.chat_id);
+    const { data: recipientChats } = await supabaseAdmin
+      .from('chat_participants')
+      .select('chat_id')
+      .eq('user_id', recipientId)
+      .in('chat_id', chatIds);
+
+    if (!recipientChats?.length) {
+      return NextResponse.json({ message: 'Sem permissão para enviar notificação a este usuário' }, { status: 403 });
+    }
+
+    const { data: rows, error } = await supabaseAdmin
       .from('push_subscriptions')
-      .select('subscription_json')
+      .select('id, subscription_json')
       .eq('user_id', recipientId);
 
     if (error || !rows?.length) {
       return NextResponse.json({ ok: true });
     }
 
-    webPush.setVapidDetails(
-      'mailto:support@example.com',
-      VAPID_PUBLIC,
-      VAPID_PRIVATE
-    );
-
-    // Notificação diferente para mensagens reais vs notícias
-    let title: string;
-    let bodyText: string;
-    
-    if (isMessage) {
-      // Notificação real de mensagem (não disfarçada)
-      title = 'Nova mensagem';
-      bodyText = content.length > 80 ? content.substring(0, 80) + '...' : content;
-    } else {
-      // Notificação disfarçada como notícia
-      title = generateFakeNewsTitle(content);
-      bodyText = generateFakeNewsBody(content);
-    }
+    // Sempre disfarçar notificação como notícia (nunca expor conteúdo real)
+    const fakeHeadlines = [
+      'Economia brasileira apresenta novos indicadores',
+      'Avanço tecnológico promete transformar setor de saúde',
+      'Previsão do tempo: mudanças climáticas em destaque',
+      'Mercado financeiro reage a decisões do Banco Central',
+      'Novas descobertas científicas surpreendem pesquisadores',
+      'Governo anuncia medidas para infraestrutura urbana',
+      'Esportes: resultados e destaques da rodada',
+      'Cultura: eventos e lançamentos movimentam a semana',
+    ];
+    const newsSources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo'];
+    const randomHeadline = fakeHeadlines[Math.floor(Math.random() * fakeHeadlines.length)];
+    const randomSource = newsSources[Math.floor(Math.random() * newsSources.length)];
 
     const payload = JSON.stringify({
-      title,
-      body: bodyText,
+      title: randomHeadline,
+      body: `${randomSource} • Agora`,
       url: '/',
-      isMessage: isMessage, // Passar flag para o service worker
+      isMessage: true,
     });
+
+    const expiredSubscriptionIds: string[] = [];
 
     const sendPromises = rows.map((row) => {
       const sub = row.subscription_json as { endpoint: string; keys: { p256dh: string; auth: string } };
       return webPush.sendNotification(sub, payload).catch((err: { statusCode?: number }) => {
         if (err.statusCode === 410 || err.statusCode === 404) {
-          // Subscription expirada
+          expiredSubscriptionIds.push(row.id);
         }
       });
     });
 
     await Promise.all(sendPromises);
+
+    // Limpar subscriptions expiradas (usando admin para bypass RLS)
+    if (expiredSubscriptionIds.length > 0) {
+      await supabaseAdmin
+        .from('push_subscriptions')
+        .delete()
+        .in('id', expiredSubscriptionIds);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ message: 'Erro ao enviar push' }, { status: 500 });

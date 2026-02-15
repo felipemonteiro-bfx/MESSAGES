@@ -12,18 +12,42 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const subscription = body?.subscription;
-    if (!subscription || typeof subscription !== 'object') {
-      return NextResponse.json({ message: 'subscription inválido' }, { status: 400 });
+
+    // Validar estrutura da subscription
+    if (!subscription || typeof subscription !== 'object' ||
+        typeof subscription.endpoint !== 'string' ||
+        !subscription.keys?.p256dh || !subscription.keys?.auth) {
+      return NextResponse.json({ message: 'Subscription inválida: endpoint e keys são obrigatórios' }, { status: 400 });
     }
 
-    const { error } = await supabase.from('push_subscriptions').insert({
-      user_id: user.id,
-      subscription_json: subscription,
-    });
+    // Upsert para evitar duplicatas (baseado em user_id + endpoint)
+    const { error } = await supabase.from('push_subscriptions').upsert(
+      {
+        user_id: user.id,
+        subscription_json: subscription,
+      },
+      { onConflict: 'user_id,subscription_json->>endpoint' }
+    ).select();
 
+    // Fallback: se upsert falhar por falta de constraint, tentar delete + insert
     if (error) {
-      return NextResponse.json({ message: error.message }, { status: 500 });
+      // Deletar subscriptions antigas do mesmo endpoint
+      await supabase
+        .from('push_subscriptions')
+        .delete()
+        .eq('user_id', user.id)
+        .filter('subscription_json->>endpoint', 'eq', subscription.endpoint);
+
+      const { error: insertError } = await supabase.from('push_subscriptions').insert({
+        user_id: user.id,
+        subscription_json: subscription,
+      });
+
+      if (insertError) {
+        return NextResponse.json({ message: 'Erro ao salvar inscrição' }, { status: 500 });
+      }
     }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ message: 'Erro ao salvar inscrição' }, { status: 500 });

@@ -1,6 +1,8 @@
 /**
- * Sugestão 15: Sincronização em Background
+ * Sincronização em Background
  * Gerencia fila de mensagens pendentes para sincronização offline
+ * 
+ * Corrigido: usa navigator.serviceWorker.ready em vez de self.registration
  */
 
 interface PendingMessage {
@@ -18,15 +20,33 @@ const DB_VERSION = 1;
 const STORE_NAME = 'pending';
 const MAX_RETRIES = 3;
 
+// Cache da conexão DB
+let dbInstance: IDBDatabase | null = null;
+
 /**
- * Abrir IndexedDB para fila de mensagens
+ * Abrir IndexedDB para fila de mensagens (com cache de conexão)
  */
 async function openDB(): Promise<IDBDatabase> {
+  if (dbInstance) {
+    try {
+      // Verificar se a conexão ainda é válida
+      dbInstance.transaction([STORE_NAME], 'readonly');
+      return dbInstance;
+    } catch {
+      dbInstance = null;
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      // Limpar cache se conexão for fechada
+      dbInstance.onclose = () => { dbInstance = null; };
+      resolve(dbInstance);
+    };
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -47,7 +67,7 @@ export async function queueMessage(message: Omit<PendingMessage, 'id' | 'timesta
     const db = await openDB();
     const pendingMessage: PendingMessage = {
       ...message,
-      id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `pending-${Date.now()}-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now(),
       retryCount: 0,
     };
@@ -58,11 +78,15 @@ export async function queueMessage(message: Omit<PendingMessage, 'id' | 'timesta
       const request = store.add(pendingMessage);
 
       request.onsuccess = () => {
-        // Registrar sync para quando conexão voltar
-        if ('serviceWorker' in navigator && 'sync' in (self as any).registration) {
-          (self as any).registration.sync.register('sync-messages').catch(() => {
-            // Background Sync pode não estar disponível
-          });
+        // Registrar sync usando navigator.serviceWorker.ready
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((registration) => {
+            if ('sync' in registration) {
+              (registration as any).sync.register('sync-messages').catch(() => {
+                // Background Sync pode não estar disponível
+              });
+            }
+          }).catch(() => {});
         }
         resolve();
       };
@@ -144,17 +168,21 @@ async function incrementRetryCount(messageId: string): Promise<void> {
 }
 
 /**
- * Sincronizar mensagens pendentes (chamado pelo Service Worker)
+ * Sincronizar mensagens pendentes
  */
 export async function syncPendingMessages(
   sendMessageFn: (message: PendingMessage) => Promise<boolean>
-): Promise<void> {
+): Promise<{ sent: number; failed: number; dropped: number }> {
   const pending = await getPendingMessages();
+  let sent = 0;
+  let failed = 0;
+  let dropped = 0;
   
   for (const message of pending) {
-    // Não tentar mais se excedeu limite de tentativas
     if (message.retryCount >= MAX_RETRIES) {
       await removeQueuedMessage(message.id);
+      dropped++;
+      console.warn(`Mensagem ${message.id} descartada após ${MAX_RETRIES} tentativas`);
       continue;
     }
 
@@ -162,14 +190,19 @@ export async function syncPendingMessages(
       const success = await sendMessageFn(message);
       if (success) {
         await removeQueuedMessage(message.id);
+        sent++;
       } else {
         await incrementRetryCount(message.id);
+        failed++;
       }
     } catch (error) {
       console.error('Erro ao sincronizar mensagem:', error);
       await incrementRetryCount(message.id);
+      failed++;
     }
   }
+
+  return { sent, failed, dropped };
 }
 
 /**

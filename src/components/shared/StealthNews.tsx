@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User } from 'lucide-react';
+import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
@@ -168,61 +168,142 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     };
   }, [selectedCategory, dateFilter]);
 
-  // Simular notificações de mensagens como notícias
+  // ============================================================
+  // Sistema de notificação de mensagens disfarçadas como notícias
+  // Mensagens não lidas aparecem como "notícias" no feed
+  // O usuário reconhece pelo indicador sutil (● azul no canto)
+  // Clicar na "notícia" abre o modo mensagens
+  // ============================================================
+  const [messageAlerts, setMessageAlerts] = useState<NewsItem[]>([]);
+  const lastCheckedRef = useRef<string | null>(null);
+
+  // Gerar notícia fake convincente a partir de uma mensagem real
+  const generateFakeNewsFromMessage = useCallback((
+    msgId: string,
+    senderNickname: string,
+    _content: string,
+    count: number
+  ): NewsItem => {
+    // Pool de templates realistas — cada mensagem gera uma "notícia" diferente
+    const templates = [
+      { title: 'Governo anuncia novas medidas econômicas para o próximo trimestre', source: 'G1 Economia', category: 'Economia', desc: 'Pacote inclui ajustes fiscais e incentivos para setores estratégicos da economia nacional.' },
+      { title: 'Estudo revela avanço significativo no tratamento de doenças autoimunes', source: 'BBC Saúde', category: 'Saúde', desc: 'Pesquisadores identificaram novo mecanismo que pode beneficiar milhões de pacientes.' },
+      { title: 'Startup brasileira capta R$ 200 milhões em rodada de investimento', source: 'TechCrunch Brasil', category: 'Tecnologia', desc: 'Empresa de inteligência artificial atrai investidores internacionais.' },
+      { title: 'Seleção brasileira convoca novos jogadores para eliminatórias', source: 'GE Esportes', category: 'Esportes', desc: 'Técnico surpreende com convocação de atletas que atuam no exterior.' },
+      { title: 'ONU aprova resolução sobre mudanças climáticas com apoio recorde', source: 'Reuters', category: 'Mundo', desc: 'Acordo prevê metas mais ambiciosas para redução de emissões até 2030.' },
+      { title: 'Banco Central sinaliza possível corte na taxa de juros', source: 'Valor Econômico', category: 'Economia', desc: 'Ata do Copom indica espaço para flexibilização da política monetária.' },
+      { title: 'Nova descoberta científica pode revolucionar energia renovável', source: 'Nature Brasil', category: 'Ciência', desc: 'Material desenvolvido em laboratório brasileiro aumenta eficiência de painéis solares.' },
+      { title: 'Festival internacional de cinema anuncia filmes brasileiros na seleção', source: 'Folha Ilustrada', category: 'Entretenimento', desc: 'Três produções nacionais competem por prêmios na mostra principal.' },
+      { title: 'Congresso vota projeto de lei sobre regulamentação digital', source: 'Estadão Política', category: 'Política', desc: 'Texto define regras para plataformas e proteção de dados dos usuários.' },
+      { title: 'Pesquisa aponta crescimento do mercado de trabalho no Brasil', source: 'IBGE', category: 'Economia', desc: 'Taxa de desemprego recua pelo terceiro mês consecutivo.' },
+      { title: 'Nova vacina contra dengue começa a ser distribuída em capitais', source: 'CNN Brasil Saúde', category: 'Saúde', desc: 'Ministério da Saúde amplia programa de imunização para grupos prioritários.' },
+      { title: 'Inteligência artificial: empresa lança assistente que entende português', source: 'TecMundo', category: 'Tecnologia', desc: 'Ferramenta promete facilitar o dia a dia de milhões de brasileiros.' },
+      { title: 'Champions League: clubes definem confrontos das quartas de final', source: 'ESPN', category: 'Esportes', desc: 'Sorteio realizado nesta manhã define os próximos jogos do torneio.' },
+      { title: 'Cúpula do G7 discute cooperação econômica global', source: 'AFP', category: 'Mundo', desc: 'Líderes debatem medidas para estabilizar mercados internacionais.' },
+      { title: 'Telescópio James Webb captura imagem inédita de galáxia distante', source: 'Space.com', category: 'Ciência', desc: 'Descoberta pode ajudar a entender a formação do universo primitivo.' },
+      { title: 'Streaming: plataforma anuncia série original gravada no Brasil', source: 'AdoroCinema', category: 'Entretenimento', desc: 'Produção conta com elenco internacional e locações em cinco estados.' },
+      { title: 'STF julga ação sobre reforma administrativa', source: 'Poder360', category: 'Política', desc: 'Decisão pode impactar milhares de servidores públicos em todo o país.' },
+      { title: 'Exportações brasileiras batem recorde no primeiro bimestre', source: 'Bloomberg Brasil', category: 'Economia', desc: 'Commodities agrícolas e minerais lideram crescimento das vendas externas.' },
+    ];
+
+    // Selecionar template baseado no hash do msgId (determinístico)
+    const hash = msgId.split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0);
+    const idx = Math.abs(hash) % templates.length;
+    const template = templates[idx];
+
+    // Tempo "Agora" ou "Xmin atrás" baseado em quantas mensagens
+    const timeLabel = count <= 1 ? 'Agora' : `${Math.min(count * 2, 15)}min atrás`;
+
+    return {
+      id: `msg-alert-${msgId}`,
+      title: template.title,
+      source: template.source,
+      time: timeLabel,
+      image: '', // Sem imagem — aparece como notícia de texto (mais realista para breaking)
+      category: template.category,
+      description: template.desc,
+      // Não tem url — clicar abre o modo mensagens
+    };
+  }, []);
+
+  // Verificar mensagens não lidas e gerar alertas disfarçados
   useEffect(() => {
-    // Verificar mensagens a cada 30 segundos
-    const checkMessages = async () => {
+    let mounted = true;
+    let channel: ReturnType<ReturnType<typeof import('@/lib/supabase/client').createClient>['channel']> | null = null;
+
+    const initMessageCheck = async () => {
       try {
         const { createClient } = await import('@/lib/supabase/client');
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) return;
+        if (!user || !mounted) return;
 
-        // Verificar se há mensagens não lidas
-        const { data: unreadMessages } = await supabase
-          .from('messages')
-          .select('*, chats!inner(chat_participants!inner(user_id))')
-          .neq('sender_id', user.id)
-          .is('read_at', null)
-          .limit(1);
+        // Função para verificar mensagens não lidas (endpoint leve e dedicado)
+        const checkUnread = async () => {
+          try {
+            const response = await fetch('/api/messages/unread');
+            if (!response.ok) return;
+            const { unread } = await response.json();
 
-        if (unreadMessages && unreadMessages.length > 0 && onMessageNotification) {
-          const message = unreadMessages[0];
-          // Criar notificação disfarçada de notícia
-          const fakeNewsTitle = generateFakeNewsTitle(message.content);
-          onMessageNotification(fakeNewsTitle);
-        }
-      } catch (error) {
-        // Silenciosamente ignorar erros
+            if (!mounted) return;
+
+            if (unread && unread.length > 0) {
+              // Gerar notícias fake para cada mensagem não lida (máx 3)
+              const alerts = unread.slice(0, 3).map((msg: { id: string; content: string; senderNickname: string }, i: number) => {
+                return generateFakeNewsFromMessage(msg.id, msg.senderNickname, msg.content, i);
+              });
+              setMessageAlerts(alerts);
+
+              // Notificar o provider (para toast sutil) — apenas na primeira vez que detecta nova msg
+              if (onMessageNotification && lastCheckedRef.current !== unread[0].id) {
+                lastCheckedRef.current = unread[0].id;
+                onMessageNotification(alerts[0].title);
+              }
+            } else {
+              setMessageAlerts([]);
+            }
+          } catch {
+            // Silenciosamente ignorar
+          }
+        };
+
+        // Verificação inicial
+        await checkUnread();
+
+        // Polling a cada 20 segundos
+        const interval = setInterval(checkUnread, 20000);
+
+        // Realtime: escutar novas mensagens para notificação instantânea
+        channel = supabase
+          .channel('stealth-msg-alerts')
+          .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+          }, (payload) => {
+            const newMsg = payload.new as { id: string; sender_id: string; content: string; chat_id: string };
+            if (newMsg.sender_id !== user.id) {
+              // Nova mensagem recebida — verificar imediatamente
+              checkUnread();
+            }
+          })
+          .subscribe();
+
+        return () => {
+          clearInterval(interval);
+          if (channel) supabase.removeChannel(channel);
+        };
+      } catch {
+        // Silenciosamente ignorar
       }
     };
 
-    const messageCheckInterval = setInterval(checkMessages, 30000);
-    return () => clearInterval(messageCheckInterval);
-  }, [onMessageNotification]);
-
-  const generateFakeNewsTitle = (content: string): string => {
-    const newsTemplates = [
-      'BREAKING: Nova descoberta científica revela avanços significativos',
-      'URGENTE: Atualização importante sobre desenvolvimentos recentes',
-      'NOTÍCIA: Informação atualizada sobre situação atual',
-      'DESTAQUE: Nova informação relevante para o público',
-      'ATUALIZAÇÃO: Desenvolvimento importante que você precisa saber',
-      'ALERTA: Nova informação de interesse público',
-      'MANCHETE: Descoberta recente gera repercussão',
-      'EXCLUSIVO: Informação importante divulgada agora',
-      'ÚLTIMA HORA: Desenvolvimento em tempo real',
-      'AO VIVO: Acompanhe a cobertura completa'
-    ];
-    const sources = ['G1', 'BBC Brasil', 'Folha', 'UOL', 'CNN Brasil', 'Globo', 'Estadão', 'Reuters', 'AFP', 'Valor', 'R7', 'Terra', 'Jovem Pan', 'Gazeta do Povo', 'InfoMoney', 'TecMundo', 'Lance!', 'GE', 'AdoroCinema', 'Space.com', 'Nature'];
-    // Usar hash do conteúdo para seleção determinística (evita hydration mismatch)
-    const hash = content.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const randomTemplate = newsTemplates[hash % newsTemplates.length];
-    const randomSource = sources[hash % sources.length];
-    const truncated = content.substring(0, 40);
-    return `${randomTemplate} - ${randomSource}`;
-  };
+    const cleanup = initMessageCheck();
+    return () => {
+      mounted = false;
+      cleanup?.then(fn => fn?.());
+    };
+  }, [onMessageNotification, generateFakeNewsFromMessage]);
 
   // Notificações "última hora" periódicas (respeita preferência)
   useEffect(() => {
@@ -250,7 +331,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     const cacheKey = `${selectedCategory}-${dateFilter}`;
     const cached = newsCacheRef.current[cacheKey];
     
-    // Usar cache se ainda válido
+    // Usar cache client-side se ainda válido
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       setNews(cached.news);
       setLoading(false);
@@ -259,106 +340,39 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
     setLoading(true);
     try {
-      // Usar NewsAPI (gratuita) ou fallback para mock
-      const apiKey = process.env.NEXT_PUBLIC_NEWS_API_KEY || '';
-      const country = selectedCategory === 'Brasil' ? 'br' : 'us';
-      
       let fetchedNews: NewsItem[] = [];
 
-      if (apiKey) {
-        try {
-          // Buscar notícias de múltiplas fontes mundiais
-          const newsPromises: Promise<Response>[] = [];
+      // Buscar notícias reais via API server-side (que faz scraping de RSS feeds)
+      try {
+        const response = await fetch(`/api/news?category=${encodeURIComponent(selectedCategory)}`);
+        
+        if (response.ok) {
+          const data = await response.json();
           
-          // Notícias do país selecionado
-          newsPromises.push(
-            fetch(`https://newsapi.org/v2/top-headlines?country=${country}&pageSize=10&apiKey=${apiKey}`)
-          );
-          
-          // Notícias internacionais (sempre incluir em Top Stories e Mundo)
-          if (selectedCategory === 'Mundo' || selectedCategory === 'Top Stories') {
-            newsPromises.push(
-              fetch(`https://newsapi.org/v2/top-headlines?category=general&language=en&pageSize=10&apiKey=${apiKey}`)
-            );
-            newsPromises.push(
-              fetch(`https://newsapi.org/v2/top-headlines?category=technology&language=en&pageSize=5&apiKey=${apiKey}`)
-            );
-          }
-          
-          // Notícias por categoria específica
-          if (selectedCategory !== 'Top Stories' && selectedCategory !== 'Brasil' && selectedCategory !== 'Mundo') {
-            const categoryMap: { [key: string]: string } = {
-              'Tecnologia': 'technology',
-              'Esportes': 'sports',
-              'Saúde': 'health',
-              'Economia': 'business',
-              'Entretenimento': 'entertainment',
-              'Política': 'general',
-              'Ciência': 'science'
-            };
-            
-            const apiCategory = categoryMap[selectedCategory] || 'general';
-            newsPromises.push(
-              fetch(`https://newsapi.org/v2/top-headlines?category=${apiCategory}&language=pt&pageSize=15&apiKey=${apiKey}`)
-            );
-          }
-          
-          // Aguardar todas as respostas
-          const responses = await Promise.allSettled(newsPromises);
-          const allArticles: any[] = [];
-          
-          // Processar respostas bem-sucedidas
-          for (const result of responses) {
-            if (result.status === 'fulfilled') {
-              try {
-                const response = result.value as Response;
-                // Verificar se é erro 426 (Upgrade Required)
-                if (response.status === 426) {
-                  console.warn('NewsAPI requer upgrade de plano (426). Pulando esta requisição.');
-                  continue;
-                }
-                if (!response.ok) {
-                  console.warn(`NewsAPI retornou status ${response.status}. Pulando esta requisição.`);
-                  continue;
-                }
-                const data = await response.json();
-                if (data.articles && Array.isArray(data.articles)) {
-                  allArticles.push(...data.articles);
-                }
-              } catch (e) {
-                // Ignorar erros de parsing
-                console.warn('Erro ao processar resposta da NewsAPI:', e);
-              }
-            }
-          }
-          
-          // Remover duplicatas e limitar
-          const uniqueArticles = Array.from(
-            new Map(allArticles.map((article: any) => [article.url || article.title, article])).values()
-          ).slice(0, 30);
-          
-          if (uniqueArticles.length > 0) {
-            // Usar índice estável em vez de Date.now() para evitar hydration mismatch
-            const baseId = typeof window !== 'undefined' ? Date.now() : 0;
-            fetchedNews = uniqueArticles.map((article: any, index: number) => ({
-              id: `news-${index}-${baseId}`,
-              title: article.title || 'Sem título',
-              source: article.source?.name || 'Fonte desconhecida',
-              time: getTimeAgo(new Date(article.publishedAt)),
-              image: article.urlToImage || getDefaultImage(),
-              category: getCategoryFromTitle(article.title || ''),
+          if (data.articles && data.articles.length > 0) {
+            fetchedNews = data.articles.map((article: {
+              id: string;
+              title: string;
+              source: string;
+              timeAgo: string;
+              image: string;
+              category: string;
+              url: string;
+              description: string;
+            }) => ({
+              id: article.id,
+              title: article.title,
+              source: article.source,
+              time: article.timeAgo,
+              image: article.image,
+              category: article.category,
               url: article.url,
-              description: article.description
+              description: article.description,
             }));
           }
-        } catch (apiError: any) {
-          // Tratar erro 426 (Upgrade Required) da NewsAPI
-          if (apiError?.status === 426 || apiError?.message?.includes('426')) {
-            console.warn('NewsAPI requer upgrade de plano. Usando notícias mock.');
-          } else {
-            console.error('NewsAPI error:', apiError);
-          }
         }
+      } catch (apiError) {
+        console.warn('Erro ao buscar notícias da API:', apiError);
       }
 
       // Fallback para notícias mock se API falhar
@@ -368,7 +382,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       // Filtrar por data se necessário
       if (dateFilter !== 'all') {
-        const now = new Date();
         fetchedNews = fetchedNews.filter(item => {
           const timeMatch = item.time.match(/(\d+)(min|h|d) atrás/);
           if (!timeMatch) return true;
@@ -394,14 +407,14 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           if (!timeMatch) return false;
           const value = parseInt(timeMatch[1]);
           const unit = timeMatch[2];
-          if (unit === 'min') return value < 120; // Menos de 2 horas
+          if (unit === 'min') return value < 120;
           if (unit === 'h') return value < 2;
           return false;
         })
         .map(item => item.id)
-        .slice(0, 3); // Máximo 3 breaking news
+        .slice(0, 5); // Máximo 5 breaking news
       
-      // Salvar no cache
+      // Salvar no cache client-side
       newsCacheRef.current[cacheKey] = {
         news: fetchedNews,
         timestamp: Date.now()
@@ -496,6 +509,16 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const getDefaultImage = (): string => {
     // Usar imagem fixa para evitar hydration mismatch e 404s
     return 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop&q=60';
+  };
+
+  // Proxy de imagens para evitar CORS com fontes externas
+  const proxyImage = (url: string): string => {
+    if (!url) return getDefaultImage();
+    // Imagens do Unsplash e Supabase não precisam de proxy
+    if (url.includes('unsplash.com') || url.includes('supabase.co') || url.includes('pravatar.cc')) {
+      return url;
+    }
+    return `/api/news/image?url=${encodeURIComponent(url)}`;
   };
 
   // Botão oculto: "Fale Conosco" ou duplo clique na data — resposta instantânea
@@ -695,6 +718,55 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         )}
       </div>
 
+      {/* ===== ALERTAS DE MENSAGENS DISFARÇADOS DE NOTÍCIAS ===== */}
+      {/* Aparecem como "Última Hora" no topo — clicar abre o modo mensagens */}
+      {/* Indicador sutil: pequeno ● azul no canto inferior direito do card */}
+      {messageAlerts.length > 0 && !showSaved && (
+        <div className="px-4 md:px-8 py-3 md:py-4 bg-gradient-to-r from-amber-50 via-red-50 to-orange-50 border-b-2 border-red-200 max-w-6xl mx-auto animate-in fade-in duration-500">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="relative">
+              <Zap className="w-4 h-4 text-red-600" />
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping" />
+            </div>
+            <h2 className="text-xs font-bold text-red-700 uppercase tracking-wider">Última Hora</h2>
+            <span className="text-[10px] text-red-400 font-medium ml-auto">Agora</span>
+          </div>
+          <div className="space-y-2">
+            {messageAlerts.map((alert) => (
+              <div
+                key={alert.id}
+                className="relative flex items-start gap-3 p-3 md:p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-red-100 cursor-pointer hover:bg-red-50/80 hover:shadow-lg hover:border-red-200 transition-all duration-200 group"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUnlockRequest();
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onUnlockRequest(); } }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase tracking-wide animate-pulse">
+                      Urgente
+                    </span>
+                    <span className="text-[11px] text-gray-500 font-medium">{alert.source}</span>
+                    <span className="text-[10px] text-gray-400">• {alert.time}</span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-red-800 transition-colors">
+                    {alert.title}
+                  </h3>
+                  {alert.description && (
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-1">{alert.description}</p>
+                  )}
+                </div>
+                {/* Indicador sutil — só o usuário sabe que significa mensagem */}
+                <span className="absolute bottom-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full opacity-60" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Seção de Destaques */}
       {selectedCategory === 'Top Stories' && displayedNews.length > 0 && !showSaved && (
         <div className="px-4 md:px-8 py-4 md:py-5 bg-gradient-to-r from-red-50 via-orange-50 to-amber-50 border-b border-red-100 max-w-6xl mx-auto">
@@ -702,7 +774,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
             <TrendingUp className="w-4 h-4 text-red-600" />
             <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide">Em Destaque</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:cols-2 gap-3">
             {displayedNews.slice(0, 2).map((item) => (
               <div
                 key={item.id}
@@ -831,7 +903,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                     >
                       <div className="flex flex-col md:flex-col">
                         <div className="aspect-video md:aspect-[16/10] w-full bg-gray-100 overflow-hidden">
-                          <img src={item.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                          <img src={proxyImage(item.image)} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).src = getDefaultImage(); }} />
                         </div>
                         <div className="p-4 md:p-5 flex-1 flex flex-col">
                           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap mb-2">

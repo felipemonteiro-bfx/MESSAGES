@@ -6,12 +6,17 @@ const VAPID_PUBLIC = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_VA
 
 export function usePushSubscription() {
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isSupported] = useState(
-    typeof window !== 'undefined' &&
+  // Inicializar como false para evitar hydration mismatch (SSR = false, client = false)
+  const [isSupported, setIsSupported] = useState(false);
+
+  // Verificar suporte apenas no cliente após montagem
+  useEffect(() => {
+    setIsSupported(
       'serviceWorker' in navigator &&
       'PushManager' in window &&
       'Notification' in window
-  );
+    );
+  }, []);
 
   const registerAndSubscribe = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
     if (!isSupported) return { ok: false, message: 'Navegador não suporta notificações push.' };

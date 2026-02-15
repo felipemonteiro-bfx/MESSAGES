@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import ServiceWorkerRegistration from "@/components/shared/ServiceWorkerRegistration";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -18,8 +19,7 @@ export const viewport: Viewport = {
   themeColor: "#ffffff", 
   width: "device-width", 
   initialScale: 1, 
-  maximumScale: 1, 
-  userScalable: false 
+  // Permitir zoom para acessibilidade (WCAG 1.4.4)
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,7 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ServiceWorkerRegistration />
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
         <Toaster position="top-center" />
       </body>
     </html>

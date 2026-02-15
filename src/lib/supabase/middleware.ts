@@ -6,7 +6,6 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
-  // No middleware, usar variáveis diretamente (edge runtime)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -24,7 +23,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({
             request,
           });
@@ -36,14 +35,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Bypass de autenticação para testes (Playwright)
-  const isTestBypass = request.cookies.get('test-bypass')?.value === 'true';
-
-  // Rotas públicas: portal de notícias (/) e auth
+  // Rotas públicas: não precisam de getUser()
   const isPublicRoute =
     request.nextUrl.pathname === '/' ||
     request.nextUrl.pathname.startsWith('/login') ||
@@ -52,7 +44,22 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/share') ||
     request.nextUrl.pathname.startsWith('/travel-check');
 
-  if (!user && !isTestBypass && !isPublicRoute) {
+  // API routes gerenciam sua própria autenticação — não redirecionar para /login
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
+
+  if (isPublicRoute || isApiRoute) {
+    // Para rotas públicas e API, apenas atualizar cookies de sessão sem verificar user
+    // Isso evita uma chamada de rede desnecessária ao Supabase
+    await supabase.auth.getSession(); // Leve — usa cookies locais
+    return supabaseResponse;
+  }
+
+  // Para rotas protegidas, verificar autenticação
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);

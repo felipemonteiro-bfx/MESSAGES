@@ -1,38 +1,30 @@
 'use client';
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Component, type ReactNode } from 'react';
 
-interface Props {
+interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: ReactNode;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log do erro (em produção, enviar para serviço de monitoramento)
-    console.error('ErrorBoundary capturou um erro:', error, errorInfo);
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
   }
-
-  handleReset = () => {
-    this.setState({ hasError: false, error: null });
-    window.location.reload();
-  };
 
   render() {
     if (this.state.hasError) {
@@ -41,37 +33,24 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4">
-          <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 text-center">
-            <div className="flex justify-center mb-4">
-              <AlertTriangle className="h-16 w-16 text-red-500" />
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-4">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto">
+              <span className="text-3xl" aria-hidden="true">⚠️</span>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-              Ops! Algo deu errado
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mb-6">
-              Ocorreu um erro inesperado. Por favor, tente recarregar a página.
+            <h2 className="text-xl font-bold text-gray-900">Algo deu errado</h2>
+            <p className="text-sm text-gray-500">
+              Ocorreu um erro inesperado. Tente recarregar a página.
             </p>
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <details className="mb-6 text-left">
-                <summary className="cursor-pointer text-sm text-slate-500 mb-2">
-                  Detalhes do erro (desenvolvimento)
-                </summary>
-                <pre className="text-xs bg-slate-100 dark:bg-slate-900 p-4 rounded overflow-auto">
-                  {this.state.error.toString()}
-                  {this.state.error.stack && (
-                    <>
-                      {'\n\n'}
-                      {this.state.error.stack}
-                    </>
-                  )}
-                </pre>
-              </details>
-            )}
-            <Button onClick={this.handleReset} className="w-full">
-              <RefreshCw className="h-4 w-4 mr-2" />
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-500 transition-colors"
+            >
               Recarregar Página
-            </Button>
+            </button>
           </div>
         </div>
       );

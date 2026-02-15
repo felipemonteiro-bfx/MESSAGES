@@ -1,12 +1,13 @@
 /**
- * Sugestão 29: Sistema de logs estruturados e monitoramento de erros
+ * Sistema de logs estruturados e monitoramento de erros
+ * Corrigido: removido require() dinâmico e getSession() por log
  */
 
 export interface LogEntry {
   level: 'info' | 'warn' | 'error' | 'debug';
   message: string;
   timestamp: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
   userId?: string;
   sessionId?: string;
 }
@@ -14,9 +15,12 @@ export interface LogEntry {
 class MonitoringService {
   private sessionId: string;
   private logs: LogEntry[] = [];
-  private maxLogs = 100; // Limitar logs em memória
+  private maxLogs = 100;
   private errorCount = 0;
   private lastErrorTime: number | null = null;
+  private userId: string | undefined;
+  private errorHandler: ((event: ErrorEvent) => void) | null = null;
+  private rejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null;
 
   constructor() {
     this.sessionId = this.generateSessionId();
@@ -27,62 +31,59 @@ class MonitoringService {
     return `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private setupErrorHandlers(): void {
-    // Capturar erros não tratados
-    if (typeof window !== 'undefined') {
-      window.addEventListener('error', (event) => {
-        this.log('error', 'Unhandled error', {
-          message: event.message,
-          filename: event.filename,
-          lineno: event.lineno,
-          colno: event.colno,
-          error: event.error?.stack,
-        });
-      });
-
-      // Capturar promises rejeitadas
-      window.addEventListener('unhandledrejection', (event) => {
-        this.log('error', 'Unhandled promise rejection', {
-          reason: event.reason,
-          error: event.reason?.stack || String(event.reason),
-        });
-      });
-    }
+  /**
+   * Definir userId uma vez (ex: após login) em vez de buscar a cada log
+   */
+  setUserId(userId: string | undefined): void {
+    this.userId = userId;
   }
 
-  log(level: LogEntry['level'], message: string, context?: Record<string, any>): void {
+  private setupErrorHandlers(): void {
+    if (typeof window === 'undefined') return;
+
+    this.errorHandler = (event: ErrorEvent) => {
+      this.log('error', 'Unhandled error', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error?.stack,
+      });
+    };
+
+    this.rejectionHandler = (event: PromiseRejectionEvent) => {
+      this.log('error', 'Unhandled promise rejection', {
+        reason: event.reason,
+        error: event.reason?.stack || String(event.reason),
+      });
+    };
+
+    window.addEventListener('error', this.errorHandler);
+    window.addEventListener('unhandledrejection', this.rejectionHandler);
+  }
+
+  destroy(): void {
+    if (typeof window === 'undefined') return;
+    if (this.errorHandler) window.removeEventListener('error', this.errorHandler);
+    if (this.rejectionHandler) window.removeEventListener('unhandledrejection', this.rejectionHandler);
+  }
+
+  log(level: LogEntry['level'], message: string, context?: Record<string, unknown>): void {
     const entry: LogEntry = {
       level,
       message,
       timestamp: new Date().toISOString(),
       context,
       sessionId: this.sessionId,
+      userId: this.userId,
     };
-
-    // Adicionar userId se disponível
-    if (typeof window !== 'undefined') {
-      try {
-        const supabase = require('@/lib/supabase/client').createClient();
-        supabase.auth.getSession().then(({ data: { session } }: { data: { session: any } }) => {
-          if (session?.user) {
-            entry.userId = session.user.id;
-          }
-        }).catch(() => {
-          // Ignorar erros ao buscar sessão
-        });
-      } catch {
-        // Ignorar se não conseguir importar
-      }
-    }
 
     this.logs.push(entry);
     
-    // Limitar tamanho do array
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
 
-    // Contar erros
     if (level === 'error') {
       this.errorCount++;
       this.lastErrorTime = Date.now();
@@ -94,44 +95,39 @@ class MonitoringService {
       console[consoleMethod](`[${level.toUpperCase()}]`, message, context || '');
     }
 
-    // Enviar para serviço de monitoramento (ex: Sentry) em produção
+    // Enviar para serviço de monitoramento em produção
     if (process.env.NODE_ENV === 'production' && level === 'error') {
       this.sendToMonitoring(entry);
     }
   }
 
   private async sendToMonitoring(entry: LogEntry): Promise<void> {
-    // Aqui você pode integrar com Sentry, LogRocket, ou outro serviço
-    // Por enquanto, apenas logar
     try {
-      // Exemplo: enviar para endpoint de monitoramento
       if (process.env.NEXT_PUBLIC_MONITORING_ENDPOINT) {
         await fetch(process.env.NEXT_PUBLIC_MONITORING_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(entry),
-        }).catch(() => {
-          // Falha silenciosa se não conseguir enviar
-        });
+        }).catch(() => {});
       }
     } catch {
-      // Ignorar erros de envio
+      // Falha silenciosa
     }
   }
 
-  info(message: string, context?: Record<string, any>): void {
+  info(message: string, context?: Record<string, unknown>): void {
     this.log('info', message, context);
   }
 
-  warn(message: string, context?: Record<string, any>): void {
+  warn(message: string, context?: Record<string, unknown>): void {
     this.log('warn', message, context);
   }
 
-  error(message: string, context?: Record<string, any>): void {
+  error(message: string, context?: Record<string, unknown>): void {
     this.log('error', message, context);
   }
 
-  debug(message: string, context?: Record<string, any>): void {
+  debug(message: string, context?: Record<string, unknown>): void {
     if (process.env.NODE_ENV === 'development') {
       this.log('debug', message, context);
     }
@@ -154,7 +150,6 @@ class MonitoringService {
     this.lastErrorTime = null;
   }
 
-  // Métricas de performance
   measurePerformance(name: string, fn: () => void | Promise<void>): void {
     const start = performance.now();
     const result = fn();
@@ -164,7 +159,7 @@ class MonitoringService {
         const duration = performance.now() - start;
         this.debug(`Performance: ${name}`, { duration: `${duration.toFixed(2)}ms` });
       }).catch((error) => {
-        this.error(`Performance error: ${name}`, { error: error.message });
+        this.error(`Performance error: ${name}`, { error: (error as Error).message });
       });
     } else {
       const duration = performance.now() - start;

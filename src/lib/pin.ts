@@ -1,25 +1,53 @@
 /**
  * Sistema seguro de gerenciamento de PIN
- * Armazena hash do PIN no localStorage (não o PIN em texto plano)
+ * Usa Web Crypto API (PBKDF2) para hash criptográfico do PIN
  */
 
-// Função simples de hash (em produção, considere usar crypto.subtle)
-function hashPin(pin: string): string {
-  let hash = 0;
-  for (let i = 0; i < pin.length; i++) {
-    const char = pin.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash.toString(36);
-}
-
 const PIN_STORAGE_KEY = 'stealth_messaging_pin_hash';
+const PIN_SALT_KEY = 'stealth_messaging_pin_salt';
 const PIN_SETUP_KEY = 'stealth_messaging_pin_setup';
 const PIN_FAILED_ATTEMPTS_KEY = 'stealth_pin_failed_attempts';
 const PIN_LOCKOUT_UNTIL_KEY = 'stealth_pin_lockout_until';
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 60_000; // 1 minuto
+const BASE_LOCKOUT_MS = 60_000; // 1 minuto base
+
+/**
+ * Gera um salt aleatório para cada usuário
+ */
+function generateSalt(): string {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...salt));
+}
+
+/**
+ * Hash criptográfico do PIN usando PBKDF2 via Web Crypto API
+ */
+async function hashPinSecure(pin: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const pinData = encoder.encode(pin);
+  const saltData = encoder.encode(salt);
+
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    pinData,
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltData,
+      iterations: 600000, // OWASP 2023 recommendation
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+
+  return btoa(String.fromCharCode(...new Uint8Array(derivedBits)));
+}
 
 /**
  * Verifica se o PIN já foi configurado
@@ -30,17 +58,19 @@ export function isPinConfigured(): boolean {
 }
 
 /**
- * Configura um novo PIN (primeira vez)
+ * Configura um novo PIN (primeira vez ou reset)
  */
-export function setupPin(pin: string): boolean {
+export async function setupPin(pin: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
-  
+
   // Validação: PIN deve ter exatamente 4 dígitos
   if (!/^\d{4}$/.test(pin)) {
     return false;
   }
-  
-  const hash = hashPin(pin);
+
+  const salt = generateSalt();
+  const hash = await hashPinSecure(pin, salt);
+  localStorage.setItem(PIN_SALT_KEY, salt);
   localStorage.setItem(PIN_STORAGE_KEY, hash);
   localStorage.setItem(PIN_SETUP_KEY, 'true');
   return true;
@@ -48,22 +78,36 @@ export function setupPin(pin: string): boolean {
 
 /**
  * Verifica se o PIN fornecido está correto
+ * Retorna false se PIN não foi configurado (requer setup explícito)
  */
-export function verifyPin(pin: string): boolean {
+export async function verifyPin(pin: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
-  
+
   const storedHash = localStorage.getItem(PIN_STORAGE_KEY);
-  if (!storedHash) {
-    // Se não há PIN configurado, aceita qualquer PIN de 4 dígitos na primeira vez
-    if (/^\d{4}$/.test(pin)) {
-      setupPin(pin);
-      return true;
-    }
+  const storedSalt = localStorage.getItem(PIN_SALT_KEY);
+
+  if (!storedHash || !storedSalt) {
+    // PIN não configurado - NÃO auto-configurar, retornar false
     return false;
   }
-  
-  const inputHash = hashPin(pin);
-  return inputHash === storedHash;
+
+  // Adicionar delay constante para prevenir timing attacks
+  const startTime = performance.now();
+  const inputHash = await hashPinSecure(pin, storedSalt);
+  const elapsed = performance.now() - startTime;
+
+  // Garantir tempo mínimo de 100ms para prevenir timing attacks
+  if (elapsed < 100) {
+    await new Promise(resolve => setTimeout(resolve, 100 - elapsed));
+  }
+
+  // Comparação constant-time
+  if (inputHash.length !== storedHash.length) return false;
+  let result = 0;
+  for (let i = 0; i < inputHash.length; i++) {
+    result |= inputHash.charCodeAt(i) ^ storedHash.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 /**
@@ -72,33 +116,37 @@ export function verifyPin(pin: string): boolean {
 export function resetPin(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(PIN_STORAGE_KEY);
+  localStorage.removeItem(PIN_SALT_KEY);
   localStorage.removeItem(PIN_SETUP_KEY);
 }
 
 /**
  * Altera o PIN (requer verificação do PIN antigo)
  */
-export function changePin(oldPin: string, newPin: string): boolean {
-  if (!verifyPin(oldPin)) {
+export async function changePin(oldPin: string, newPin: string): Promise<boolean> {
+  if (!(await verifyPin(oldPin))) {
     return false;
   }
-  
+
   if (!/^\d{4}$/.test(newPin)) {
     return false;
   }
-  
+
   return setupPin(newPin);
 }
 
 /**
- * Rate limit anti brute-force: grava tentativa falha e aplica bloqueio após 5 erros
+ * Rate limit anti brute-force com backoff exponencial
  */
 export function recordFailedAttempt(): void {
   if (typeof window === 'undefined') return;
   const count = parseInt(localStorage.getItem(PIN_FAILED_ATTEMPTS_KEY) ?? '0', 10) + 1;
   localStorage.setItem(PIN_FAILED_ATTEMPTS_KEY, String(count));
   if (count >= MAX_ATTEMPTS) {
-    localStorage.setItem(PIN_LOCKOUT_UNTIL_KEY, String(Date.now() + LOCKOUT_MS));
+    // Backoff exponencial: 1min, 2min, 4min, 8min, 16min...
+    const lockoutRounds = Math.floor(count / MAX_ATTEMPTS);
+    const lockoutMs = BASE_LOCKOUT_MS * Math.pow(2, Math.min(lockoutRounds - 1, 4)); // Max 16 min
+    localStorage.setItem(PIN_LOCKOUT_UNTIL_KEY, String(Date.now() + lockoutMs));
   }
 }
 
