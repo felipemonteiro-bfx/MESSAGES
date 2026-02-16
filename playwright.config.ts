@@ -84,6 +84,5 @@ export default defineConfig({
     url: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3005',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
-    env: process.env,
   },
 });
