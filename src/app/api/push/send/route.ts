@@ -1,16 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 import webPush from 'web-push';
-
-// Lazy admin client — env vars not available at build time on Vercel
-function getSupabaseAdmin() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
-}
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
@@ -122,6 +113,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ message: 'Erro ao enviar push' }, { status: 500 });
+    console.error('Error in POST /api/push/send:', e);
+    return NextResponse.json(
+      { message: getApiErrorMessage(e) },
+      { status: 500 }
+    );
   }
 }

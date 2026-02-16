@@ -791,142 +791,59 @@ export default function ChatLayout() {
     
     setIsAddingContact(true);
     
-    const searchTerm = nicknameSearch.trim().toLowerCase();
-    const isEmail = searchTerm.includes('@');
+    const searchTerm = nicknameSearch.trim();
+    const isEmail = searchTerm.toLowerCase().includes('@');
     
     try {
-      let targetUser = null;
-      let fetchError = null;
-
-      if (isEmail) {
-        // Buscar por email usando função RPC
-        logger.info('Buscando usuário por email', { email: searchTerm });
-        const { data: rpcResult, error: rpcError } = await supabase.rpc('get_user_by_email', {
-          user_email: searchTerm
-        });
-        
-        if (rpcError) {
-          // Verificar diferentes tipos de erro
-          const errorCode = rpcError.code || '';
-          const errorMessage = rpcError.message || '';
-          
-          logger.error('Erro ao buscar usuário por email', rpcError instanceof Error ? rpcError : new Error(String(rpcError)), { 
-            code: errorCode,
-            message: errorMessage,
-            email: searchTerm
-          });
-          
-          // Códigos de erro do PostgreSQL para função não encontrada
-          if (
-            errorCode === '42883' || // function does not exist
-            errorMessage.toLowerCase().includes('function') ||
-            errorMessage.toLowerCase().includes('does not exist') ||
-            errorMessage.toLowerCase().includes('não existe') ||
-            errorMessage.toLowerCase().includes('não encontrada')
-          ) {
-            fetchError = { 
-              message: '⚠️ Função get_user_by_email não encontrada no Supabase.\n\nPara habilitar busca por email:\n1. Acesse Supabase → SQL Editor\n2. Execute o arquivo: docs/buscar_por_email.sql\n3. Ou execute: docs/messaging_schema_safe.sql',
-              code: 'FUNCTION_NOT_FOUND'
-            };
-          } else {
-            // Outro tipo de erro
-            fetchError = { 
-              message: `Erro ao buscar usuário: ${errorMessage || 'Erro desconhecido'}`,
-              code: errorCode
-            };
-          }
-        } else if (!rpcResult || (Array.isArray(rpcResult) && rpcResult.length === 0)) {
-          // Nenhum resultado encontrado (função funcionou mas usuário não existe)
-          logger.info('Usuário não encontrado por email', { email: searchTerm });
-          fetchError = { message: `Usuário não encontrado com o email: ${searchTerm}\n\nVerifique se:\n- O email está correto\n- O usuário tem um perfil criado em public.profiles` };
-        } else {
-          // Sucesso - função retornou resultado
-          targetUser = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
-          logger.info('Usuário encontrado por email', { 
-            email: searchTerm, 
-            userId: targetUser?.id,
-            nickname: targetUser?.nickname 
-          });
-        }
-      } else {
-        // Buscar por nickname (comportamento original)
-        const validation = validateAndSanitizeNickname(searchTerm);
+      if (!isEmail) {
+        const validation = validateAndSanitizeNickname(searchTerm.toLowerCase());
         if (!validation.success) {
           toast.error(validation.error || 'Nickname inválido');
           setIsAddingContact(false);
           return;
         }
-        
-        const { data: userByNickname, error: nicknameError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('nickname', validation.data!)
-          .single();
-        
-        if (!nicknameError && userByNickname) {
-          targetUser = userByNickname;
-        } else {
-          fetchError = nicknameError;
-        }
       }
 
-      if (fetchError || !targetUser) {
-        let errorMsg = '';
-        let errorTitle = 'Erro ao adicionar contato';
-        
-        if (isEmail) {
-          // Erro específico para função não encontrada
-          if (fetchError?.code === 'FUNCTION_NOT_FOUND') {
-            errorTitle = 'Função não encontrada';
-            errorMsg = fetchError.message || 'Função get_user_by_email não está criada no Supabase.';
-          } else {
-            errorTitle = 'Usuário não encontrado';
-            errorMsg = fetchError?.message || 'Usuário não encontrado com este email.';
-          }
+      const param = isEmail ? 'email' : 'nickname';
+      const value = isEmail ? searchTerm : searchTerm.toLowerCase();
+      const findRes = await fetch(`/api/users/find?${param}=${encodeURIComponent(value)}`);
+      const findData = await findRes.json();
+
+      if (!findRes.ok) {
+        const msg = findData.error || (findRes.status === 404 ? 'Usuário não encontrado' : 'Erro ao buscar usuário');
+        if (findRes.status === 404 && isEmail) {
+          toast.error(`Usuário não encontrado com o email informado. Verifique se o email está correto e se o usuário tem perfil em public.profiles.`);
+        } else if (findRes.status === 404) {
+          toast.error('Usuário não encontrado com este nickname. Verifique se está correto.');
+        } else if (findRes.status === 500 && isEmail) {
+          toast.error('Erro ao buscar por email. Verifique se a função get_user_by_email está criada no Supabase (docs/buscar_por_email.sql).');
         } else {
-          // Erro para busca por nickname
-          if (fetchError?.code === 'PGRST116') {
-            errorTitle = 'Usuário não encontrado';
-            errorMsg = 'Usuário não encontrado com este nickname. Verifique se o nickname está correto.';
-          } else if (fetchError?.message?.includes('Nickname inválido')) {
-            errorTitle = 'Nickname inválido';
-            errorMsg = fetchError.message;
-          } else {
-            errorTitle = 'Erro ao buscar';
-            errorMsg = fetchError?.message || 'Usuário não encontrado com este nickname. Verifique se está digitado corretamente.';
-          }
+          toast.error(msg);
         }
-        
-        // Exibir toast com título e mensagem
-        toast.error(errorMsg, {
-          duration: 6000, // 6 segundos para mensagens importantes
-          description: isEmail && fetchError?.code === 'FUNCTION_NOT_FOUND' 
-            ? 'Execute o SQL no Supabase para habilitar busca por email'
-            : undefined
-        });
-        
-        logger.warn('User not found or error', { 
-          searchTerm, 
-          isEmail, 
-          error: fetchError,
-          errorCode: fetchError?.code 
-        });
-        
+        logger.warn('User find failed', { searchTerm, isEmail, status: findRes.status, error: findData.error });
+        setIsAddingContact(false);
+        return;
+      }
+
+      const targetUser = findData as { id: string; nickname: string; avatar_url: string | null };
+      if (!targetUser?.id || !targetUser?.nickname) {
+        toast.error('Resposta inválida do servidor');
         setIsAddingContact(false);
         return;
       }
 
       if (targetUser.id === currentUser.id) {
-        toast.error("Você não pode adicionar a si mesmo");
+        toast.error('Você não pode adicionar a si mesmo');
         setIsAddingContact(false);
         return;
       }
 
-      // Usar API server-side para criar chat (evita problemas de RLS recursivo)
+      logger.info('User found via API', { id: targetUser.id, nickname: targetUser.nickname, isEmail });
+
       const createResponse = await fetch('/api/chats/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientNickname: targetUser.nickname }),
+        body: JSON.stringify({ recipientId: targetUser.id }),
       });
 
       const createResult = await createResponse.json();
@@ -967,7 +884,7 @@ export default function ChatLayout() {
     } finally {
       setIsAddingContact(false);
     }
-  }, [nicknameSearch, currentUser, supabase, fetchChats, isAddingContact]);
+  }, [nicknameSearch, currentUser, fetchChats, isAddingContact]);
 
   // Filtrar chats baseado na busca
   const filteredChats = useMemo(() => {

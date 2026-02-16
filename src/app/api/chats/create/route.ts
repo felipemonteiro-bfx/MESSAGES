@@ -1,17 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-
-// Server-side API to create a new chat
-// Uses service role to bypass RLS issues
-
-function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
-}
+import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,30 +13,59 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { recipientNickname, type = 'private' } = body;
+    const { recipientNickname, recipientId, type = 'private' } = body;
 
-    if (!recipientNickname || typeof recipientNickname !== 'string') {
-      return NextResponse.json({ error: 'recipientNickname is required' }, { status: 400 });
-    }
+    let recipient: { id: string; nickname: string } | null = null;
 
-    // Find the recipient by nickname
-    const { data: recipient, error: recipientError } = await getSupabaseAdmin()
-      .from('profiles')
-      .select('id, nickname')
-      .eq('nickname', recipientNickname.trim())
-      .maybeSingle();
+    if (recipientId && typeof recipientId === 'string') {
+      // Buscar por ID (mais confiável)
+      const { data: profile, error: idError } = await getSupabaseAdmin()
+        .from('profiles')
+        .select('id, nickname')
+        .eq('id', recipientId)
+        .maybeSingle();
 
-    if (recipientError || !recipient) {
-      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      if (idError || !profile) {
+        return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      }
+      recipient = profile;
+    } else if (recipientNickname && typeof recipientNickname === 'string') {
+      // Fallback: buscar por nickname
+      const escaped = (recipientNickname as string).trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+      const { data: profile, error: recipientError } = await getSupabaseAdmin()
+        .from('profiles')
+        .select('id, nickname')
+        .ilike('nickname', escaped)
+        .maybeSingle();
+
+      if (recipientError || !profile) {
+        return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      }
+      recipient = profile;
+    } else {
+      return NextResponse.json(
+        { error: 'recipientId ou recipientNickname é obrigatório' },
+        { status: 400 }
+      );
     }
 
     if (recipient.id === user.id) {
       return NextResponse.json({ error: 'Você não pode iniciar um chat consigo mesmo' }, { status: 400 });
     }
 
+    // Garantir que o usuário atual tenha perfil (FK em chat_participants exige)
+    const admin = getSupabaseAdmin();
+    const { data: myProfile } = await admin.from('profiles').select('id').eq('id', user.id).maybeSingle();
+    if (!myProfile) {
+      return NextResponse.json(
+        { error: 'Seu perfil ainda não foi criado. Atualize a página e tente novamente.' },
+        { status: 400 }
+      );
+    }
+
     // Check if a private chat already exists between these users
     if (type === 'private') {
-      const { data: existingChats } = await getSupabaseAdmin()
+      const { data: existingChats } = await admin
         .from('chat_participants')
         .select('chat_id')
         .eq('user_id', user.id);
@@ -55,7 +73,7 @@ export async function POST(request: NextRequest) {
       if (existingChats && existingChats.length > 0) {
         const chatIds = existingChats.map(c => c.chat_id);
         
-        const { data: recipientChats } = await getSupabaseAdmin()
+        const { data: recipientChats } = await admin
           .from('chat_participants')
           .select('chat_id')
           .eq('user_id', recipient.id)
@@ -64,7 +82,7 @@ export async function POST(request: NextRequest) {
         if (recipientChats && recipientChats.length > 0) {
           // Check if any of these are private chats
           const commonChatIds = recipientChats.map(c => c.chat_id);
-          const { data: privateChats } = await getSupabaseAdmin()
+          const { data: privateChats } = await admin
             .from('chats')
             .select('id')
             .in('id', commonChatIds)
@@ -83,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the chat
-    const { data: chat, error: chatError } = await getSupabaseAdmin()
+    const { data: chat, error: chatError } = await admin
       .from('chats')
       .insert({ type })
       .select('id')
@@ -94,8 +112,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create chat' }, { status: 500 });
     }
 
-    // Add both participants
-    const { error: participantsError } = await getSupabaseAdmin()
+    // Add both participants (ambos precisam existir em profiles por causa do FK)
+    const { error: participantsError } = await admin
       .from('chat_participants')
       .insert([
         { chat_id: chat.id, user_id: user.id },
@@ -104,9 +122,20 @@ export async function POST(request: NextRequest) {
 
     if (participantsError) {
       console.error('Error adding participants:', participantsError);
+      const code = participantsError?.code || '';
+      const msg = participantsError?.message || '';
       // Cleanup: delete the chat
-      await getSupabaseAdmin().from('chats').delete().eq('id', chat.id);
-      return NextResponse.json({ error: 'Failed to add participants' }, { status: 500 });
+      await admin.from('chats').delete().eq('id', chat.id);
+      if (code === '23503' || msg.includes('foreign key') || msg.includes('violates foreign key')) {
+        return NextResponse.json(
+          { error: 'Um dos usuários não possui perfil. Peça ao outro usuário para concluir o cadastro.' },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json(
+        { error: msg || 'Erro ao adicionar participantes' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ 
@@ -116,6 +145,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error('Unexpected error in /api/chats/create:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getApiErrorMessage(err) }, { status: 500 });
   }
 }

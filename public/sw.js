@@ -1,7 +1,7 @@
 // Service Worker para Push Notifications e cache offline
 // Notificações disfarçadas como manchetes de notícias
 
-const CACHE_NAME = 'noticias24h-v4';
+const CACHE_NAME = 'noticias24h-v5';
 const MESSAGES_CACHE = 'messages-cache-v1';
 const MEDIA_CACHE = 'media-cache-v1';
 const MAX_MEDIA_CACHE_ITEMS = 200;
@@ -9,8 +9,8 @@ const MAX_MEDIA_CACHE_ITEMS = 200;
 const urlsToCache = [
   '/',
   '/manifest.json',
-  '/icon-192.svg',
-  '/icon-512.svg'
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 // Instalar Service Worker
@@ -209,8 +209,8 @@ self.addEventListener('push', (event) => {
   if (isMessage) {
     title = data.title || 'Nova mensagem';
     body = data.body || 'Você recebeu uma nova mensagem';
-    icon = '/icon-192.svg';
-    badge = '/icon-192.svg';
+    icon = '/icon-192.png';
+    badge = '/icon-192.png';
     tag = 'message-notification';
     actions = [
       { action: 'view', title: 'Abrir Mensagem' },
@@ -221,8 +221,8 @@ self.addEventListener('push', (event) => {
     const randomSource = newsSources[Math.floor(Math.random() * newsSources.length)];
     title = data.title || 'BREAKING: Nova informação importante';
     body = data.body || `${randomSource} • Agora`;
-    icon = '/icon-192.svg';
-    badge = '/icon-192.svg';
+    icon = '/icon-192.png';
+    badge = '/icon-192.png';
     tag = 'news-notification';
     actions = [
       { action: 'view', title: 'Ver Notícia' },

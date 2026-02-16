@@ -1,17 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-
-// Server-side API to fetch user's chats with participants
-// Uses service role to bypass RLS recursion on chat_participants
-
-function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
-}
+import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 
 export async function GET(request: NextRequest) {
   try {
@@ -138,6 +127,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ chats: result });
   } catch (err) {
     console.error('Unexpected error in /api/chats:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getApiErrorMessage(err) }, { status: 500 });
   }
 }

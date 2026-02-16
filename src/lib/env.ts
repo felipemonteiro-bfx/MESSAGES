@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
-  // Supabase
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url('Invalid Supabase URL'),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, 'Supabase anon key is required'),
+  // Supabase (trim evita %0D%0A em keys coladas com quebra de linha)
+  NEXT_PUBLIC_SUPABASE_URL: z.string().trim().url('Invalid Supabase URL'),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().trim().min(1, 'Supabase anon key is required'),
   
   // News API (Opcional)
   NEXT_PUBLIC_NEWS_API_KEY: z.string().optional(),
@@ -17,8 +17,8 @@ type Env = z.infer<typeof envSchema>;
 function getEnv(): Env {
   try {
     return envSchema.parse({
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? '',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '',
       NEXT_PUBLIC_NEWS_API_KEY: process.env.NEXT_PUBLIC_NEWS_API_KEY,
       NODE_ENV: process.env.NODE_ENV || 'development',
     });
