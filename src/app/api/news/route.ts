@@ -426,10 +426,10 @@ export async function GET(request: NextRequest) {
     // Buscar notícias frescas
     const articles = await fetchAllNews(category);
 
-    // Garantir que todas as notícias tenham imagem (fallback)
+    // Usar sempre imagens Unsplash (fontes RSS bloqueiam hotlinking — proxy falhava)
     const articlesWithImages = articles.map(article => ({
       ...article,
-      image: article.image || FALLBACK_IMAGES[article.category] || FALLBACK_IMAGES['default'],
+      image: FALLBACK_IMAGES[article.category] || FALLBACK_IMAGES['default'],
     }));
 
     const limited = articlesWithImages.slice(0, 40);
