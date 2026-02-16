@@ -80,8 +80,11 @@ interface CacheEntry {
   timestamp: number;
 }
 
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutos (mais cache = resposta mais rápida)
 const newsCache = new Map<string, CacheEntry>();
+
+// Feeds prioritários para "Top Stories" — menos feeds = carregamento mais rápido
+const TOP_STORIES_FEED_NAMES = ['G1', 'UOL Notícias', 'Folha de S.Paulo', 'BBC News', 'Reuters World', 'TechCrunch'];
 
 // ============================================================
 // Parser de RSS simples (sem dependências externas)
@@ -246,7 +249,7 @@ function getTimeAgo(date: Date): string {
 async function fetchFeed(feed: RSSFeed): Promise<NewsArticle[]> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout por feed
 
     const response = await fetch(feed.url, {
       signal: controller.signal,
@@ -301,7 +304,7 @@ async function fetchFeed(feed: RSSFeed): Promise<NewsArticle[]> {
 
     // Parse cada item (máximo 15 por feed)
     const articles: NewsArticle[] = [];
-    for (const item of items.slice(0, 15)) {
+    for (const item of items.slice(0, 10)) {
       const article = parseRSSItem(item, feed.name, feed.category);
       if (article) {
         articles.push(article);
@@ -319,9 +322,11 @@ async function fetchFeed(feed: RSSFeed): Promise<NewsArticle[]> {
 // Buscar todas as notícias de todas as fontes
 // ============================================================
 async function fetchAllNews(category?: string): Promise<NewsArticle[]> {
-  // Filtrar feeds pela categoria se especificada
   let feeds = RSS_FEEDS;
-  if (category && category !== 'Top Stories' && category !== 'all') {
+  if (category === 'Top Stories' || category === 'all' || !category) {
+    feeds = RSS_FEEDS.filter(f => TOP_STORIES_FEED_NAMES.includes(f.name));
+    if (feeds.length < 4) feeds = RSS_FEEDS.slice(0, 8);
+  } else if (category) {
     const categoryMap: Record<string, string[]> = {
       'Brasil': ['Brasil'],
       'Mundo': ['Mundo'],
@@ -343,8 +348,7 @@ async function fetchAllNews(category?: string): Promise<NewsArticle[]> {
     }
   }
 
-  // Buscar todos os feeds em paralelo (com limite de concorrência)
-  const BATCH_SIZE = 8;
+  const BATCH_SIZE = 10;
   const allArticles: NewsArticle[] = [];
 
   for (let i = 0; i < feeds.length; i += BATCH_SIZE) {
@@ -428,8 +432,7 @@ export async function GET(request: NextRequest) {
       image: article.image || FALLBACK_IMAGES[article.category] || FALLBACK_IMAGES['default'],
     }));
 
-    // Limitar a 60 artigos
-    const limited = articlesWithImages.slice(0, 60);
+    const limited = articlesWithImages.slice(0, 40);
 
     // Salvar no cache
     newsCache.set(cacheKey, {

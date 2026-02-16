@@ -331,15 +331,20 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const fetchNews = async () => {
     const cacheKey = `${selectedCategory}-${dateFilter}`;
     const cached = newsCacheRef.current[cacheKey];
-    
-    // Usar cache client-side se ainda válido
+    const STALE_AGE = 15 * 60 * 1000; // 15 min = considerar obsoleto
+
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       setNews(cached.news);
       setLoading(false);
       return;
     }
-
-    setLoading(true);
+    // Stale-while-revalidate: mostrar cache antigo imediatamente (melhor UX)
+    if (cached && cached.news.length > 0 && Date.now() - cached.timestamp < STALE_AGE) {
+      setNews(cached.news);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
       let fetchedNews: NewsItem[] = [];
 

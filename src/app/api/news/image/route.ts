@@ -11,9 +11,34 @@ const IMAGE_CACHE_TTL = 60 * 60 * 1000; // 1 hora
 const MAX_CACHE_SIZE = 200;
 const FALLBACK_URL = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&auto=format&fit=crop&q=60';
 
+// Fallback: 1x1 pixel JPEG (placeholder visível como cor sólida)
+const MINIMAL_JPEG_B64 = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+let fallbackBuffer: ArrayBuffer | Uint8Array | null = null;
+async function getFallbackBuffer(): Promise<{ data: ArrayBuffer | Uint8Array; contentType: string }> {
+  if (fallbackBuffer) {
+    return { data: fallbackBuffer, contentType: 'image/jpeg' };
+  }
+  try {
+    const res = await fetch(FALLBACK_URL, {
+      headers: { 'User-Agent': 'StealthNews/1.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 500) {
+        fallbackBuffer = buf;
+        return { data: buf, contentType: res.headers.get('content-type') || 'image/jpeg' };
+      }
+    }
+  } catch { /* usar placeholder */ }
+  const bin = Buffer.from(MINIMAL_JPEG_B64, 'base64');
+  fallbackBuffer = bin;
+  return { data: bin, contentType: 'image/jpeg' };
+}
+
 async function fetchImageAsBuffer(imgUrl: string, referer?: string): Promise<{ data: ArrayBuffer; contentType: string } | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), 6000);
   try {
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -39,7 +64,11 @@ export async function GET(request: NextRequest) {
   let url = request.nextUrl.searchParams.get('url');
 
   if (!url || typeof url !== 'string') {
-    return NextResponse.redirect(FALLBACK_URL, 302);
+    const fallback = await getFallbackBuffer();
+    const body = fallback.data instanceof ArrayBuffer ? fallback.data : new Uint8Array(fallback.data);
+    return new NextResponse(body, {
+      headers: { 'Content-Type': fallback.contentType, 'Cache-Control': 'public, max-age=3600' },
+    });
   }
 
   try {
@@ -51,10 +80,18 @@ export async function GET(request: NextRequest) {
   try {
     const parsedUrl = new URL(url);
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return NextResponse.redirect(FALLBACK_URL, 302);
+      const fallback = await getFallbackBuffer();
+      const body = fallback.data instanceof ArrayBuffer ? fallback.data : new Uint8Array(fallback.data);
+      return new NextResponse(body, {
+        headers: { 'Content-Type': fallback.contentType, 'Cache-Control': 'public, max-age=3600' },
+      });
     }
   } catch {
-    return NextResponse.redirect(FALLBACK_URL, 302);
+    const fallback = await getFallbackBuffer();
+    const body = fallback.data instanceof ArrayBuffer ? fallback.data : new Uint8Array(fallback.data);
+    return new NextResponse(body, {
+      headers: { 'Content-Type': fallback.contentType, 'Cache-Control': 'public, max-age=3600' },
+    });
   }
 
   const cached = IMAGE_CACHE.get(url);
@@ -72,8 +109,15 @@ export async function GET(request: NextRequest) {
   let result = await fetchImageAsBuffer(url, origin);
   if (!result) result = await fetchImageAsBuffer(url); // retry sem Referer
   if (!result) {
-    // Redirecionar para imagem placeholder em vez de retornar 1x1 PNG (invisível)
-    return NextResponse.redirect(FALLBACK_URL, 302);
+    const fallback = await getFallbackBuffer();
+    const body = fallback.data instanceof ArrayBuffer ? fallback.data : new Uint8Array(fallback.data);
+    return new NextResponse(body, {
+      headers: {
+        'Content-Type': fallback.contentType,
+        'Cache-Control': 'public, max-age=3600',
+        'X-Cache': 'FALLBACK',
+      },
+    });
   }
 
   if (IMAGE_CACHE.size >= MAX_CACHE_SIZE) {
