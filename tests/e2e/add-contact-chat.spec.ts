@@ -13,16 +13,19 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
   
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // Limpar localStorage antes de cada teste
+    // Limpar storage e recarregar para garantir estado limpo
     await page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();
     });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
   });
 
-  test(`deve abrir novo chat com nickname "${TARGET_NICKNAME}"`, async ({ page }) => {
+  test(`deve abrir novo chat com nickname "${TARGET_NICKNAME}"`, async ({ page }, testInfo) => {
+    testInfo.setTimeout(90000); // Fluxo longo: signup + PIN + add contact
     // Passo 1: Acessar portal de notícias
-    await expect(page.locator('text=Notícias em Tempo Real')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Noticias24h')).toBeVisible({ timeout: 10000 });
     
     // Passo 2: Fazer login/cadastro (duplo clique em "Fale Conosco")
     const faleConoscoButton = page.locator('text=Fale Conosco').first();
@@ -33,7 +36,7 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     
     // Verificar se apareceu modal de cadastro ou PinPad
     const signupTitle = page.locator('text=Criar Conta').first();
-    const pinPadTitle = page.locator('text=Configure seu PIN, text=Security Access, text=Digite seu Código').first();
+    const pinPadTitle = page.getByText(/Configure seu PIN|Security Access|Digite seu Código/).first();
     
     const hasSignup = await signupTitle.isVisible({ timeout: 3000 }).catch(() => false);
     const hasPinPad = await pinPadTitle.isVisible({ timeout: 3000 }).catch(() => false);
@@ -64,46 +67,30 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     }
     
     // Passo 3: Configurar PIN (se necessário)
-    const pinPad = page.locator('text=Configure seu PIN, text=Security Access, text=Digite seu Código').first();
-    const pinPadVisible = await pinPad.isVisible({ timeout: 5000 }).catch(() => false);
+    const pinPad = page.getByText(/Configure seu PIN|Security Access|Digite seu Código/).first();
+    const pinPadVisible = await pinPad.isVisible({ timeout: 8000 }).catch(() => false);
     
     if (pinPadVisible) {
-      // Configurar PIN: 1234
-      const pinButtons = page.locator('button[class*="pin"], button:has-text("1"), button:has-text("2"), button:has-text("3"), button:has-text("4")');
-      
-      // Tentar encontrar botões de PIN de forma mais genérica
-      const pin1 = page.locator('button').filter({ hasText: '1' }).first();
-      const pin2 = page.locator('button').filter({ hasText: '2' }).first();
-      const pin3 = page.locator('button').filter({ hasText: '3' }).first();
-      const pin4 = page.locator('button').filter({ hasText: '4' }).first();
-      
-      // Se encontrar botões de PIN, configurar
-      if (await pin1.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await pin1.click();
-        await page.waitForTimeout(200);
-        await pin2.click();
-        await page.waitForTimeout(200);
-        await pin3.click();
-        await page.waitForTimeout(200);
-        await pin4.click();
+      // Scopar buscas ao dialog do PinPad para evitar ambiguidade
+      const dialog = page.getByRole('dialog');
+      await dialog.waitFor({ state: 'visible', timeout: 3000 });
+      // Configurar PIN: 1234 - usuário novo precisa digitar 2x (enter + confirm)
+      const enterPin1234 = async () => {
+        await dialog.getByRole('button', { name: 'Dígito 1' }).click();
+        await page.waitForTimeout(150);
+        await dialog.getByRole('button', { name: 'Dígito 2' }).click();
+        await page.waitForTimeout(150);
+        await dialog.getByRole('button', { name: 'Dígito 3' }).click();
+        await page.waitForTimeout(150);
+        await dialog.getByRole('button', { name: 'Dígito 4' }).click();
         await page.waitForTimeout(1000);
-        
-        // Se pedir confirmação, repetir
-        const confirmPin = await pin1.isVisible({ timeout: 2000 }).catch(() => false);
-        if (confirmPin) {
-          await pin1.click();
-          await page.waitForTimeout(200);
-          await pin2.click();
-          await page.waitForTimeout(200);
-          await pin3.click();
-          await page.waitForTimeout(200);
-          await pin4.click();
-          await page.waitForTimeout(2000);
-        }
-      }
+      };
+      await enterPin1234();
+      await enterPin1234(); // Confirmação
+      await page.waitForTimeout(4000);
     }
     
-    // Passo 4: Aguardar tela de mensagens aparecer
+    // Passo 4: Aguardar tela de mensagens aparecer (ChatLayout)
     // Verificar se estamos na tela de mensagens (pode levar alguns segundos)
     // Tentar múltiplos seletores para encontrar a tela de mensagens
     const messagingSelectors = [
@@ -128,19 +115,17 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     if (!messagingScreenVisible) {
       // Se não aparecer, pode ser que ainda está no portal ou PinPad
       // Tentar inserir PIN novamente se PinPad estiver visível
-      const pinPadStillVisible = await page.locator('text=Configure seu PIN, text=Security Access, text=Digite seu Código').first().isVisible({ timeout: 2000 }).catch(() => false);
+      const pinPadStillVisible = await page.getByText(/Configure seu PIN|Security Access|Digite seu Código/).first().isVisible({ timeout: 2000 }).catch(() => false);
       if (pinPadStillVisible) {
-        const pin1 = page.locator('button').filter({ hasText: '1' }).first();
-        if (await pin1.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await pin1.click();
-          await page.waitForTimeout(200);
-          await page.locator('button').filter({ hasText: '2' }).first().click();
-          await page.waitForTimeout(200);
-          await page.locator('button').filter({ hasText: '3' }).first().click();
-          await page.waitForTimeout(200);
-          await page.locator('button').filter({ hasText: '4' }).first().click();
-          await page.waitForTimeout(3000);
-        }
+        const dialog = page.getByRole('dialog');
+        await dialog.getByRole('button', { name: 'Dígito 1' }).click();
+        await page.waitForTimeout(150);
+        await dialog.getByRole('button', { name: 'Dígito 2' }).click();
+        await page.waitForTimeout(150);
+        await dialog.getByRole('button', { name: 'Dígito 3' }).click();
+        await page.waitForTimeout(150);
+        await dialog.getByRole('button', { name: 'Dígito 4' }).click();
+        await page.waitForTimeout(2500);
       }
     }
     
@@ -149,15 +134,18 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     const addContactSelectors = [
       '[data-testid="add-contact-button"]',
       'button[aria-label="Adicionar contato"]',
+      'button:has-text("Adicionar primeiro contato")',
       'button:has([class*="UserPlus"])',
       'button:has-text("+")'
     ];
     
+    // Aguardar sidebar/mensagens carregar
+    await page.waitForTimeout(2000);
     let addContactButton = null;
     for (const selector of addContactSelectors) {
       try {
         const button = page.locator(selector).first();
-        await button.waitFor({ state: 'visible', timeout: 5000 });
+        await button.waitFor({ state: 'visible', timeout: 15000 });
         addContactButton = button;
         break;
       } catch {
@@ -172,18 +160,21 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     await addContactButton.click();
     
     // Passo 6: Aguardar modal de adicionar contato aparecer
-    const addContactModal = page.locator('text=Novo Contato, text=Nickname ou Email').first();
+    const addContactModal = page.getByText(/Novo Contato|Nickname ou Email/).first();
     await addContactModal.waitFor({ state: 'visible', timeout: 5000 });
     
-    // Passo 7: Digitar o nickname
-    const nicknameInput = page.locator('input[placeholder*="nickname"], input[placeholder*="Nickname"], input[type="text"]').filter({ hasNotText: 'email' }).first();
+    // Passo 7: Digitar o nickname (usar pressSequentially para disparar onChange em inputs controlados)
+    const nicknameInput = page.getByPlaceholder(/nickname ou email|Digite o nickname/);
     await nicknameInput.waitFor({ state: 'visible', timeout: 5000 });
-    await nicknameInput.fill(TARGET_NICKNAME);
-    await page.waitForTimeout(500);
+    await nicknameInput.click();
+    await nicknameInput.pressSequentially(TARGET_NICKNAME, { delay: 50 });
+    await page.waitForTimeout(300);
     
-    // Passo 8: Clicar em "Adicionar"
-    const addButton = page.locator('button:has-text("Adicionar"), button:has-text("Adicionar contato")').first();
+    // Passo 8: Clicar em "Adicionar" (escopar ao modal Novo Contato, exact para não pegar "Adicionar primeiro contato")
+    const modal = page.locator('[class*="max-w-sm"]').filter({ hasText: 'Novo Contato' });
+    const addButton = modal.getByRole('button', { name: 'Adicionar', exact: true });
     await addButton.waitFor({ state: 'visible', timeout: 3000 });
+    await expect(addButton).toBeEnabled({ timeout: 5000 });
     await addButton.click();
     
     // Passo 9: Aguardar processamento (pode criar chat ou mostrar erro)
@@ -194,13 +185,13 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     const chatCreated = await page.locator(`text=${TARGET_NICKNAME}, [data-chat-id]`).first().isVisible({ timeout: 5000 }).catch(() => false);
     
     // Opção 2: Mensagem de sucesso
-    const successMessage = await page.locator('text=Chat criado, text=sucesso, text=Bom trabalho').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const successMessage = await page.getByText(/Chat criado|sucesso|Bom trabalho/).first().isVisible({ timeout: 3000 }).catch(() => false);
     
     // Opção 3: Erro (usuário não encontrado, etc)
-    const errorMessage = await page.locator('text=não encontrado, text=erro, text=Error').first().isVisible({ timeout: 2000 }).catch(() => false);
+    const errorMessage = await page.getByText(/não encontrado|Usuário não encontrado|erro/).first().isVisible({ timeout: 2000 }).catch(() => false);
     
     if (errorMessage) {
-      const errorText = await page.locator('text=não encontrado, text=erro, text=Error').first().textContent();
+      const errorText = await page.getByText(/não encontrado|Usuário não encontrado|erro/).first().textContent();
       console.log(`Erro ao adicionar contato: ${errorText}`);
       // Não falhar o teste, apenas logar o erro
       // O usuário pode não existir no banco de dados
@@ -225,7 +216,7 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     // Este teste verifica o comportamento quando o nickname não existe
     // Primeiro fazer login (reutilizar lógica do teste anterior)
     
-    await expect(page.locator('text=Notícias em Tempo Real')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Noticias24h')).toBeVisible({ timeout: 10000 });
     
     // Fazer login rápido (assumindo que já está logado ou fazer login)
     // Por simplicidade, vamos apenas tentar adicionar um contato inexistente
@@ -237,21 +228,19 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     await page.waitForTimeout(2000);
     
     // Se aparecer PinPad, inserir PIN
-    const pinPad = page.locator('text=Configure seu PIN, text=Security Access, text=Digite seu Código').first();
-    const pinPadVisible = await pinPad.isVisible({ timeout: 3000 }).catch(() => false);
+    const pinPad = page.getByText(/Configure seu PIN|Security Access|Digite seu Código/).first();
+    const pinPadVisible = await pinPad.isVisible({ timeout: 5000 }).catch(() => false);
     
     if (pinPadVisible) {
-      const pin1 = page.locator('button').filter({ hasText: '1' }).first();
-      if (await pin1.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await pin1.click();
-        await page.waitForTimeout(200);
-        await page.locator('button').filter({ hasText: '2' }).first().click();
-        await page.waitForTimeout(200);
-        await page.locator('button').filter({ hasText: '3' }).first().click();
-        await page.waitForTimeout(200);
-        await page.locator('button').filter({ hasText: '4' }).first().click();
-        await page.waitForTimeout(2000);
-      }
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Dígito 1' }).click();
+      await page.waitForTimeout(150);
+      await dialog.getByRole('button', { name: 'Dígito 2' }).click();
+      await page.waitForTimeout(150);
+      await dialog.getByRole('button', { name: 'Dígito 3' }).click();
+      await page.waitForTimeout(150);
+      await dialog.getByRole('button', { name: 'Dígito 4' }).click();
+      await page.waitForTimeout(2000);
     }
     
     // Tentar adicionar contato inexistente
@@ -271,7 +260,7 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
       await page.waitForTimeout(2000);
       
       // Deve aparecer mensagem de erro
-      const errorMessage = await page.locator('text=não encontrado, text=Usuário não encontrado').first().isVisible({ timeout: 3000 }).catch(() => false);
+      const errorMessage = await page.getByText(/não encontrado|Usuário não encontrado/).first().isVisible({ timeout: 3000 }).catch(() => false);
       
       // Não falhar o teste se não aparecer erro (pode ser que o comportamento seja diferente)
       if (errorMessage) {

@@ -12,7 +12,7 @@ test.describe('Fluxo de Autenticação', () => {
   });
 
   test('deve mostrar portal de notícias inicialmente', async ({ page }) => {
-    await expect(page.locator('text=Notícias em Tempo Real')).toBeVisible();
+    await expect(page.locator('text=Noticias24h')).toBeVisible();
   });
 
   test('deve abrir modal de cadastro ao clicar em "Fale Conosco" duas vezes', async ({ page }) => {
@@ -67,8 +67,8 @@ test.describe('Fluxo de Autenticação', () => {
       await page.waitForTimeout(2000);
       
       // Deve mostrar PinPad para configurar PIN ou voltar para portal
-      const pinPad = page.locator('text=Configure seu PIN, text=Security Access, text=Digite seu Código');
-      const portal = page.locator('text=Notícias em Tempo Real');
+      const pinPad = page.getByText(/Configure seu PIN|Security Access|Digite seu Código/);
+      const portal = page.locator('text=Noticias24h');
       
       const hasPinPad = await pinPad.isVisible({ timeout: 8000 }).catch(() => false);
       const hasPortal = await portal.isVisible({ timeout: 2000 }).catch(() => false);
@@ -77,7 +77,7 @@ test.describe('Fluxo de Autenticação', () => {
       expect(hasPinPad || hasPortal).toBeTruthy();
     } else {
       // Se não apareceu modal, pode ser que já tenha conta ou PinPad apareceu direto
-      const pinPad = page.locator('text=Configure seu PIN, text=Security Access');
+      const pinPad = page.getByText(/Configure seu PIN|Security Access/);
       const hasPinPad = await pinPad.isVisible({ timeout: 2000 }).catch(() => false);
       expect(hasSignup || hasPinPad).toBeTruthy();
     }
@@ -85,16 +85,19 @@ test.describe('Fluxo de Autenticação', () => {
 
   test('deve configurar PIN após cadastro', async ({ page }) => {
     // Assumindo que já está no PinPad
-    const pinPad = page.locator('text=Configure seu PIN');
+    const pinPad = page.getByText(/Configure seu PIN|Security Access|Digite seu Código/);
     if (await pinPad.isVisible({ timeout: 2000 })) {
-      // Clicar nos números do PIN (exemplo: 1234)
-      await page.click('button:has-text("1")');
-      await page.click('button:has-text("2")');
-      await page.click('button:has-text("3")');
-      await page.click('button:has-text("4")');
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Dígito 1' }).click();
+      await page.waitForTimeout(150);
+      await dialog.getByRole('button', { name: 'Dígito 2' }).click();
+      await page.waitForTimeout(150);
+      await dialog.getByRole('button', { name: 'Dígito 3' }).click();
+      await page.waitForTimeout(150);
+      await dialog.getByRole('button', { name: 'Dígito 4' }).click();
       
       // Deve desbloquear e mostrar mensagens
-      await expect(page.locator('text=Mensagens').or(page.locator('text=conversas'))).toBeVisible({ timeout: 3000 });
+      await expect(page.getByText(/Mensagens|conversas/)).toBeVisible({ timeout: 3000 });
     }
   });
 });
