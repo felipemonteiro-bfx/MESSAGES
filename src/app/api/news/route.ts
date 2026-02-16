@@ -106,7 +106,7 @@ function parseRSSItem(itemXml: string, feedName: string, feedCategory: string): 
       return match ? match[1].trim() : '';
     };
 
-    const title = decodeHtmlEntities(getTag(itemXml, 'title'));
+    const title = decodeHtmlEntities(stripHtml(getTag(itemXml, 'title')));
     const link = getTag(itemXml, 'link') || getAttr(itemXml, 'link', 'href');
     const description = decodeHtmlEntities(
       stripHtml(getTag(itemXml, 'description') || getTag(itemXml, 'summary') || getTag(itemXml, 'content:encoded'))
@@ -208,8 +208,12 @@ function decodeHtmlEntities(text: string): string {
 }
 
 function stripHtml(html: string): string {
+  if (!html || typeof html !== 'string') return '';
   return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -256,20 +260,26 @@ async function fetchFeed(feed: RSSFeed): Promise<NewsArticle[]> {
 
     if (!response.ok) return [];
 
-    // Decodificar com encoding correto para evitar problemas com acentuação
+    // Decodificar com encoding correto para evitar problemas com acentuação (ex: término, Xamã)
     const buffer = await response.arrayBuffer();
     const ct = response.headers.get('content-type') || '';
     let charset = (ct.match(/charset=["']?([^"'\s;]+)/i) || [])[1] || '';
     if (!charset) {
-      const preamble = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, 800));
-      const encMatch = preamble.match(/encoding=["']([^"']+)["']/i);
-      charset = encMatch ? encMatch[1].trim().toLowerCase() : 'utf-8';
+      const preambleUtf8 = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, 1000));
+      const encMatch = preambleUtf8.match(/encoding=["']([^"']+)["']/i);
+      charset = encMatch ? encMatch[1].trim().toLowerCase() : '';
     }
-    const encoding = ['utf-8', 'utf8'].includes(charset) ? 'utf-8'
+    // Feeds brasileiros (.com.br, uol, folha) frequentemente usam ISO-8859-1
+    const isBrazilianFeed = feed.language === 'pt' || feed.url.includes('.com.br') || feed.url.includes('folha.uol') || feed.url.includes('uol.com.br');
+    let encoding = ['utf-8', 'utf8'].includes(charset) ? 'utf-8'
       : ['iso-8859-1', 'latin1'].includes(charset) ? 'iso-8859-1'
       : ['windows-1252', 'cp1252'].includes(charset) ? 'windows-1252'
-      : 'utf-8';
-    const xml = new TextDecoder(encoding).decode(buffer);
+      : charset ? 'utf-8' : (isBrazilianFeed ? 'iso-8859-1' : 'utf-8');
+    let xml = new TextDecoder(encoding).decode(buffer);
+    // Se detectar caracteres de substituição (), tentar ISO-8859-1 (comum em feeds BR)
+    if (encoding === 'utf-8' && isBrazilianFeed && xml.includes('\uFFFD')) {
+      xml = new TextDecoder('iso-8859-1').decode(buffer);
+    }
 
     // Extrair items do RSS/Atom
     const items: string[] = [];

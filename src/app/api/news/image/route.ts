@@ -35,28 +35,11 @@ async function fetchImageAsBuffer(imgUrl: string, referer?: string): Promise<{ d
   }
 }
 
-async function getFallbackImage(): Promise<ArrayBuffer> {
-  const res = await fetchImageAsBuffer(FALLBACK_URL);
-  if (res) return res.data;
-  // Fallback binário mínimo (1x1 PNG) se Unsplash falhar
-  return new Uint8Array([
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-    0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-    0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00, 0x00, 0x00, 0x02,
-    0x00, 0x01, 0xE5, 0x27, 0xDE, 0xFC, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
-    0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
-  ]).buffer;
-}
-
 export async function GET(request: NextRequest) {
   let url = request.nextUrl.searchParams.get('url');
 
   if (!url || typeof url !== 'string') {
-    const fallback = await getFallbackImage();
-    return new NextResponse(fallback, {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=60' },
-    });
+    return NextResponse.redirect(FALLBACK_URL, 302);
   }
 
   try {
@@ -68,16 +51,10 @@ export async function GET(request: NextRequest) {
   try {
     const parsedUrl = new URL(url);
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      const fallback = await getFallbackImage();
-      return new NextResponse(fallback, {
-        headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=60' },
-      });
+      return NextResponse.redirect(FALLBACK_URL, 302);
     }
   } catch {
-    const fallback = await getFallbackImage();
-    return new NextResponse(fallback, {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=60' },
-    });
+    return NextResponse.redirect(FALLBACK_URL, 302);
   }
 
   const cached = IMAGE_CACHE.get(url);
@@ -95,15 +72,8 @@ export async function GET(request: NextRequest) {
   let result = await fetchImageAsBuffer(url, origin);
   if (!result) result = await fetchImageAsBuffer(url); // retry sem Referer
   if (!result) {
-    const fallback = await getFallbackImage();
-    return new NextResponse(fallback, {
-      headers: {
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=300',
-        'X-Cache': 'FALLBACK',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    // Redirecionar para imagem placeholder em vez de retornar 1x1 PNG (invisível)
+    return NextResponse.redirect(FALLBACK_URL, 302);
   }
 
   if (IMAGE_CACHE.size >= MAX_CACHE_SIZE) {
