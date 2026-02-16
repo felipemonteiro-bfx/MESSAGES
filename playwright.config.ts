@@ -1,12 +1,24 @@
+import { config } from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
 
+// Carregar variáveis de ambiente (prioridade: .env.test > .env.local > .env)
+config({ path: '.env.test' });
+config({ path: '.env.local' });
+config({ path: '.env' });
+
 /**
- * Sugestão 27: Configuração do Playwright para testes E2E
- * 
+ * Configuração do Playwright para testes E2E
+ *
+ * Variáveis de ambiente (via .env.local ou .env.test):
+ * - NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY (obrigatórias para Supabase)
+ * - SUPABASE_SERVICE_ROLE_KEY (para API routes)
+ * - NEXT_PUBLIC_NEWS_API_KEY (opcional, notícias)
+ * - PLAYWRIGHT_BASE_URL (opcional, default: http://localhost:3005)
+ *
  * Para executar:
- * - npx playwright install (primeira vez)
- * - npx playwright test (executar testes)
- * - npx playwright test --ui (interface gráfica)
+ * - npm run test:e2e:install (primeira vez - instalar browsers)
+ * - npm run test:e2e (executar testes)
+ * - npm run test:e2e:ui (interface gráfica)
  */
 export default defineConfig({
   testDir: './tests/e2e',
@@ -66,16 +78,12 @@ export default defineConfig({
     },
   ],
 
-  // Servidor de desenvolvimento (desabilitado em CI - usar servidor externo ou build estático)
+  // Servidor de desenvolvimento (desabilitado em CI - usar servidor externo)
   webServer: process.env.CI ? undefined : {
-    command: 'npm run dev -- --webpack', // Usar webpack explicitamente para evitar conflito
-    url: 'http://localhost:3005',
-    reuseExistingServer: true,
+    command: 'npm run dev',
+    url: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3005',
+    reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
-    env: {
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key',
-      NEXT_PUBLIC_NEWS_API_KEY: process.env.NEXT_PUBLIC_NEWS_API_KEY || '',
-    },
+    env: process.env,
   },
 });

@@ -66,6 +66,31 @@ Acesse: **http://localhost:3005**
 
 Gerar par VAPID: `node scripts/generate-vapid.js` (se existir) ou use [web-push](https://www.npmjs.com/package/web-push).
 
+## 🧪 Testes E2E (Playwright)
+
+Os testes usam as mesmas variáveis do `.env.local`. Se preferir um ambiente isolado, crie `.env.test` a partir de `.env.test.example`:
+
+```bash
+cp .env.test.example .env.test
+# Edite .env.test com as credenciais do Supabase
+```
+
+**Primeira vez** – instalar browsers:
+
+```bash
+npm run test:e2e:install
+```
+
+**Executar testes:**
+
+```bash
+npm run test:e2e        # Todos os testes
+npm run test:e2e:ui     # Interface gráfica
+npx playwright test tests/e2e/auth-flow.spec.ts  # Arquivo específico
+```
+
+O Playwright inicia o servidor Next.js automaticamente (porta 3005) e usa o Supabase configurado em `.env.local` ou `.env.test`.
+
 ## 📱 Apps Mobile (Android e iOS)
 
 O app está preparado para gerar apps nativos usando **Capacitor**:

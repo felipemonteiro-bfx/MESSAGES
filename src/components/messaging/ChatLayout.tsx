@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Message, ChatWithRecipient, User as UserType } from '@/types/messaging';
 import { validateAndSanitizeNickname, validateAndSanitizeMessage } from '@/lib/validation';
+import { ChatItemSkeleton } from '@/components/ui/Skeleton';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
 import { checkRateLimit, getRateLimitIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
@@ -18,6 +20,115 @@ import SettingsModal from '@/components/shared/SettingsModal';
 import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
 import { isIncognitoMode, clearIncognitoData } from '@/lib/settings';
 
+function SwipeableChatItem({
+  chat,
+  selectedChat,
+  onlineUsers,
+  mutedChats,
+  formatTime,
+  style,
+  onSelect,
+  onMuteToggle,
+  fetchMediaWithCache,
+}: {
+  chat: ChatWithRecipient;
+  selectedChat: ChatWithRecipient | null;
+  onlineUsers: Set<string>;
+  mutedChats: Set<string>;
+  formatTime: (t: string) => string;
+  style: React.CSSProperties;
+  onSelect: () => void;
+  onMuteToggle: () => Promise<void>;
+  fetchMediaWithCache: (url: string) => Promise<Blob>;
+}) {
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchEndX, setTouchEndX] = useState<number | null>(null);
+  const justSwipedRef = useRef(false);
+  const minSwipe = 60;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEndX(null);
+    setTouchStartX(e.targetTouches[0].clientX);
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+  const onTouchEnd = () => {
+    if (touchStartX == null || touchEndX == null) return;
+    const d = touchStartX - touchEndX;
+    if (d > minSwipe) {
+      justSwipedRef.current = true;
+      onMuteToggle();
+    }
+    setTouchStartX(null);
+    setTouchEndX(null);
+  };
+
+  const handleSelect = () => {
+    if (justSwipedRef.current) {
+      justSwipedRef.current = false;
+      return;
+    }
+    onSelect();
+  };
+
+  return (
+    <div
+      style={style}
+      data-chat="true"
+      data-chat-id={chat.id}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      className="touch-manipulation"
+    >
+      <div
+        onClick={handleSelect}
+        className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#202b36] transition-colors ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-[#2b5278]' : ''}`}
+      >
+        <div className="relative">
+          <img
+            src={chat.recipient?.avatar_url || 'https://i.pravatar.cc/150'}
+            alt={chat.recipient?.nickname || 'Avatar'}
+            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+            loading="lazy"
+            onLoad={async (e) => {
+              const imgSrc = e.currentTarget.src;
+              if (imgSrc?.startsWith('http')) {
+                try {
+                  await fetchMediaWithCache(imgSrc);
+                } catch {
+                  // ignorar
+                }
+              }
+            }}
+          />
+          {chat.recipient && onlineUsers.has(chat.recipient.id) && (
+            <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#17212b] rounded-full" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <h3 className="font-bold truncate text-sm text-gray-900 dark:text-white">
+              {chat.recipient?.nickname || chat.name || 'Grupo'}
+            </h3>
+            {chat.time && (
+              <span className="text-[10px] text-gray-500 dark:text-[#708499] flex-shrink-0">
+                {formatTime(chat.time)}
+              </span>
+            )}
+          </div>
+          {chat.lastMessage && (
+            <p className="text-xs text-gray-600 dark:text-[#708499] truncate">
+              {chat.lastMessage.length > 40 ? `${chat.lastMessage.substring(0, 40)}...` : chat.lastMessage}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatLayout() {
   const { lockMessaging } = useStealthMessaging();
   const [chats, setChats] = useState<ChatWithRecipient[]>([]);
@@ -28,6 +139,8 @@ export default function ChatLayout() {
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
   const [nicknameSearch, setNicknameSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -58,6 +171,8 @@ export default function ChatLayout() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const chatListScrollRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   // Memoizar cliente Supabase para evitar re-criação a cada render
   const supabase = useMemo(() => createClient(), []);
 
@@ -66,7 +181,7 @@ export default function ChatLayout() {
       setIsLoading(true);
       
       // Usar API server-side para evitar problemas de RLS recursivo
-      const response = await fetch('/api/chats');
+      const response = await fetch('/api/chats', { credentials: 'include' });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -102,8 +217,13 @@ export default function ChatLayout() {
       if (appError.type === 'UNKNOWN' && appError.message === 'Erro desconhecido') {
         errorMessage = 'Erro ao carregar conversas. Verifique sua conexão e tente novamente.';
       }
+      if (appError.message?.toLowerCase().includes('failed to fetch') || appError.message?.toLowerCase().includes('fetch chats')) {
+        errorMessage = 'Erro ao carregar conversas. Verifique sua conexão e tente novamente.';
+      }
       
-      toast.error(errorMessage);
+      toast.error(errorMessage, {
+        action: { label: 'Tentar novamente', onClick: () => fetchChats(_userId) },
+      });
     }
   }, []);
 
@@ -172,34 +292,41 @@ export default function ChatLayout() {
     return () => clearTimeout(timeout);
   }, [messages.length, currentUser, fetchChats]);
 
-  // Sugestão 15: Lazy loading de mensagens (via API server-side)
-  const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false) => {
+  // Lazy loading de mensagens (via API server-side)
+  const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false, silent = false) => {
     try {
-      const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`);
+      const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`, { credentials: 'include' });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Erro ao buscar mensagens:', errorData);
+        logger.warn('Erro ao buscar mensagens', { status: response.status, error: errorData });
+        if (!silent) {
+          const msg = response.status === 401 ? 'Sessão expirada. Faça login novamente.' : 'Erro ao carregar mensagens. Tente novamente.';
+          toast.error(msg, {
+            action: page === 1 ? { label: 'Tentar novamente', onClick: () => fetchMessages(chatId, 1, false) } : undefined,
+          });
+        }
         return;
       }
       
       const { messages: data, hasMore } = await response.json();
       
       if (data) {
-        // Reverter ordem para mostrar mais antigas primeiro
         const sortedData = [...data].reverse();
-        
         if (append) {
           setMessages(prev => [...sortedData, ...prev]);
         } else {
           setMessages(sortedData);
         }
-        
-        // Verificar se há mais mensagens
         setHasMoreMessages(hasMore);
       }
     } catch (err) {
-      console.error('Erro ao buscar mensagens:', err);
+      logger.warn('Erro ao buscar mensagens', { error: err });
+      if (!silent) {
+        toast.error('Erro ao carregar mensagens. Verifique sua conexão.', {
+          action: page === 1 ? { label: 'Tentar novamente', onClick: () => fetchMessages(chatId, 1, false) } : undefined,
+        });
+      }
     }
   }, []);
 
@@ -547,7 +674,14 @@ export default function ChatLayout() {
     }
     
     setIsSending(true);
-    const messageContent = validation.data!;
+    const userTypedContent = validation.data!;
+    let messageContent = userTypedContent;
+    if (replyingTo) {
+      const quoted = (replyingTo.content || '').slice(0, 80);
+      const suffix = replyingTo.content && replyingTo.content.length > 80 ? '...' : '';
+      const replyAuthor = replyingTo.sender_id === currentUser.id ? 'você' : (selectedChat.recipient?.nickname || '');
+      messageContent = `> ${replyAuthor}: ${quoted}${suffix}\n\n${userTypedContent}`;
+    }
     setInputText(''); // Limpar input imediatamente para melhor UX
     
     // Sugestão 4: Calcular expires_at se for mensagem efêmera
@@ -581,6 +715,7 @@ export default function ChatLayout() {
       // Atualização otimista: adicionar mensagem à lista imediatamente
       if (responseData.message) {
         setMessages(prev => [...prev, responseData.message]);
+        setReplyingTo(null);
       }
       messageSent = true;
     } catch (error) {
@@ -635,6 +770,7 @@ export default function ChatLayout() {
         messageLength: messageContent.length,
       });
       
+      if (navigator.vibrate) navigator.vibrate(30);
       toast.success('Mensagem enviada!', { duration: 1500 });
       
       // Atualizar mensagens do chat atual e lista de chats
@@ -644,11 +780,11 @@ export default function ChatLayout() {
       const appError = normalizeError(error);
       logError(appError);
       toast.error(getUserFriendlyMessage(appError));
-      setInputText(messageContent); // Restaurar mensagem em caso de erro
+      setInputText(userTypedContent); // Restaurar mensagem em caso de erro
     } finally {
       setIsSending(false);
     }
-  }, [inputText, selectedChat, currentUser, supabase, isSending, fetchChats, fetchMessages]);
+  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, fetchChats, fetchMessages]);
 
   const handleAddContact = useCallback(async () => {
     if (!nicknameSearch.trim() || !currentUser || isAddingContact) return;
@@ -838,9 +974,9 @@ export default function ChatLayout() {
     if (!searchQuery.trim()) return chats;
     const query = searchQuery.toLowerCase();
     return chats.filter(chat => 
-      chat.recipient?.nickname.toLowerCase().includes(query) ||
-      chat.name?.toLowerCase().includes(query) ||
-      chat.lastMessage?.toLowerCase().includes(query)
+      ((chat.recipient?.nickname ?? '').toLowerCase().includes(query)) ||
+      ((chat.name ?? '').toLowerCase().includes(query)) ||
+      ((chat.lastMessage ?? '').toLowerCase().includes(query))
     );
   }, [chats, searchQuery]);
 
@@ -857,6 +993,36 @@ export default function ChatLayout() {
     if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
+
+  const filteredMessages = useMemo(() => {
+    return messages.filter(msg => {
+      if (msg.expires_at) {
+        const expiresAt = new Date(msg.expires_at);
+        if (expiresAt <= new Date()) return false;
+      }
+      if (messageSearchQuery.trim()) {
+        const q = messageSearchQuery.toLowerCase();
+        return (msg.content?.toLowerCase().includes(q) ?? false);
+      }
+      return true;
+    });
+  }, [messages, messageSearchQuery]);
+
+  const chatListVirtualizer = useVirtualizer({
+    count: filteredChats.length,
+    getScrollElement: () => chatListScrollRef.current,
+    estimateSize: () => 72,
+    overscan: 5,
+  });
+
+  const messagesWithLoadMore = hasMoreMessages && filteredMessages.length > 0;
+  const messagesVirtualizerCount = (messagesWithLoadMore ? 1 : 0) + filteredMessages.length;
+  const messagesVirtualizer = useVirtualizer({
+    count: messagesVirtualizerCount,
+    getScrollElement: () => messagesScrollRef.current,
+    estimateSize: (i) => (i === 0 && messagesWithLoadMore ? 48 : 96),
+    overscan: 10,
+  });
 
   // Swipe para mobile
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -909,10 +1075,13 @@ export default function ChatLayout() {
     lockMessaging(); // Volta para o modo stealth (portal de notícias)
   };
 
-  // Handler para logout
+  // Handler para logout (com confirmação)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const handleLogout = async () => {
     try {
+      setShowLogoutConfirm(false);
       setIsMenuOpen(false);
+      if (navigator.vibrate) navigator.vibrate(50);
       await supabase.auth.signOut();
       lockMessaging();
       toast.success('Logout realizado com sucesso');
@@ -974,7 +1143,7 @@ export default function ChatLayout() {
                   <div className="border-t border-gray-200 dark:border-[#17212b]" />
                   
                   <button
-                    onClick={handleLogout}
+                    onClick={() => { setIsMenuOpen(false); setShowLogoutConfirm(true); }}
                     className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     <LogOut className="w-4 h-4" />
@@ -1033,10 +1202,12 @@ export default function ChatLayout() {
             </button>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div ref={chatListScrollRef} className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-gray-600 dark:text-[#708499] text-sm">Carregando conversas...</div>
+            <div className="flex flex-col">
+              {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <ChatItemSkeleton key={i} />
+              ))}
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full p-4 text-center">
@@ -1054,60 +1225,58 @@ export default function ChatLayout() {
               )}
             </div>
           ) : (
-            filteredChats.map((chat) => (
-              <div 
-                key={chat.id}
-                data-chat="true"
-                data-chat-id={chat.id}
-                onClick={() => { 
-                  setSelectedChat(chat); 
-                  if (window.innerWidth < 768) setIsSidebarOpen(false); 
-                }} 
-                className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#202b36] transition-colors touch-manipulation ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-[#2b5278]' : ''}`}
-              >
-                <div className="relative">
-                  <img 
-                    src={chat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
-                    alt={chat.recipient?.nickname || 'Avatar'} 
-                    className="w-12 h-12 rounded-full object-cover flex-shrink-0"
-                    loading="lazy"
-                    onLoad={async (e) => {
-                      e.currentTarget.classList.add('loaded');
-                      // Sugestão 13: Cachear avatar
-                      const imgSrc = e.currentTarget.src;
-                      if (imgSrc && imgSrc.startsWith('http')) {
-                        try {
-                          await fetchMediaWithCache(imgSrc);
-                        } catch (error) {
-                          // Ignorar erros de cache
+            <div
+              style={{ height: `${chatListVirtualizer.getTotalSize()}px`, position: 'relative' }}
+              className="w-full"
+            >
+              {chatListVirtualizer.getVirtualItems().map((virtualRow) => {
+                const chat = filteredChats[virtualRow.index];
+                return (
+                  <SwipeableChatItem
+                    key={chat.id}
+                    chat={chat}
+                    selectedChat={selectedChat}
+                    onlineUsers={onlineUsers}
+                    mutedChats={mutedChats}
+                    formatTime={formatTime}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)` }}
+                    onSelect={() => {
+                      setSelectedChat(chat);
+                      setMessageSearchQuery('');
+                      setReplyingTo(null);
+                      if (window.innerWidth < 768) setIsSidebarOpen(false);
+                    }}
+                    onMuteToggle={async () => {
+                      if (!currentUser || !chat) return;
+                      const newMutedState = !mutedChats.has(chat.id);
+                      try {
+                        const { error } = await supabase
+                          .from('chat_participants')
+                          .update({ muted: newMutedState })
+                          .eq('chat_id', chat.id)
+                          .eq('user_id', currentUser.id);
+                        if (error) throw error;
+                        if (navigator.vibrate) navigator.vibrate(30);
+                        if (newMutedState) {
+                          setMutedChats(prev => new Set(prev).add(chat.id));
+                          toast.success('Notificações silenciadas', { duration: 2000 });
+                        } else {
+                          setMutedChats(prev => {
+                            const next = new Set(prev);
+                            next.delete(chat.id);
+                            return next;
+                          });
+                          toast.success('Notificações ativadas', { duration: 2000 });
                         }
+                      } catch {
+                        toast.error('Erro ao alterar notificações');
                       }
                     }}
+                    fetchMediaWithCache={fetchMediaWithCache}
                   />
-                  {/* Sugestão 7: Indicador de status online na lista */}
-                  {chat.recipient && onlineUsers.has(chat.recipient.id) && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#17212b] rounded-full"></span>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className="font-bold truncate text-sm text-gray-900 dark:text-white">
-                      {chat.recipient?.nickname || chat.name || 'Grupo'}
-                    </h3>
-                    {chat.time && (
-                      <span className="text-[10px] text-gray-500 dark:text-[#708499] flex-shrink-0">
-                        {formatTime(chat.time)}
-                      </span>
-                    )}
-                  </div>
-                  {chat.lastMessage && (
-                    <p className="text-xs text-gray-600 dark:text-[#708499] truncate">
-                      {chat.lastMessage.length > 40 ? `${chat.lastMessage.substring(0, 40)}...` : chat.lastMessage}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))
+                );
+              })}
+            </div>
           )}
         </div>
       </aside>
@@ -1122,7 +1291,8 @@ export default function ChatLayout() {
       >
         {selectedChat ? (
           <>
-            <header className="p-3 border-b border-gray-200 dark:border-[#17212b] flex items-center justify-between bg-white dark:bg-[#17212b] z-10">
+            <header className="p-3 border-b border-gray-200 dark:border-[#17212b] flex flex-col gap-2 bg-white dark:bg-[#17212b] z-10">
+              <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button className="md:hidden p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors" onClick={() => setIsSidebarOpen(true)}><ArrowLeft className="w-5 h-5" /></button>
                 <div className="relative">
@@ -1191,9 +1361,11 @@ export default function ChatLayout() {
                         if (error) throw error;
                         
                         if (newMutedState) {
+                          if (navigator.vibrate) navigator.vibrate(30);
                           setMutedChats(prev => new Set(prev).add(selectedChat.id));
                           toast.success('Notificações silenciadas', { duration: 2000 });
                         } else {
+                          if (navigator.vibrate) navigator.vibrate(30);
                           setMutedChats(prev => {
                             const newSet = new Set(prev);
                             newSet.delete(selectedChat.id);
@@ -1246,8 +1418,30 @@ export default function ChatLayout() {
                   </button>
                 )}
               </div>
+              </div>
+              {/* Sugestão 9: Busca em mensagens */}
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar nesta conversa..."
+                  value={messageSearchQuery}
+                  onChange={(e) => setMessageSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-[#0e1621] border border-gray-200 dark:border-[#17212b] text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {messageSearchQuery && (
+                  <button
+                    onClick={() => setMessageSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white"
+                    aria-label="Limpar busca"
+                  >
+                    <CloseIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </header>
             <div 
+              ref={messagesScrollRef}
               className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative" 
               data-stealth-content="true"
               // Sugestão 23: Drag & drop de arquivos
@@ -1364,40 +1558,63 @@ export default function ChatLayout() {
                )}
                
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
-                {/* Sugestão 15: Botão para carregar mais mensagens antigas */}
-                {hasMoreMessages && messages.length > 0 && (
-                  <div className="flex justify-center py-2">
-                    <button
-                      onClick={() => {
-                        const nextPage = messagesPage + 1;
-                        setMessagesPage(nextPage);
-                        fetchMessages(selectedChat.id, nextPage, true);
-                      }}
-                      className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-                    >
-                      Carregar mensagens anteriores
-                    </button>
-                  </div>
-                )}
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-12">
                     <MessageSquare className="w-16 h-16 text-gray-400 dark:text-[#708499] mb-4 opacity-50" />
                     <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhum comentário ainda</p>
                     <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Seja o primeiro a comentar!</p>
                   </div>
+                ) : filteredMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Search className="w-12 h-12 text-gray-400 dark:text-[#708499] mb-3 opacity-50" />
+                    <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhuma mensagem encontrada</p>
+                    <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Tente outro termo na busca</p>
+                  </div>
                 ) : (
-                  messages
-                    .filter(msg => {
-                      // Sugestão 4: Filtrar mensagens efêmeras expiradas
-                      if (msg.expires_at) {
-                        const expiresAt = new Date(msg.expires_at);
-                        return expiresAt > new Date();
+                  <div
+                    style={{ height: `${messagesVirtualizer.getTotalSize()}px`, position: 'relative' }}
+                    className="w-full"
+                  >
+                    {messagesVirtualizer.getVirtualItems().map((virtualRow) => {
+                      if (virtualRow.index === 0 && messagesWithLoadMore) {
+                        return (
+                          <div
+                            key="load-more"
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              transform: `translateY(${virtualRow.start}px)`,
+                            }}
+                            className="flex justify-center py-2"
+                          >
+                            <button
+                              onClick={() => {
+                                const nextPage = messagesPage + 1;
+                                setMessagesPage(nextPage);
+                                fetchMessages(selectedChat.id, nextPage, true);
+                              }}
+                              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                            >
+                              Carregar mensagens anteriores
+                            </button>
+                          </div>
+                        );
                       }
-                      return true;
-                    })
-                    .map((msg) => (
-                    <div 
-                      key={msg.id} 
+                      const msgIdx = messagesWithLoadMore ? virtualRow.index - 1 : virtualRow.index;
+                      const msg = filteredMessages[msgIdx];
+                      if (!msg) return null;
+                      return (
+                    <div
+                      key={msg.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
                       className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
                       data-stealth-content="true"
                       data-message="true"
@@ -1437,6 +1654,11 @@ export default function ChatLayout() {
                             <span className="text-[10px] text-gray-500 dark:text-gray-400">
                               {formatTime(msg.created_at)}
                             </span>
+                            {msg.sender_id === currentUser?.id && (
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400" title={msg.read_at ? 'Lida' : 'Enviada'}>
+                                {msg.read_at ? <CheckCheck className="w-3 h-3 text-blue-500" /> : <Check className="w-3 h-3" />}
+                              </span>
+                            )}
                           </div>
                           {msg.content && (
                             <div className="text-sm leading-relaxed whitespace-pre-wrap break-words text-gray-800 dark:text-white">
@@ -1471,7 +1693,10 @@ export default function ChatLayout() {
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-1 px-1">
-                          <button className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                          <button
+                            onClick={() => setReplyingTo(msg)}
+                            className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                          >
                             Responder
                           </button>
                           <button className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
@@ -1480,9 +1705,11 @@ export default function ChatLayout() {
                         </div>
                       </div>
                     </div>
-                  ))
+                      );
+                    })}
+                  </div>
                 )}
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} className="h-1" aria-hidden="true" />
               </div>
             </div>
             <footer className="sticky bottom-0 p-3 bg-white dark:bg-[#17212b] border-t border-gray-200 dark:border-[#0e1621] safe-area-inset-bottom">
@@ -1548,6 +1775,22 @@ export default function ChatLayout() {
                   onChange={(e) => handleFileSelect(e, 'audio')}
                 />
 
+                {/* Sugestão 10: Preview de resposta */}
+                {replyingTo && (
+                  <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 dark:bg-[#242f3d] rounded-lg border-l-2 border-blue-500">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Respondendo a {replyingTo.sender_id === currentUser?.id ? 'você' : (selectedChat?.recipient?.nickname || '')}</p>
+                      <p className="text-sm text-gray-800 dark:text-white truncate">{(replyingTo.content || '').slice(0, 60)}{(replyingTo.content?.length || 0) > 60 ? '...' : ''}</p>
+                    </div>
+                    <button
+                      onClick={() => setReplyingTo(null)}
+                      className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-white"
+                      aria-label="Cancelar resposta"
+                    >
+                      <CloseIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-end gap-2 safe-area-bottom">
                   <button
                     onClick={() => setShowMediaMenu(!showMediaMenu)}
@@ -1703,6 +1946,42 @@ export default function ChatLayout() {
           onClose={() => setShowSettingsModal(false)} 
         />
       )}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setShowLogoutConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl"
+            >
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Sair da conta?</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Você precisará entrar novamente para acessar suas conversas.</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
+                >
+                  Sair
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

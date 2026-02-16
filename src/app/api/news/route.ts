@@ -186,16 +186,24 @@ function parseRSSItem(itemXml: string, feedName: string, feedCategory: string): 
 }
 
 function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
+  const namedEntities: Record<string, string> = {
+    '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&nbsp;': '\u00A0',
+    '&aacute;': 'á', '&eacute;': 'é', '&iacute;': 'í', '&oacute;': 'ó', '&uacute;': 'ú',
+    '&agrave;': 'à', '&egrave;': 'è', '&igrave;': 'ì', '&ograve;': 'ò', '&ugrave;': 'ù',
+    '&acirc;': 'â', '&ecirc;': 'ê', '&ocirc;': 'ô', '&atilde;': 'ã', '&otilde;': 'õ',
+    '&ccedil;': 'ç', '&ntilde;': 'ñ', '&uuml;': 'ü', '&Ccedil;': 'Ç',
+    '&Aacute;': 'Á', '&Eacute;': 'É', '&Iacute;': 'Í', '&Oacute;': 'Ó', '&Uacute;': 'Ú',
+    '&Agrave;': 'À', '&Atilde;': 'Ã', '&Otilde;': 'Õ', '&Acirc;': 'Â', '&Ecirc;': 'Ê', '&Ocirc;': 'Ô',
+  };
+  let out = text;
+  for (const [ent, char] of Object.entries(namedEntities)) {
+    out = out.replace(new RegExp(ent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), char);
+  }
+  return out
     .replace(/&#39;/g, "'")
     .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, '/')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num)))
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
     .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 
@@ -248,7 +256,20 @@ async function fetchFeed(feed: RSSFeed): Promise<NewsArticle[]> {
 
     if (!response.ok) return [];
 
-    const xml = await response.text();
+    // Decodificar com encoding correto para evitar problemas com acentuação
+    const buffer = await response.arrayBuffer();
+    const ct = response.headers.get('content-type') || '';
+    let charset = (ct.match(/charset=["']?([^"'\s;]+)/i) || [])[1] || '';
+    if (!charset) {
+      const preamble = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, 800));
+      const encMatch = preamble.match(/encoding=["']([^"']+)["']/i);
+      charset = encMatch ? encMatch[1].trim().toLowerCase() : 'utf-8';
+    }
+    const encoding = ['utf-8', 'utf8'].includes(charset) ? 'utf-8'
+      : ['iso-8859-1', 'latin1'].includes(charset) ? 'iso-8859-1'
+      : ['windows-1252', 'cp1252'].includes(charset) ? 'windows-1252'
+      : 'utf-8';
+    const xml = new TextDecoder(encoding).decode(buffer);
 
     // Extrair items do RSS/Atom
     const items: string[] = [];
@@ -370,18 +391,22 @@ export async function GET(request: NextRequest) {
     // Verificar cache
     const cached = newsCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json({
+    return NextResponse.json(
+      {
         articles: cached.articles,
         cached: true,
         cachedAt: new Date(cached.timestamp).toISOString(),
         expiresAt: new Date(cached.timestamp + CACHE_TTL).toISOString(),
         count: cached.articles.length,
-      }, {
+      },
+      {
         headers: {
+          'Content-Type': 'application/json; charset=utf-8',
           'Cache-Control': 'public, max-age=300, s-maxage=300',
           'X-Cache': 'HIT',
-        }
-      });
+        },
+      }
+    );
     }
 
     // Buscar notícias frescas
@@ -402,18 +427,22 @@ export async function GET(request: NextRequest) {
       timestamp: Date.now(),
     });
 
-    return NextResponse.json({
-      articles: limited,
-      cached: false,
-      cachedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + CACHE_TTL).toISOString(),
-      count: limited.length,
-    }, {
-      headers: {
-        'Cache-Control': 'public, max-age=300, s-maxage=300',
-        'X-Cache': 'MISS',
+    return NextResponse.json(
+      {
+        articles: limited,
+        cached: false,
+        cachedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + CACHE_TTL).toISOString(),
+        count: limited.length,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'public, max-age=300, s-maxage=300',
+          'X-Cache': 'MISS',
+        },
       }
-    });
+    );
   } catch (err) {
     console.error('Error in /api/news:', err);
     return NextResponse.json({ 

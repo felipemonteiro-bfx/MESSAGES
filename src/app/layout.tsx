@@ -4,6 +4,8 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import ServiceWorkerRegistration from "@/components/shared/ServiceWorkerRegistration";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import OfflineBanner from "@/components/shared/OfflineBanner";
+import PrefetchRoutes from "@/components/shared/PrefetchRoutes";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -26,10 +28,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" className="light" style={{ colorScheme: 'light' }}>
       <head>
+        <meta charSet="utf-8" />
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon-192.svg" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <PrefetchRoutes />
+        <OfflineBanner />
         <ServiceWorkerRegistration />
         <ErrorBoundary>
           {children}

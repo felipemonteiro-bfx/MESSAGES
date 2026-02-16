@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { createClient } from '@/lib/supabase/client';
+import { NewsCardSkeleton } from '@/components/ui/Skeleton';
 
 const SAVED_NEWS_KEY = 'n24h_saved_articles';
 const ALERTAS_ULTIMA_HORA_KEY = 'n24h_breaking_alerts';
@@ -869,15 +870,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         ) : loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="animate-pulse bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="aspect-video bg-gray-200" />
-                <div className="p-4 space-y-3">
-                  <div className="h-3 bg-gray-200 rounded w-1/4" />
-                  <div className="h-5 bg-gray-200 rounded w-full" />
-                  <div className="h-4 bg-gray-200 rounded w-3/4" />
-                  <div className="h-3 bg-gray-200 rounded w-1/3" />
-                </div>
-              </div>
+              <NewsCardSkeleton key={i} />
             ))}
           </div>
         ) : (
@@ -903,7 +896,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                     >
                       <div className="flex flex-col md:flex-col">
                         <div className="aspect-video md:aspect-[16/10] w-full bg-gray-100 overflow-hidden">
-                          <img src={proxyImage(item.image)} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).src = getDefaultImage(); }} />
+                          <img src={proxyImage(item.image)} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300" loading="lazy" decoding="async" onError={(e) => { (e.target as HTMLImageElement).src = getDefaultImage(); }} />
                         </div>
                         <div className="p-4 md:p-5 flex-1 flex flex-col">
                           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap mb-2">
