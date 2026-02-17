@@ -707,7 +707,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       {/* Botão secreto discreto (duplo clique na data é o principal) */}
       <div className="px-4 md:px-8 py-1.5 border-b border-gray-100 flex items-center justify-between gap-2 max-w-6xl mx-auto">
         <span />
-        <button onClick={handleSecretButton} className="text-xs text-gray-500 hover:text-gray-700 transition-colors py-1">
+        <button onClick={handleSecretButton} className="text-xs text-gray-500 hover:text-gray-700 transition-colors py-1" data-testid="fale-conosco-btn" aria-label="Fale Conosco">
           Fale Conosco
         </button>
       </div>

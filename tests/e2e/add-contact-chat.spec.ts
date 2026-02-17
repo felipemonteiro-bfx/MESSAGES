@@ -28,7 +28,8 @@ test.describe('Adicionar Contato e Abrir Chat', () => {
     await expect(page.locator('text=Noticias24h')).toBeVisible({ timeout: 10000 });
     
     // Passo 2: Fazer login/cadastro (duplo clique em "Fale Conosco")
-    const faleConoscoButton = page.locator('text=Fale Conosco').first();
+    const faleConoscoButton = page.getByTestId('fale-conosco-btn').or(page.locator('button:has-text("Fale Conosco")')).first();
+    await faleConoscoButton.waitFor({ state: 'visible', timeout: 5000 });
     await faleConoscoButton.click();
     await page.waitForTimeout(100);
     await faleConoscoButton.click();

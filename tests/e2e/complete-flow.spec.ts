@@ -8,7 +8,8 @@ import { test, expect } from '@playwright/test';
 
 /** Abre modal de auth com duplo clique em "Fale Conosco" */
 async function openAuthModal(page: ReturnType<Parameters<typeof test>[0]['page']>) {
-  const btn = page.getByRole('button', { name: 'Fale Conosco' });
+  const btn = page.getByTestId('fale-conosco-btn').or(page.getByRole('button', { name: 'Fale Conosco' })).first();
+  await btn.waitFor({ state: 'visible', timeout: 5000 });
   await btn.dblclick();
   await page.waitForTimeout(500); // Aguardar modal animar
 }

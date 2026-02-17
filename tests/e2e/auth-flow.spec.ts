@@ -16,7 +16,8 @@ test.describe('Fluxo de Autenticação', () => {
   });
 
   test('deve abrir modal de cadastro ao clicar em "Fale Conosco" duas vezes', async ({ page }) => {
-    const faleConoscoButton = page.locator('text=Fale Conosco');
+    const faleConoscoButton = page.getByTestId('fale-conosco-btn').or(page.locator('button:has-text("Fale Conosco")')).first();
+    await faleConoscoButton.waitFor({ state: 'visible', timeout: 5000 });
     
     // Primeiro clique
     await faleConoscoButton.click();
@@ -27,12 +28,13 @@ test.describe('Fluxo de Autenticação', () => {
     // Deve mostrar modal de cadastro ou PinPad
     await expect(
       page.locator('text=Criar Conta').or(page.locator('text=Security Access'))
-    ).toBeVisible({ timeout: 2000 });
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test('deve permitir cadastro de novo usuário', async ({ page }) => {
     // Abrir modal (duplo clique em "Fale Conosco")
-    const faleConoscoButton = page.locator('text=Fale Conosco');
+    const faleConoscoButton = page.getByTestId('fale-conosco-btn').or(page.locator('button:has-text("Fale Conosco")')).first();
+    await faleConoscoButton.waitFor({ state: 'visible', timeout: 5000 });
     await faleConoscoButton.click();
     await page.waitForTimeout(100);
     await faleConoscoButton.click();

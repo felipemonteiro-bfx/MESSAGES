@@ -274,7 +274,7 @@ async function fetchFeed(feed: RSSFeed): Promise<NewsArticle[]> {
     }
     // Feeds brasileiros (.com.br, uol, folha) frequentemente usam ISO-8859-1
     const isBrazilianFeed = feed.language === 'pt' || feed.url.includes('.com.br') || feed.url.includes('folha.uol') || feed.url.includes('uol.com.br');
-    let encoding = ['utf-8', 'utf8'].includes(charset) ? 'utf-8'
+    const encoding = ['utf-8', 'utf8'].includes(charset) ? 'utf-8'
       : ['iso-8859-1', 'latin1'].includes(charset) ? 'iso-8859-1'
       : ['windows-1252', 'cp1252'].includes(charset) ? 'windows-1252'
       : charset ? 'utf-8' : (isBrazilianFeed ? 'iso-8859-1' : 'utf-8');

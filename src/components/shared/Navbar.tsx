@@ -41,7 +41,7 @@ export const Navbar = () => {
     
     fetchNotifications();
     setShowMoreMenu(false);
-  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const fetchNotifications = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();

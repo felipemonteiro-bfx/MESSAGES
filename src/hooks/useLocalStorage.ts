@@ -36,7 +36,7 @@ export function useLocalStorage<T>(
       console.error(`Error reading localStorage key "${key}":`, error);
       setStoredValue(initialValue);
     }
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]);
 
   // Sincronizar entre abas
   useEffect(() => {
