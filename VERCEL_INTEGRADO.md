@@ -21,14 +21,14 @@
 
 ## 🌐 Links do Deploy
 
-**Preview:**
-- https://stealth-messaging-ma6a4lmvq-felipe-monteiros-projects-b1464a2b.vercel.app
+**Produção:**
+- https://stealth-messaging-7bik13nwm-felipe-monteiros-projects-b1464a2b.vercel.app
 
 **Dashboard Vercel:**
 - https://vercel.com/felipe-monteiros-projects-b1464a2b/stealth-messaging
 
 **Inspect (último deploy):**
-- https://vercel.com/felipe-monteiros-projects-b1464a2b/stealth-messaging/438Kygrak9S4woBQuHjBeu83TJAS
+- https://vercel.com/felipe-monteiros-projects-b1464a2b/stealth-messaging/CjFccestYyYiUCL3QQQ577zP18h6
 
 ---
 
@@ -93,4 +93,16 @@ O Vercel detectou uma versão vulnerável do Next.js. Embora o deploy tenha sido
 
 Seu projeto está **online e funcionando** no Vercel! 🚀
 
-**Acesse:** https://stealth-messaging-ma6a4lmvq-felipe-monteiros-projects-b1464a2b.vercel.app
+**Acesse:** https://stealth-messaging-7bik13nwm-felipe-monteiros-projects-b1464a2b.vercel.app
+
+---
+
+## 🔄 Deploy via CLI
+
+Para fazer deploy manual após alterações:
+
+```powershell
+npx vercel --prod --yes
+```
+
+O Vercel também faz deploy automático a cada push na branch `main` do GitHub.
