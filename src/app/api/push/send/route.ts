@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 import webPush from 'web-push';
+import { isApnsConfigured, sendApns } from '@/lib/apns';
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
@@ -12,9 +13,14 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webPush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, VAPID_PRIVATE);
 }
 
+export const dynamic = 'force-static';
+export const revalidate = 0;
+
 export async function POST(req: Request) {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    return NextResponse.json({ message: 'Push não configurado (VAPID)' }, { status: 503 });
+  const hasWebPush = !!(VAPID_PUBLIC && VAPID_PRIVATE);
+  const hasNativePush = isApnsConfigured();
+  if (!hasWebPush && !hasNativePush) {
+    return NextResponse.json({ message: 'Push não configurado (configure VAPID ou APNs)' }, { status: 503 });
   }
 
   try {
@@ -51,7 +57,7 @@ export async function POST(req: Request) {
     const chatIds = sharedChats.map(c => c.chat_id);
     const { data: recipientChats } = await getSupabaseAdmin()
       .from('chat_participants')
-      .select('chat_id')
+      .select('chat_id, muted, mute_until')
       .eq('user_id', recipientId)
       .in('chat_id', chatIds);
 
@@ -59,13 +65,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Sem permissão para enviar notificação a este usuário' }, { status: 403 });
     }
 
-    const { data: rows, error } = await getSupabaseAdmin()
-      .from('push_subscriptions')
-      .select('id, subscription_json')
-      .eq('user_id', recipientId);
+    const now = new Date().toISOString();
+    const isMuted = recipientChats.some(
+      (r: { muted?: boolean; mute_until?: string | null }) =>
+        r.muted && (!r.mute_until || r.mute_until > now)
+    );
+    if (isMuted) return NextResponse.json({ ok: true });
 
-    if (error || !rows?.length) {
-      return NextResponse.json({ ok: true });
+    let rows: { id: string; subscription_json: unknown }[] = [];
+    if (hasWebPush) {
+      const { data, error } = await getSupabaseAdmin()
+        .from('push_subscriptions')
+        .select('id, subscription_json')
+        .eq('user_id', recipientId);
+      if (!error && data) rows = data;
     }
 
     // Sempre disfarçar notificação como notícia (nunca expor conteúdo real)
@@ -92,7 +105,7 @@ export async function POST(req: Request) {
 
     const expiredSubscriptionIds: string[] = [];
 
-    const sendPromises = rows.map((row) => {
+    const sendPromises = (hasWebPush ? rows : []).map((row) => {
       const sub = row.subscription_json as { endpoint: string; keys: { p256dh: string; auth: string } };
       return webPush.sendNotification(sub, payload).catch((err: { statusCode?: number }) => {
         if (err.statusCode === 410 || err.statusCode === 404) {
@@ -103,12 +116,38 @@ export async function POST(req: Request) {
 
     await Promise.all(sendPromises);
 
-    // Limpar subscriptions expiradas (usando admin para bypass RLS)
     if (expiredSubscriptionIds.length > 0) {
       await getSupabaseAdmin()
         .from('push_subscriptions')
         .delete()
         .in('id', expiredSubscriptionIds);
+    }
+
+    // Enviar para tokens nativos iOS (APNs)
+    if (isApnsConfigured()) {
+      const { data: nativeRows } = await getSupabaseAdmin()
+        .from('push_tokens')
+        .select('id, token')
+        .eq('user_id', recipientId)
+        .eq('platform', 'ios');
+
+      if (nativeRows?.length) {
+        const tokens = nativeRows.map((r: { token: string }) => r.token);
+        const { sent, failed } = await sendApns(tokens, {
+          title: randomHeadline,
+          body: `${randomSource} • Agora`,
+          badge: 1,
+        });
+        if (failed.length > 0) {
+          const tokenSet = new Set(failed);
+          const toDelete = nativeRows
+            .filter((r: { token: string }) => tokenSet.has(r.token))
+            .map((r: { id: string }) => r.id);
+          if (toDelete.length > 0) {
+            await getSupabaseAdmin().from('push_tokens').delete().in('id', toDelete);
+          }
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });

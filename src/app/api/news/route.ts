@@ -1,4 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { getImageByCategory, getImageForArticle } from '@/lib/news-images';
+
+export const dynamic = 'force-static';
+export const revalidate = 300;
 
 // ============================================================
 // API de Agregação de Notícias Reais
@@ -378,28 +382,20 @@ async function fetchAllNews(category?: string): Promise<NewsArticle[]> {
   return unique;
 }
 
-// ============================================================
-// Imagens fallback por categoria
-// ============================================================
-const FALLBACK_IMAGES: Record<string, string> = {
-  'Brasil': 'https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=600&auto=format&fit=crop&q=60',
-  'Mundo': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&auto=format&fit=crop&q=60',
-  'Tecnologia': 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=60',
-  'Esportes': 'https://images.unsplash.com/photo-1461896836934-bd45ba8b0e28?w=600&auto=format&fit=crop&q=60',
-  'Saúde': 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&auto=format&fit=crop&q=60',
-  'Economia': 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&auto=format&fit=crop&q=60',
-  'Entretenimento': 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=600&auto=format&fit=crop&q=60',
-  'Política': 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=600&auto=format&fit=crop&q=60',
-  'Ciência': 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=600&auto=format&fit=crop&q=60',
-  'default': 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&auto=format&fit=crop&q=60',
-};
+// Imagens temáticas por categoria (centralizado em @/lib/news-images)
 
 // ============================================================
 // GET /api/news?category=Top+Stories
 // ============================================================
 export async function GET(request: NextRequest) {
   try {
-    const category = request.nextUrl.searchParams.get('category') || 'Top Stories';
+    const category = (() => {
+      try {
+        const u = request.nextUrl;
+        if (u && typeof u.searchParams?.get === 'function') return u.searchParams.get('category') || 'Top Stories';
+      } catch { /* static build: empty request */ }
+      return 'Top Stories';
+    })();
     const cacheKey = `news:${category}`;
 
     // Verificar cache
@@ -416,7 +412,7 @@ export async function GET(request: NextRequest) {
       {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'public, max-age=300, s-maxage=300',
+          'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600',
           'X-Cache': 'HIT',
         },
       }
@@ -426,10 +422,10 @@ export async function GET(request: NextRequest) {
     // Buscar notícias frescas
     const articles = await fetchAllNews(category);
 
-    // Usar sempre imagens Unsplash (fontes RSS bloqueiam hotlinking — proxy falhava)
+    // Imagem única por artigo (Picsum por seed) — carregamento imediato, visual relacionado
     const articlesWithImages = articles.map(article => ({
       ...article,
-      image: FALLBACK_IMAGES[article.category] || FALLBACK_IMAGES['default'],
+      image: getImageForArticle(article),
     }));
 
     const limited = articlesWithImages.slice(0, 40);
@@ -451,7 +447,7 @@ export async function GET(request: NextRequest) {
       {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'public, max-age=300, s-maxage=300',
+          'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600',
           'X-Cache': 'MISS',
         },
       }

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
+export const dynamic = 'force-static';
+export const revalidate = 0;
+
 // GET /api/messages/unread — lightweight endpoint for checking unread messages
 // Returns up to 5 most recent unread messages across all chats
 export async function GET() {

@@ -1,16 +1,21 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { isNativePlatform, subscribeNativeToken } from '@/lib/push';
 
 const VAPID_PUBLIC = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '') : '';
+const getApiBase = () => (typeof window !== 'undefined' && (process.env.NEXT_PUBLIC_API_BASE || '')) || '';
 
 export function usePushSubscription() {
   const [isSubscribed, setIsSubscribed] = useState(false);
-  // Inicializar como false para evitar hydration mismatch (SSR = false, client = false)
   const [isSupported, setIsSupported] = useState(false);
 
-  // Verificar suporte apenas no cliente após montagem
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isNativePlatform()) {
+      setIsSupported(true);
+      return;
+    }
     setIsSupported(
       'serviceWorker' in navigator &&
       'PushManager' in window &&
@@ -19,10 +24,43 @@ export function usePushSubscription() {
   }, []);
 
   const registerAndSubscribe = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
-    if (!isSupported) return { ok: false, message: 'Navegador não suporta notificações push.' };
+    if (!isSupported) return { ok: false, message: 'Notificações não suportadas neste dispositivo.' };
+
+    // Push nativo (iOS/Android via Capacitor)
+    if (isNativePlatform()) {
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+        const perm = await PushNotifications.checkPermissions();
+        if (perm.receive === 'denied') {
+          return { ok: false, message: 'Notificações bloqueadas. Habilite nas Configurações.' };
+        }
+        if (perm.receive === 'prompt') {
+          const req = await PushNotifications.requestPermissions();
+          if (req.receive !== 'granted') {
+            return { ok: false, message: 'Permissão de notificação negada.' };
+          }
+        }
+        await PushNotifications.addListener(
+          'registration',
+          async (ev: { value: string }) => {
+            if (!ev.value) return;
+            const res = await subscribeNativeToken(ev.value);
+            if (res.ok) setIsSubscribed(true);
+          }
+        );
+        await PushNotifications.register();
+        return { ok: true, message: 'Notificações ativadas.' };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Erro ao ativar notificações nativas.';
+        return { ok: false, message: msg };
+      }
+    }
+
+    // Web Push
     if (!VAPID_PUBLIC) return { ok: false, message: 'Push não configurado (chave VAPID ausente).' };
 
     try {
+      const base = getApiBase();
       await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       const reg = await navigator.serviceWorker.ready;
 
@@ -34,7 +72,7 @@ export function usePushSubscription() {
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         setIsSubscribed(true);
-        const res = await fetch('/api/push/subscribe', {
+        const res = await fetch(`${base}/api/push/subscribe`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ subscription: sub.toJSON() }),
@@ -49,7 +87,7 @@ export function usePushSubscription() {
         applicationServerKey: key.buffer as ArrayBuffer,
       });
 
-      const res = await fetch('/api/push/subscribe', {
+      const res = await fetch(`${base}/api/push/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: subscription.toJSON() }),
@@ -66,11 +104,14 @@ export function usePushSubscription() {
     }
   }, [isSupported]);
 
+  // Checagem de subscription existente (Web Push)
   useEffect(() => {
-    if (!isSupported || !VAPID_PUBLIC) return;
-    navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((sub) => {
-      if (sub) setIsSubscribed(true);
-    }).catch(() => {});
+    if (!isSupported || isNativePlatform()) return;
+    if (!VAPID_PUBLIC) return;
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => { if (sub) setIsSubscribed(true); })
+      .catch(() => {});
   }, [isSupported]);
 
   return { registerAndSubscribe, isSupported, isSubscribed, setIsSubscribed };

@@ -3,7 +3,7 @@ import { updateSession } from '@/lib/supabase/middleware';
 import { checkRateLimit, getRateLimitIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Atualizar sessão do Supabase primeiro
   const supabaseResponse = await updateSession(request);
 

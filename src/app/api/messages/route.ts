@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 
+export const dynamic = 'force-static';
+export const revalidate = 0;
+
 // GET /api/messages?chatId=xxx&page=1&limit=50
 export async function GET(request: NextRequest) {
   try {
@@ -69,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { chatId, content, mediaUrl, mediaType, expiresAt, isEphemeral } = body;
+    const { chatId, content, mediaUrl, mediaType, expiresAt, isEphemeral, replyToId } = body;
 
     if (!chatId || !content) {
       return NextResponse.json({ error: 'chatId and content are required' }, { status: 400 });
@@ -98,9 +101,10 @@ export async function POST(request: NextRequest) {
       content,
     };
 
-    // Colunas opcionais que existem na tabela
+    // Colunas opcionais
     if (mediaUrl) insertData.media_url = mediaUrl;
     if (mediaType) insertData.media_type = mediaType;
+    if (replyToId && typeof replyToId === 'string') insertData.reply_to_id = replyToId;
     // Nota: expires_at e is_ephemeral podem não existir na tabela ainda
     // Só incluir se tiverem valor real (não null/false/undefined)
 

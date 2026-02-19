@@ -1,11 +1,12 @@
 {
+  "packageManager": "yarn@1.22.19",
   "name": "noticias24h",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -p 3005",
     "build": "next build --webpack",
-    "build:mobile": "next build && npx cap sync",
+    "build:mobile": "cross-env CAPACITOR=true next build && npx cap sync",
     "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -19,13 +20,19 @@
     "android:build": "npm run build:mobile && cd android && ./gradlew assembleRelease",
     "ios:build": "npm run build:mobile && cd ios && xcodebuild -workspace App.xcworkspace -scheme App -configuration Release archive",
     "test:e2e": "playwright test",
+    "test:e2e:stable": "playwright test --workers=1",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
+    "@capacitor/push-notifications": "^8.0.1",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "@tanstack/react-virtual": "^3.13.18",
+    "apn": "^2.2.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.34.0",
@@ -44,12 +51,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
     "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "15.1.6",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vercel": "^50.15.1",
     "wait-on": "^8.0.1"
   }
 }

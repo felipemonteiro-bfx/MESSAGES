@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 
+export const dynamic = 'force-static';
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   try {
     // Authenticate the user via their session
@@ -17,7 +20,7 @@ export async function GET(request: NextRequest) {
     // 1. Get user's chat participations (using admin to bypass RLS)
     const { data: myParticipations, error: partError } = await getSupabaseAdmin()
       .from('chat_participants')
-      .select('chat_id, muted')
+      .select('chat_id, muted, mute_until')
       .eq('user_id', userId);
 
     if (partError) {
@@ -86,8 +89,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 6. Build the response
-    const mutedMap = Object.fromEntries(myParticipations.map(p => [p.chat_id, p.muted || false]));
+    const now = new Date().toISOString();
+    const mutedMap = Object.fromEntries(
+      myParticipations.map((p: { chat_id: string; muted?: boolean; mute_until?: string | null }) => [
+        p.chat_id,
+        !!(p.muted && (!p.mute_until || p.mute_until > now)),
+      ])
+    );
     const participantByChatMap: Record<string, string> = {};
     if (allParticipants) {
       for (const p of allParticipants) {

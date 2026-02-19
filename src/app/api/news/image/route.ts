@@ -1,4 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { getImageByCategory } from '@/lib/news-images';
+
+export const dynamic = 'force-dynamic';
 
 // ============================================================
 // Proxy de imagens para notícias
@@ -9,7 +12,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 const IMAGE_CACHE = new Map<string, { data: ArrayBuffer; contentType: string; timestamp: number }>();
 const IMAGE_CACHE_TTL = 60 * 60 * 1000; // 1 hora
 const MAX_CACHE_SIZE = 200;
-const FALLBACK_URL = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&auto=format&fit=crop&q=60';
+const FALLBACK_URL = getImageByCategory(); // default
 
 // Fallback: 1x1 pixel JPEG (placeholder visível como cor sólida)
 const MINIMAL_JPEG_B64 = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
@@ -61,7 +64,13 @@ async function fetchImageAsBuffer(imgUrl: string, referer?: string): Promise<{ d
 }
 
 export async function GET(request: NextRequest) {
-  let url = request.nextUrl.searchParams.get('url');
+  let url = (() => {
+    try {
+      const u = request.nextUrl;
+      if (u && typeof u.searchParams?.get === 'function') return u.searchParams.get('url');
+    } catch { /* static build */ }
+    return null;
+  })();
 
   if (!url || typeof url !== 'string') {
     const fallback = await getFallbackBuffer();

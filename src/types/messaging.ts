@@ -20,8 +20,9 @@ export interface Message {
   media_url?: string | null;
   media_type?: 'image' | 'video' | 'audio' | null;
   read_at?: string | null;
-  expires_at?: string | null; // Sugestão 4: Mensagens efêmeras
-  is_ephemeral?: boolean; // Sugestão 4: Flag para mensagens que somem
+  expires_at?: string | null;
+  is_ephemeral?: boolean;
+  reply_to_id?: string | null;
 }
 
 export interface Chat {

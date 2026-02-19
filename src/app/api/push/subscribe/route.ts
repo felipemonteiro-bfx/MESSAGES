@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-static';
+export const revalidate = 0;
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();

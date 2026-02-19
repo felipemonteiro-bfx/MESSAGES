@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import { cacheMedia, fetchMediaWithCache } from '@/lib/media-cache';
 import { queueMessage, syncPendingMessages } from '@/lib/background-sync';
 import EditNicknameModal from '@/components/shared/EditNicknameModal';
 import SettingsModal from '@/components/shared/SettingsModal';
+import AudioMessagePlayer from '@/components/messaging/AudioMessagePlayer';
 import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
 import { isIncognitoMode, clearIncognitoData } from '@/lib/settings';
 
@@ -165,6 +166,10 @@ export default function ChatLayout() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreview, setDragPreview] = useState<{ files: File[]; count: number } | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showMediaGallery, setShowMediaGallery] = useState(false);
+  const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
+  const [muteMenuOpen, setMuteMenuOpen] = useState(false);
+  const longPressRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +334,14 @@ export default function ChatLayout() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    const closeMessageMenu = () => setMessageMenuId(null);
+    if (messageMenuId) {
+      document.addEventListener('click', closeMessageMenu);
+      return () => document.removeEventListener('click', closeMessageMenu);
+    }
+  }, [messageMenuId]);
 
   useEffect(() => {
     if (selectedChat && currentUser) {
@@ -511,7 +524,13 @@ export default function ChatLayout() {
           upsert: false
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        const msg = String(uploadError.message || '').toLowerCase();
+        if (msg.includes('bucket') && msg.includes('not found')) {
+          throw new Error('Bucket "chat-media" não existe. Execute no Supabase → SQL Editor: docs/migrations/setup_chat_media_bucket.sql');
+        }
+        throw uploadError;
+      }
 
       // Obter URL pública
       const { data: { publicUrl } } = supabase.storage
@@ -578,18 +597,21 @@ export default function ChatLayout() {
   }, [selectedChat, currentUser, supabase, fetchChats]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'audio') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleMediaUpload(file, type);
-    }
-    // Reset input
+    const files = e.target.files;
+    if (!files?.length) return;
+    const list = Array.from(files);
+    list.forEach((file) => handleMediaUpload(file, type));
     if (e.target) e.target.value = '';
   }, [handleMediaUpload]);
 
   const startAudioRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      // Safari/iOS usa audio/mp4; Chrome/Firefox usam audio/webm
+      const mimeTypes = ['audio/webm', 'audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg'];
+      const mimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || 'audio/webm';
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (e) => {
@@ -597,13 +619,13 @@ export default function ChatLayout() {
       };
 
       recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const file = new File([blob], `audio-${Date.now()}.webm`, { type: 'audio/webm' });
+        const blob = new Blob(chunks, { type: mimeType });
+        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: mimeType });
         await handleMediaUpload(file, 'audio');
         stream.getTracks().forEach(track => track.stop());
       };
 
-      recorder.start();
+      recorder.start(100);
       setMediaRecorder(recorder);
       setIsRecording(true);
     } catch (error) {
@@ -696,9 +718,9 @@ export default function ChatLayout() {
         chatId: selectedChat.id,
         content: messageContent,
       };
-      // Só incluir campos efêmeros se realmente configurados
       if (expiresAt) msgBody.expiresAt = expiresAt;
       if (showEphemeralOption && ephemeralSeconds > 0) msgBody.isEphemeral = true;
+      if (replyingTo?.id) msgBody.replyToId = replyingTo.id;
       
       const response = await fetch('/api/messages', {
         method: 'POST',
@@ -1018,6 +1040,23 @@ export default function ChatLayout() {
     >
       <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-all duration-300 md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b]`}>
         <div className="p-4 flex items-center gap-4 border-b border-[#0e1621] relative">
+          {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
+          <button
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+              if (isIncognitoMode()) {
+                setMessages([]);
+                clearIncognitoData();
+              }
+              lockMessaging();
+              toast.success('Modo notícias ativado.', { duration: 2000 });
+            }}
+            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+            title="Voltar para Noticias24h (Ctrl+Shift+L)"
+            aria-label="Esconder e voltar ao portal de notícias"
+          >
+            <Newspaper className="w-5 h-5" />
+          </button>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -1080,7 +1119,7 @@ export default function ChatLayout() {
               className="bg-transparent border-none focus:ring-0 text-sm w-full text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
             />
           </div>
-          <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Configurações"><Settings className="w-5 h-5" /></button>
+          <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Configurações" aria-label="Configurações"><Settings className="w-5 h-5" /></button>
           <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato" data-testid="add-contact-button" aria-label="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
           {currentUser && (
             <button 
@@ -1113,7 +1152,8 @@ export default function ChatLayout() {
                 }
               }}
               className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" 
-              title="Editar meu nickname"
+                    title="Editar meu nickname"
+              aria-label="Editar meu nickname"
             >
               <Edit2 className="w-5 h-5" />
             </button>
@@ -1185,8 +1225,9 @@ export default function ChatLayout() {
                           });
                           toast.success('Notificações ativadas', { duration: 2000 });
                         }
-                      } catch {
-                        toast.error('Erro ao alterar notificações');
+                      } catch (e) {
+                        logError(normalizeError(e));
+                        toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Erro ao alterar notificações');
                       }
                     }}
                     fetchMediaWithCache={fetchMediaWithCache}
@@ -1262,47 +1303,121 @@ export default function ChatLayout() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* Sugestão 12: Botão para silenciar/ativar notificações */}
+                {/* Histórico de mídia */}
+                <button
+                  onClick={() => setShowMediaGallery(true)}
+                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+                  title="Fotos e vídeos"
+                  aria-label="Ver fotos e vídeos"
+                >
+                  <ImagePlus className="w-4 h-4" />
+                </button>
+                {/* Notificações: opções granulares */}
                 {selectedChat.recipient && (
-                  <button
-                    onClick={async () => {
-                      if (!currentUser || !selectedChat) return;
-                      const newMutedState = !mutedChats.has(selectedChat.id);
-                      try {
-                        const { error } = await supabase
-                          .from('chat_participants')
-                          .update({ muted: newMutedState })
-                          .eq('chat_id', selectedChat.id)
-                          .eq('user_id', currentUser.id);
-                        
-                        if (error) throw error;
-                        
-                        if (newMutedState) {
-                          if (navigator.vibrate) navigator.vibrate(30);
-                          setMutedChats(prev => new Set(prev).add(selectedChat.id));
-                          toast.success('Notificações silenciadas', { duration: 2000 });
-                        } else {
-                          if (navigator.vibrate) navigator.vibrate(30);
-                          setMutedChats(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(selectedChat.id);
-                            return newSet;
-                          });
-                          toast.success('Notificações ativadas', { duration: 2000 });
-                        }
-                      } catch (error) {
-                        toast.error('Erro ao alterar notificações');
-                      }
-                    }}
-                    className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                    title={mutedChats.has(selectedChat.id) ? 'Ativar notificações' : 'Silenciar notificações'}
-                  >
-                    {mutedChats.has(selectedChat.id) ? (
-                      <BellOff className="w-4 h-4" />
-                    ) : (
-                      <Bell className="w-4 h-4" />
+                  <div className="relative">
+                    <button
+                      onClick={() => setMuteMenuOpen(!muteMenuOpen)}
+                      className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+                      title={mutedChats.has(selectedChat.id) ? 'Opções de notificação' : 'Silenciar'}
+                      aria-label="Notificações"
+                    >
+                      {mutedChats.has(selectedChat.id) ? (
+                        <BellOff className="w-4 h-4" />
+                      ) : (
+                        <Bell className="w-4 h-4" />
+                      )}
+                    </button>
+                    {muteMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setMuteMenuOpen(false)} aria-hidden />
+                        <div className="absolute right-0 top-full mt-1 py-1 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[160px]">
+                          {mutedChats.has(selectedChat.id) ? (
+                            <button
+                              onClick={async () => {
+                                if (!currentUser || !selectedChat) return;
+                                try {
+                                  const { error } = await supabase.from('chat_participants').update({ muted: false, mute_until: null }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
+                                  if (error) throw error;
+                                  if (navigator.vibrate) navigator.vibrate(30);
+                                  setMutedChats(prev => { const s = new Set(prev); s.delete(selectedChat.id); return s; });
+                                  toast.success('Notificações ativadas');
+                                } catch (e) {
+                                  logError(normalizeError(e));
+                                  toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
+                                }
+                                setMuteMenuOpen(false);
+                              }}
+                              className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                            >
+                              <Bell className="w-4 h-4" /> Ativar notificações
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  if (!currentUser || !selectedChat) return;
+                                  const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+                                  try {
+                                    const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: until }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
+                                    if (error) throw error;
+                                    if (navigator.vibrate) navigator.vibrate(30);
+                                    setMutedChats(prev => new Set(prev).add(selectedChat.id));
+                                    toast.success('Silenciado por 1 hora');
+                                  } catch (e) {
+                                    logError(normalizeError(e));
+                                    toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
+                                  }
+                                  setMuteMenuOpen(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                              >
+                                Silenciar por 1 hora
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!currentUser || !selectedChat) return;
+                                  const until = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+                                  try {
+                                    const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: until }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
+                                    if (error) throw error;
+                                    if (navigator.vibrate) navigator.vibrate(30);
+                                    setMutedChats(prev => new Set(prev).add(selectedChat.id));
+                                    toast.success('Silenciado por 8 horas');
+                                  } catch (e) {
+                                    logError(normalizeError(e));
+                                    toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
+                                  }
+                                  setMuteMenuOpen(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                              >
+                                Silenciar por 8 horas
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!currentUser || !selectedChat) return;
+                                  try {
+                                    const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: null }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
+                                    if (error) throw error;
+                                    if (navigator.vibrate) navigator.vibrate(30);
+                                    setMutedChats(prev => new Set(prev).add(selectedChat.id));
+                                    toast.success('Notificações silenciadas');
+                                  } catch (e) {
+                                    logError(normalizeError(e));
+                                    toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
+                                  }
+                                  setMuteMenuOpen(false);
+                                }}
+                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                              >
+                                <BellOff className="w-4 h-4" /> Silenciar sempre
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </>
                     )}
-                  </button>
+                  </div>
                 )}
                 {/* Sugestão 18: Botão discreto "Esconder agora" - volta ao portal imediatamente */}
                 <button
@@ -1330,6 +1445,7 @@ export default function ChatLayout() {
                     }}
                     className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
                     title="Editar nickname"
+                    aria-label="Editar nickname"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -1536,6 +1652,10 @@ export default function ChatLayout() {
                       data-stealth-content="true"
                       data-message="true"
                       data-message-id={msg.id}
+                      onContextMenu={(e) => { e.preventDefault(); setMessageMenuId(msg.id); }}
+                      onTouchStart={() => { longPressRef.current = setTimeout(() => { setMessageMenuId(msg.id); if (navigator.vibrate) navigator.vibrate(30); }, 500); }}
+                      onTouchEnd={() => { if (longPressRef.current) clearTimeout(longPressRef.current); longPressRef.current = null; }}
+                      onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
                     >
                       <img 
                         src={msg.sender_id === currentUser?.id 
@@ -1577,6 +1697,15 @@ export default function ChatLayout() {
                               </span>
                             )}
                           </div>
+                          {msg.reply_to_id && (() => {
+                            const repliedMsg = messages.find(m => m.id === msg.reply_to_id);
+                            return repliedMsg ? (
+                              <div className="mb-2 pl-2 border-l-2 border-blue-400 dark:border-blue-500 rounded-r text-xs text-gray-600 dark:text-gray-400">
+                                <span className="font-medium">{repliedMsg.sender_id === currentUser?.id ? 'Você' : (selectedChat.recipient?.nickname || '')}: </span>
+                                <span className="truncate block">{(repliedMsg.content || '').slice(0, 80)}{(repliedMsg.content?.length || 0) > 80 ? '...' : ''}</span>
+                              </div>
+                            ) : null;
+                          })()}
                           {msg.content && (
                             <div className="text-sm leading-relaxed whitespace-pre-wrap break-words text-gray-800 dark:text-white">
                               {msg.content}
@@ -1600,25 +1729,43 @@ export default function ChatLayout() {
                               />
                             )}
                             {msg.media_type === 'audio' && (
-                              <audio 
-                                src={msg.media_url} 
-                                controls 
-                                className="w-full"
-                              />
+                              <AudioMessagePlayer src={msg.media_url!} className="mt-1" />
                             )}
                           </div>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-1 px-1">
                           <button
-                            onClick={() => setReplyingTo(msg)}
+                            onClick={() => { setReplyingTo(msg); setMessageMenuId(null); }}
                             className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                           >
                             Responder
                           </button>
-                          <button className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
-                            Curtir
-                          </button>
+                          {messageMenuId === msg.id && (
+                            <div className="absolute bottom-full left-0 mb-1 py-1 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[140px]">
+                              <button
+                                onClick={() => {
+                                  const t = (msg.content || '').trim() || (msg.media_type ? `[${msg.media_type}]` : '');
+                                  navigator.clipboard?.writeText(t).then(() => { toast.success('Copiado'); setMessageMenuId(null); });
+                                }}
+                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                              >
+                                <Copy className="w-4 h-4" /> Copiar
+                              </button>
+                              <button
+                                onClick={() => { setReplyingTo(msg); setMessageMenuId(null); }}
+                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                              >
+                                <Reply className="w-4 h-4" /> Responder
+                              </button>
+                              <button
+                                onClick={() => { toast.info('Encaminhar em breve'); setMessageMenuId(null); }}
+                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                              >
+                                <Forward className="w-4 h-4" /> Encaminhar
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1674,6 +1821,7 @@ export default function ChatLayout() {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => handleFileSelect(e, 'image')}
                 />
@@ -1712,6 +1860,7 @@ export default function ChatLayout() {
                   <button
                     onClick={() => setShowMediaMenu(!showMediaMenu)}
                     className="w-11 h-11 bg-[#242f3d] rounded-full flex items-center justify-center text-[#4c94d5] hover:bg-[#2b5278] transition-colors"
+                    aria-label="Anexar arquivo"
                   >
                     <Paperclip className="w-5 h-5" />
                   </button>
@@ -1858,11 +2007,66 @@ export default function ChatLayout() {
         />
       )}
       {showSettingsModal && (
-        <SettingsModal 
-          isOpen={showSettingsModal} 
-          onClose={() => setShowSettingsModal(false)} 
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          currentAvatarUrl={currentUserProfile?.avatar_url}
+          onAvatarUpdate={(url) => setCurrentUserProfile(prev => prev ? { ...prev, avatar_url: url } : null)}
         />
       )}
+      <AnimatePresence>
+        {showMediaGallery && selectedChat && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex flex-col bg-white dark:bg-[#17212b]"
+          >
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-[#242f3d]">
+              <h3 className="font-bold text-gray-900 dark:text-white">Fotos e vídeos</h3>
+              <button
+                onClick={() => setShowMediaGallery(false)}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] transition-colors"
+                aria-label="Fechar"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {(() => {
+                const mediaItems = messages.filter(m => m.media_url && (m.media_type === 'image' || m.media_type === 'video'));
+                if (mediaItems.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
+                      <ImageIcon className="w-12 h-12 mb-2 opacity-50" />
+                      <p className="text-sm">Nenhuma foto ou vídeo nesta conversa</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="grid grid-cols-3 gap-2">
+                    {mediaItems.map((m) => (
+                      <a
+                        key={m.id}
+                        href={m.media_url!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-[#242f3d] block"
+                      >
+                        {m.media_type === 'image' ? (
+                          <img src={m.media_url!} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                          <video src={m.media_url!} className="w-full h-full object-cover" muted />
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {showLogoutConfirm && (
           <motion.div

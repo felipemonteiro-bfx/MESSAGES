@@ -284,18 +284,6 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
             exit={{ opacity: 0 }}
             className="relative min-h-screen"
           >
-            {/* Botão para voltar ao modo notícias — visível em mobile também */}
-            <button
-              onClick={() => {
-                lockMessaging();
-                toast.success('Modo notícias ativado.', { duration: 2000 });
-              }}
-              className="fixed bottom-4 right-4 z-[200] w-12 h-12 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-full flex items-center justify-center transition-all opacity-30 hover:opacity-100 focus:opacity-100"
-              title="Voltar para Noticias24h (Ctrl+Shift+L)"
-              aria-label="Bloquear e voltar para portal de notícias"
-            >
-              <span className="text-gray-600 text-lg" aria-hidden="true">📰</span>
-            </button>
             <ChatLayout />
           </motion.div>
         ) : (

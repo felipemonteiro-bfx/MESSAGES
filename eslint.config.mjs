@@ -20,6 +20,8 @@ const eslintConfig = [
       "coverage/**",
       "playwright-report/**",
       "test-results/**",
+      "ios/**",
+      "android/**",
       "*.config.js",
       "*.config.mjs",
       "*.config.ts",
