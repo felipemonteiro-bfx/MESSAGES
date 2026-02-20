@@ -388,8 +388,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, fetchChats, e2ePin]);
+  }, [supabase, fetchChats, e2ePin, initializeKeys]);
 
   // Atualizar lista de chats quando uma nova mensagem chegar
   // Debounced: evita refetch a cada mensagem individual em sequência rápida
