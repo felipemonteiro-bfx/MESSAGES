@@ -222,7 +222,7 @@ export async function DELETE(request: NextRequest) {
     // Verify message exists and belongs to user
     const { data: existingMessage, error: fetchError } = await getSupabaseAdmin()
       .from('messages')
-      .select('id, sender_id, created_at, deleted_at')
+      .select('id, sender_id, created_at, deleted_at, content')
       .eq('id', messageId)
       .maybeSingle();
 
