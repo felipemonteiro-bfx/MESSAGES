@@ -216,6 +216,12 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     encrypt,
     decrypt,
     sign,
+    encryptFS,
+    decryptFS,
+    checkActiveSession,
+    startForwardSecrecySession,
+    acceptForwardSecrecySession,
+    getLocalSessionKey,
     clearCache: clearEncryptionCache,
   } = useEncryption({ userId: currentUser?.id ?? null, pin: e2ePin });
 
@@ -474,7 +480,22 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       const results: Record<string, string> = {};
       for (const msg of encryptedMsgs) {
         if (cancelled) break;
-        const plaintext = await decrypt(msg.content, msg.id);
+
+        // Check for Forward Secrecy envelope
+        let plaintext: string | null = null;
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed.fs && parsed.ct && typeof parsed.idx === 'number') {
+            plaintext = await decryptFS(msg.chat_id, parsed.ct, parsed.idx);
+          }
+        } catch {
+          // Not FS format, use standard decryption
+        }
+
+        if (!plaintext) {
+          plaintext = await decrypt(msg.content, msg.id);
+        }
+
         if (plaintext) results[msg.id] = plaintext;
       }
       if (!cancelled && Object.keys(results).length > 0) {
@@ -482,7 +503,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
     })();
     return () => { cancelled = true; };
-  }, [messages, e2ePin, currentUser, decrypt, decryptedMessages]);
+  }, [messages, e2ePin, currentUser, decrypt, decryptFS, decryptedMessages]);
 
   useEffect(() => {
     if (selectedChat && currentUser) {
@@ -542,6 +563,21 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               setTimeout(() => setOtherUserTyping(null), 3000);
             }
           })
+          .on('broadcast', { event: 'fs_key_exchange' }, async (payload) => {
+            if (payload.payload.userId !== currentUser.id && payload.payload.publicKey) {
+              const accepted = await acceptForwardSecrecySession(selectedChat.id, payload.payload.publicKey);
+              if (accepted) {
+                const localKey = await getLocalSessionKey(selectedChat.id);
+                if (localKey) {
+                  channel.send({
+                    type: 'broadcast',
+                    event: 'fs_key_exchange',
+                    payload: { userId: currentUser.id, publicKey: localKey },
+                  });
+                }
+              }
+            }
+          })
           .on('presence', { event: 'sync' }, () => {
             const presenceState = channel.presenceState();
             const online = new Set<string>();
@@ -580,6 +616,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 online: true,
                 lastSeen: new Date().toISOString()
               });
+
+              if (e2eEnabled) {
+                startForwardSecrecySession(selectedChat.id).then(pubKey => {
+                  if (pubKey) {
+                    channel.send({
+                      type: 'broadcast',
+                      event: 'fs_key_exchange',
+                      payload: { userId: currentUser.id, publicKey: pubKey },
+                    });
+                  }
+                });
+              }
             } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
               logger.warn('Canal realtime desconectado', { status, chatId: selectedChat.id });
               if (reconnectAttempts < maxReconnectAttempts) {
@@ -963,7 +1011,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         return raw;
       };
 
-      if (e2eEnabled && selectedChat.recipient?.public_key) {
+      // Prefer Forward Secrecy session if active
+      if (e2eEnabled && selectedChat.id && await checkActiveSession(selectedChat.id)) {
+        const fsResult = await encryptFS(selectedChat.id, messageContent);
+        if (fsResult) {
+          contentToSend = JSON.stringify({ fs: true, ct: fsResult.ciphertext, idx: fsResult.messageIndex });
+          isEncrypted = true;
+          messageSignature = await sign(contentToSend);
+        }
+      }
+
+      // Fallback to standard RSA-based E2E
+      if (!isEncrypted && e2eEnabled && selectedChat.recipient?.public_key) {
         const encKey = resolveEncryptionKey(selectedChat.recipient.public_key);
         if (encKey) {
           const encrypted = await encrypt(messageContent, encKey);
@@ -973,7 +1032,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             messageSignature = await sign(encrypted);
           }
         }
-      } else if (e2eEnabled && selectedChat.recipient?.id) {
+      } else if (!isEncrypted && e2eEnabled && selectedChat.recipient?.id) {
         const pubKey = await getRecipientPublicKey(selectedChat.recipient.id);
         if (pubKey) {
           const encrypted = await encrypt(messageContent, pubKey);
@@ -1086,7 +1145,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, fetchMessages, e2eEnabled, encrypt, getRecipientPublicKey, sign]);
+  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, fetchMessages, e2eEnabled, encrypt, getRecipientPublicKey, sign, encryptFS, checkActiveSession]);
 
   const canEditMessage = useCallback((msg: Message) => {
     if (!currentUser || msg.sender_id !== currentUser.id) return false;

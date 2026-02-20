@@ -11,6 +11,14 @@ import {
   exportKeys,
   importKeys,
 } from '@/lib/encryption';
+import {
+  initSession,
+  completeSession,
+  encryptWithSession,
+  decryptWithSession,
+  hasActiveSession,
+  getSessionPublicKey,
+} from '@/lib/forward-secrecy';
 import { logger } from '@/lib/logger';
 
 interface UseEncryptionOptions {
@@ -149,6 +157,54 @@ export function useEncryption({ userId, pin }: UseEncryptionOptions) {
     }
   }, [pin]);
 
+  const startForwardSecrecySession = useCallback(async (chatId: string): Promise<string | null> => {
+    try {
+      const { publicKey } = await initSession(chatId);
+      logger.info('FS session initiated', { chatId });
+      return publicKey;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const acceptForwardSecrecySession = useCallback(async (chatId: string, remotePublicKey: string): Promise<boolean> => {
+    try {
+      const hasSession = await hasActiveSession(chatId);
+      if (!hasSession) {
+        await initSession(chatId);
+      }
+      const ok = await completeSession(chatId, remotePublicKey);
+      if (ok) logger.info('FS session established', { chatId });
+      return ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const encryptFS = useCallback(async (chatId: string, plaintext: string): Promise<{ ciphertext: string; messageIndex: number } | null> => {
+    try {
+      return await encryptWithSession(chatId, plaintext);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const decryptFS = useCallback(async (chatId: string, ciphertext: string, messageIndex: number): Promise<string | null> => {
+    try {
+      return await decryptWithSession(chatId, ciphertext, messageIndex);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const checkActiveSession = useCallback(async (chatId: string): Promise<boolean> => {
+    return hasActiveSession(chatId);
+  }, []);
+
+  const getLocalSessionKey = useCallback(async (chatId: string): Promise<string | null> => {
+    return getSessionPublicKey(chatId);
+  }, []);
+
   const clearCache = useCallback(() => {
     decryptedCacheRef.current = {};
     publicKeyCacheRef.current = {};
@@ -165,6 +221,12 @@ export function useEncryption({ userId, pin }: UseEncryptionOptions) {
     verify,
     exportUserKeys,
     importUserKeys,
+    startForwardSecrecySession,
+    acceptForwardSecrecySession,
+    encryptFS,
+    decryptFS,
+    checkActiveSession,
+    getLocalSessionKey,
     clearCache,
   };
 }

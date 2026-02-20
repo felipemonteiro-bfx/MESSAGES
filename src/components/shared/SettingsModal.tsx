@@ -1001,6 +1001,81 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   </div>
                 </div>
 
+                {/* E2E Key Backup */}
+                <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-green-600 dark:text-green-400" aria-hidden />
+                    <label className="font-semibold text-sm text-gray-900 dark:text-white">
+                      Backup de chaves E2E
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Exporte suas chaves de criptografia para restaurar em outro dispositivo. A exportação é protegida por uma frase-senha que você define.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        const passphrase = prompt('Digite uma frase-senha forte para proteger o backup:');
+                        if (!passphrase || passphrase.length < 8) {
+                          toast.error('Frase-senha deve ter no mínimo 8 caracteres');
+                          return;
+                        }
+                        try {
+                          const { exportKeys: exportKeysFn } = await import('@/lib/encryption');
+                          const supabase = createClient();
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (!user) { toast.error('Faça login primeiro'); return; }
+                          const pin = prompt('Digite seu PIN atual:');
+                          if (!pin) return;
+                          const bundle = await exportKeysFn(user.id, pin, passphrase);
+                          const blob = new Blob([bundle], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `e2e-keys-backup-${new Date().toISOString().slice(0, 10)}.txt`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          toast.success('Chaves exportadas com sucesso!');
+                        } catch {
+                          toast.error('Erro ao exportar chaves. Verifique seu PIN.');
+                        }
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors text-sm font-medium"
+                    >
+                      <Download className="w-4 h-4" />
+                      Exportar chaves
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = '.txt';
+                        input.onchange = async (e) => {
+                          const file = (e.target as HTMLInputElement).files?.[0];
+                          if (!file) return;
+                          const bundle = await file.text();
+                          const passphrase = prompt('Digite a frase-senha usada no backup:');
+                          if (!passphrase) return;
+                          const pin = prompt('Digite seu PIN atual:');
+                          if (!pin) return;
+                          try {
+                            const { importKeys: importKeysFn } = await import('@/lib/encryption');
+                            await importKeysFn(bundle, passphrase, pin);
+                            toast.success('Chaves importadas com sucesso! Recarregue a página.');
+                          } catch {
+                            toast.error('Erro ao importar. Verifique a frase-senha.');
+                          }
+                        };
+                        input.click();
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
+                    >
+                      <Lock className="w-4 h-4" />
+                      Importar chaves
+                    </button>
+                  </div>
+                </div>
+
                 {/* LGPD: Exportação de dados */}
                 <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-slate-700">
                   <div className="flex items-center gap-2">
