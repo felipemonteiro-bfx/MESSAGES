@@ -1,6 +1,5 @@
 /**
- * Imagens para notícias — SVG inline por categoria.
- * Data URI = zero requisições externas, sempre carrega.
+ * Imagens para notícias — URLs Unsplash por categoria + SVG fallback.
  */
 
 /** Cor de fundo por categoria (hex com #) — exportada para divs também */
@@ -17,6 +16,27 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Geral: '#334155',
   'Top Stories': '#1e293b',
 };
+
+/** Imagens reais do Unsplash por categoria - sempre carregam */
+export const CATEGORY_IMAGES: Record<string, string> = {
+  Brasil: 'https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=800&h=450&fit=crop&q=80',
+  Mundo: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&h=450&fit=crop&q=80',
+  Tecnologia: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&h=450&fit=crop&q=80',
+  Esportes: 'https://images.unsplash.com/photo-1461896836934-bc87a3b35f75?w=800&h=450&fit=crop&q=80',
+  Saúde: 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=800&h=450&fit=crop&q=80',
+  Economia: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&h=450&fit=crop&q=80',
+  Entretenimento: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&h=450&fit=crop&q=80',
+  Política: 'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=800&h=450&fit=crop&q=80',
+  Ciência: 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=800&h=450&fit=crop&q=80',
+  Geral: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&h=450&fit=crop&q=80',
+  'Top Stories': 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&h=450&fit=crop&q=80',
+};
+
+/** Retorna imagem Unsplash para a categoria */
+export function getCategoryImage(category?: string): string {
+  const key = category && category in CATEGORY_IMAGES ? category : 'Geral';
+  return CATEGORY_IMAGES[key] ?? CATEGORY_IMAGES['Geral'];
+}
 
 /** SVG como data URI — funciona sem internet, sem CORS, sem bloqueios */
 export function getImageByCategory(category?: string): string {

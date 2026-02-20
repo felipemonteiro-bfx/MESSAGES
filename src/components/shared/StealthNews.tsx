@@ -8,19 +8,9 @@ import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { createClient } from '@/lib/supabase/client';
 import { NewsCardSkeleton } from '@/components/ui/Skeleton';
-import { getImageByCategory, getImageForArticle, isTrustedImageUrl, CATEGORY_COLORS } from '@/lib/news-images';
+import { getImageByCategory, getImageForArticle, getCategoryImage, CATEGORY_COLORS } from '@/lib/news-images';
 
 const SAVED_NEWS_KEY = 'n24h_saved_articles';
-const ALERTAS_ULTIMA_HORA_KEY = 'n24h_breaking_alerts';
-function getAlertasUltimaHora(): boolean {
-  if (typeof window === 'undefined') return true;
-  const v = localStorage.getItem(ALERTAS_ULTIMA_HORA_KEY);
-  return v === null || v === 'true';
-}
-function saveAlertasUltimaHora(on: boolean) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(ALERTAS_ULTIMA_HORA_KEY, String(on));
-}
 type SavedItem = { id: string; title: string; url?: string; source: string; time: string };
 function getSavedList(): SavedItem[] {
   if (typeof window === 'undefined') return [];
@@ -82,7 +72,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [showSaved, setShowSaved] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [articleMenuId, setArticleMenuId] = useState<string | null>(null);
-  const [alertasUltimaHora, setAlertasUltimaHora] = useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
@@ -90,10 +79,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   useEffect(() => {
     setSavedIds(getSavedIds());
   }, [showSaved]);
-
-  useEffect(() => {
-    setAlertasUltimaHora(getAlertasUltimaHora());
-  }, [menuOpen]);
 
   useEffect(() => {
     if (!articleMenuId) return;
@@ -307,23 +292,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     };
   }, [onMessageNotification, generateFakeNewsFromMessage]);
 
-  // Notificações "última hora" periódicas (respeita preferência)
-  useEffect(() => {
-    if (news.length === 0 || showSaved || !getAlertasUltimaHora()) return;
-    const interval = setInterval(() => {
-      if (!getAlertasUltimaHora()) return;
-      // Usar índice baseado em timestamp para seleção determinística
-      const index = Math.floor((Date.now() / 1000) % news.length);
-      const item = news[index];
-      if (!item) return;
-      toast.info(item.title, {
-        duration: 5000,
-        icon: '📰',
-        description: `${item.source} • ${item.time}`,
-      });
-    }, 45000);
-    return () => clearInterval(interval);
-  }, [news, showSaved]);
 
   // Cache de notícias
   const newsCacheRef = useRef<{ [key: string]: { news: NewsItem[], timestamp: number } }>({});
@@ -513,13 +481,12 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     return `${Math.floor(diffMins / 1440)}d atrás`;
   };
 
-  const getDefaultImage = (category?: string): string => getImageByCategory(category);
+  const getDefaultImage = (category?: string): string => getCategoryImage(category);
 
-  // Usar placehold.co por categoria — URLs de portais (G1, UOL etc) costumam bloquear hotlink
+  // Tentar carregar a imagem original - se falhar, usa imagem Unsplash da categoria
   const proxyImage = (url: string, category?: string): string => {
-    if (!url) return getDefaultImage(category);
-    if (isTrustedImageUrl(url)) return url;
-    return getDefaultImage(category);
+    if (!url) return getCategoryImage(category);
+    return url;
   };
 
   // Botão oculto: "Fale Conosco" ou duplo clique na data — resposta instantânea
@@ -619,17 +586,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                   </button>
                 )}
                 <button
-                  onClick={() => {
-                    const next = !getAlertasUltimaHora();
-                    setAlertasUltimaHora(next);
-                    saveAlertasUltimaHora(next);
-                  }}
-                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
-                >
-                  <span className="flex items-center gap-3"><span>📰</span>Alertas &quot;última hora&quot;</span>
-                  <span className={`text-xs font-medium px-2 py-1 rounded ${getAlertasUltimaHora() ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{getAlertasUltimaHora() ? 'Ligado' : 'Desligado'}</span>
-                </button>
-                <button
                   onClick={handleSair}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 text-red-600 font-medium mt-auto"
                 >
@@ -705,23 +661,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         <button onClick={handleSecretButton} className="text-xs text-gray-500 hover:text-gray-700 transition-colors py-1" data-testid="fale-conosco-btn" aria-label="Fale Conosco">
           Fale Conosco
         </button>
-      </div>
-      <div className="px-4 md:px-8 py-2 border-b border-gray-100 max-w-6xl mx-auto">
-        {isSupported && (
-          <div className="flex flex-col gap-1">
-            <button
-              type="button"
-              onClick={handleEnablePush}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors text-gray-600 font-medium text-sm border border-gray-200"
-            >
-              <Bell className="w-4 h-4" />
-              {isSubscribed ? 'Alertas ativados' : 'Receber alertas de notícias'}
-            </button>
-            <p className="text-[10px] text-gray-400 text-center">
-              Notificação no celular quando receber mensagens (disfarçada como notícia)
-            </p>
-          </div>
-        )}
       </div>
 
       {/* ===== ALERTAS DE MENSAGENS DISFARÇADOS DE NOTÍCIAS ===== */}
@@ -900,13 +839,20 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                       }}
                     >
                       <div className="flex flex-col md:flex-col">
-                        <div 
-                          className="aspect-video md:aspect-[16/10] w-full overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform duration-300"
-                          style={{ backgroundColor: CATEGORY_COLORS[item.category || 'Geral'] ?? '#334155' }}
-                        >
-                          <span className="text-white/90 font-semibold text-lg md:text-xl text-center px-4">
-                            {item.category || 'News'}
-                          </span>
+                        <div className="aspect-video md:aspect-[16/10] w-full overflow-hidden relative">
+                          <img
+                            src={proxyImage(item.image, item.category)}
+                            alt={item.title}
+                            data-category={item.category}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.onerror = null;
+                              const category = target.dataset.category || 'Geral';
+                              target.src = getCategoryImage(category);
+                            }}
+                          />
                         </div>
                         <div className="p-4 md:p-5 flex-1 flex flex-col">
                           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap mb-2">
