@@ -42,7 +42,7 @@ export function useKeyboard(): KeyboardInfo & {
   const [height, setHeight] = useState(0);
 
   useEffect(() => {
-    let cleanupFns: (() => void)[] = [];
+    const cleanupFns: (() => void)[] = [];
 
     const setup = async () => {
       const keyboard = await getKeyboard();

@@ -32,8 +32,8 @@ async function getBiometricPlugin(): Promise<BiometricAuthPlugin | null> {
   
   if (Capacitor.isNativePlatform()) {
     try {
-      const module = await import('@aparajita/capacitor-biometric-auth');
-      biometricModule = module.BiometricAuth as unknown as BiometricAuthPlugin;
+      const mod = await import('@aparajita/capacitor-biometric-auth');
+      biometricModule = mod.BiometricAuth as unknown as BiometricAuthPlugin;
       return biometricModule;
     } catch {
       return null;
