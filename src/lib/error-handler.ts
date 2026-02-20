@@ -62,23 +62,57 @@ export function normalizeError(error: unknown): AppErrorClass {
     return error;
   }
 
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
+  // Supabase AuthError tem { message, status, code }
+  const supabaseError = error as { message?: string; status?: number; code?: string; error_description?: string };
+  if (supabaseError && typeof supabaseError.message === 'string') {
+    const msg = supabaseError.message.toLowerCase();
+    const code = supabaseError.code;
     
-    // Erros de autenticação do Supabase
-    if (msg.includes('jwt') || msg.includes('session') || msg.includes('refresh_token') || msg.includes('not authenticated')) {
-      return createError(ErrorType.AUTHENTICATION, 'Sessão expirada. Por favor, faça login novamente.', {
+    // Erros comuns de autenticação Supabase
+    if (msg.includes('invalid login') || msg.includes('invalid credentials') || code === 'invalid_credentials') {
+      return createError(ErrorType.AUTHENTICATION, 'E-mail ou senha incorretos.', {
         originalError: error,
+        code,
+        statusCode: supabaseError.status,
+      });
+    }
+    
+    if (msg.includes('user already registered') || code === 'user_already_exists') {
+      return createError(ErrorType.VALIDATION, 'Este e-mail já está cadastrado. Tente fazer login.', {
+        originalError: error,
+        code,
+      });
+    }
+    
+    if (msg.includes('password') && (msg.includes('weak') || msg.includes('short'))) {
+      return createError(ErrorType.VALIDATION, 'A senha deve ter pelo menos 6 caracteres.', {
+        originalError: error,
+        code,
       });
     }
 
-    // Erros de rede
-    if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('net::err')) {
+    if (msg.includes('jwt') || msg.includes('session') || msg.includes('refresh_token') || msg.includes('not authenticated')) {
+      return createError(ErrorType.AUTHENTICATION, 'Sessão expirada. Por favor, faça login novamente.', {
+        originalError: error,
+        code,
+      });
+    }
+
+    if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('net::err') || msg.includes('fetch')) {
       return createError(ErrorType.NETWORK, 'Erro de conexão. Verifique sua internet.', {
         originalError: error,
       });
     }
 
+    // Retornar a mensagem original se não for um erro conhecido
+    return createError(ErrorType.UNKNOWN, supabaseError.message, { 
+      originalError: error,
+      code,
+      statusCode: supabaseError.status,
+    });
+  }
+
+  if (error instanceof Error) {
     return createError(ErrorType.UNKNOWN, error.message, { originalError: error });
   }
 
@@ -96,17 +130,14 @@ export function logError(error: AppErrorClass, context?: Record<string, unknown>
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (isDevelopment) {
-    console.error('[AppError]', {
-      type: error.type,
-      message: error.message,
-      code: error.code,
-      statusCode: error.statusCode,
-      context,
-      originalError: error.originalError,
-    });
+    console.error('[AppError]', error.type, '-', error.message);
+    if (error.code) console.error('  Code:', error.code);
+    if (error.statusCode) console.error('  Status:', error.statusCode);
+    if (context) console.error('  Context:', context);
+    if (error.originalError) {
+      console.error('  Original error:', error.originalError);
+    }
   } else {
-    // Em produção, não logar detalhes sensíveis no console
-    // O monitoring service (se configurado) captura automaticamente via error handlers
     console.error(`[AppError] ${error.type}: ${error.message}`);
   }
 }

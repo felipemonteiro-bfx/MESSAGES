@@ -303,16 +303,16 @@ test.describe('Fluxo Completo da Aplicação', () => {
     ).toBeVisible({ timeout: 2000 });
   });
 
-  test('15. Verificar placeholders nas notícias', async ({ page }) => {
+  test('15. Verificar imagens nas notícias', async ({ page }) => {
     await expect(page.locator('article').first()).toBeVisible({ timeout: 10000 });
 
-    // Cards usam div com background por categoria (não mais img)
-    const placeholders = page.locator('article [class*="aspect-video"]');
-    const count = await placeholders.count();
+    // Cards têm imagem ou placeholder (div com aspect-video)
+    const images = page.locator('article img');
+    const count = await images.count();
     expect(count).toBeGreaterThan(0);
   });
 
-  test('16. Placeholders carregam por categoria', async ({ page }) => {
+  test('16. Imagens carregam por categoria', async ({ page }) => {
     await expect(page.locator('article').first()).toBeVisible({ timeout: 10000 });
 
     for (const cat of ['Brasil', 'Tecnologia', 'Esportes']) {
@@ -325,10 +325,10 @@ test.describe('Fluxo Completo da Aplicação', () => {
         const firstArticle = articles.first();
         await expect(firstArticle).toBeVisible({ timeout: 5000 });
 
-        // Placeholder div ou categoria visível
-        const hasPlaceholder = await firstArticle.locator('[class*="aspect-video"]').count() > 0;
+        // Imagem ou categoria visível
+        const hasImage = await firstArticle.locator('img').count() > 0;
         const hasCategory = await firstArticle.getByText(cat).isVisible().catch(() => false);
-        expect(hasPlaceholder || hasCategory).toBeTruthy();
+        expect(hasImage || hasCategory).toBeTruthy();
       }
     }
   });
@@ -353,9 +353,9 @@ test.describe('Jornada completa do usuário', () => {
     // Esperar artigos carregarem (com fallback se API não responder)
     const hasArticles = await page.locator('article').first().isVisible({ timeout: 15000 }).catch(() => false);
     if (hasArticles) {
-      // 2. Placeholders de imagem visíveis (usamos divs coloridas em vez de img)
-      const placeholder = page.locator('article div.aspect-video').first();
-      await expect(placeholder).toBeVisible({ timeout: 5000 }).catch(() => {});
+      // 2. Imagem ou placeholder visível
+      const articleImage = page.locator('article img').first();
+      await expect(articleImage).toBeVisible({ timeout: 5000 }).catch(() => {});
     }
 
     // 3. Abrir auth (duplo clique Fale Conosco)

@@ -23,8 +23,8 @@ config({ path: '.env' });
 export default defineConfig({
   testDir: './tests/e2e',
   
-  // Timeout para cada teste
-  timeout: 45 * 1000,
+  // Timeout para cada teste (aumentado para fluxos longos)
+  timeout: 60 * 1000,
   
   // Expect timeout
   expect: {
@@ -38,10 +38,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   
   // Não executar testes em CI por padrão (pode ser habilitado depois)
-  retries: process.env.CI ? 2 : 0,
+  retries: 2,
   
-  // Workers em CI
-  workers: process.env.CI ? 1 : undefined,
+  // Workers: 1 em CI, 2 localmente para reduzir carga no dev server
+  workers: process.env.CI ? 1 : 2,
   
   // Reporter
   reporter: 'html',

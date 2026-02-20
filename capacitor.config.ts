@@ -5,11 +5,9 @@ const config = {
   appName: 'Noticias24h',
   webDir: 'out',
   server: {
+    url: 'https://notices24h.vercel.app',
     androidScheme: 'https',
     iosScheme: 'https',
-    // Em desenvolvimento, descomente para usar servidor local:
-    // url: 'http://localhost:3005',
-    // cleartext: true
   },
   plugins: {
     SplashScreen: {
