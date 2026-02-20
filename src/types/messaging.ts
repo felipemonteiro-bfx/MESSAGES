@@ -11,6 +11,12 @@ export interface User {
   created_at?: string;
 }
 
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  userReacted: boolean;
+}
+
 export interface Message {
   id: string;
   sender_id: string;
@@ -23,6 +29,13 @@ export interface Message {
   expires_at?: string | null;
   is_ephemeral?: boolean;
   reply_to_id?: string | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_for_everyone?: boolean;
+  original_content?: string | null;
+  is_view_once?: boolean;
+  viewed_at?: string | null;
+  reactions?: Record<string, MessageReaction>;
 }
 
 export interface Chat {

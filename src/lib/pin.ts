@@ -1,6 +1,7 @@
 /**
  * Sistema seguro de gerenciamento de PIN
  * Usa Web Crypto API (PBKDF2) para hash criptográfico do PIN
+ * Suporta Dual PIN: PIN Principal (acesso real) e PIN Pânico (acesso decoy)
  */
 
 const PIN_STORAGE_KEY = 'n24h_pin_hash';
@@ -8,8 +9,17 @@ const PIN_SALT_KEY = 'n24h_pin_salt';
 const PIN_SETUP_KEY = 'n24h_pin_setup';
 const PIN_FAILED_ATTEMPTS_KEY = 'n24h_pin_failed_attempts';
 const PIN_LOCKOUT_UNTIL_KEY = 'stealth_pin_lockout_until';
+
+// Dual PIN - Modo Pânico
+const DECOY_PIN_STORAGE_KEY = 'n24h_decoy_pin_hash';
+const DECOY_PIN_SALT_KEY = 'n24h_decoy_pin_salt';
+const DECOY_PIN_ENABLED_KEY = 'n24h_decoy_pin_enabled';
+const CURRENT_MODE_KEY = 'n24h_access_mode';
+
 const MAX_ATTEMPTS = 5;
 const BASE_LOCKOUT_MS = 60_000; // 1 minuto base
+
+export type AccessMode = 'main' | 'decoy';
 
 /**
  * Gera um salt aleatório para cada usuário
@@ -178,4 +188,171 @@ export function getRemainingLockoutMs(): number {
   if (!until) return 0;
   const remaining = parseInt(until, 10) - Date.now();
   return Math.max(0, remaining);
+}
+
+// ============================================
+// DUAL PIN - SISTEMA DE MODO PÂNICO
+// ============================================
+
+/**
+ * Verifica se o PIN de pânico (decoy) está configurado
+ */
+export function isDecoyPinConfigured(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(DECOY_PIN_STORAGE_KEY) !== null;
+}
+
+/**
+ * Verifica se o modo pânico está habilitado
+ */
+export function isDecoyPinEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(DECOY_PIN_ENABLED_KEY) === 'true';
+}
+
+/**
+ * Habilita/desabilita o modo pânico
+ */
+export function setDecoyPinEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  if (enabled) {
+    localStorage.setItem(DECOY_PIN_ENABLED_KEY, 'true');
+  } else {
+    localStorage.removeItem(DECOY_PIN_ENABLED_KEY);
+  }
+}
+
+/**
+ * Configura o PIN de pânico (decoy)
+ */
+export async function setupDecoyPin(pin: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
+  if (!/^\d{4}$/.test(pin)) {
+    return false;
+  }
+
+  // Não permitir que PIN decoy seja igual ao PIN principal
+  const mainHash = localStorage.getItem(PIN_STORAGE_KEY);
+  const mainSalt = localStorage.getItem(PIN_SALT_KEY);
+  if (mainHash && mainSalt) {
+    const testHash = await hashPinSecure(pin, mainSalt);
+    if (testHash === mainHash) {
+      return false; // PIN decoy não pode ser igual ao principal
+    }
+  }
+
+  const salt = generateSalt();
+  const hash = await hashPinSecure(pin, salt);
+  localStorage.setItem(DECOY_PIN_SALT_KEY, salt);
+  localStorage.setItem(DECOY_PIN_STORAGE_KEY, hash);
+  localStorage.setItem(DECOY_PIN_ENABLED_KEY, 'true');
+  return true;
+}
+
+/**
+ * Verifica o PIN de pânico
+ */
+export async function verifyDecoyPin(pin: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
+  const storedHash = localStorage.getItem(DECOY_PIN_STORAGE_KEY);
+  const storedSalt = localStorage.getItem(DECOY_PIN_SALT_KEY);
+
+  if (!storedHash || !storedSalt) {
+    return false;
+  }
+
+  const startTime = performance.now();
+  const inputHash = await hashPinSecure(pin, storedSalt);
+  const elapsed = performance.now() - startTime;
+
+  if (elapsed < 100) {
+    await new Promise(resolve => setTimeout(resolve, 100 - elapsed));
+  }
+
+  if (inputHash.length !== storedHash.length) return false;
+  let result = 0;
+  for (let i = 0; i < inputHash.length; i++) {
+    result |= inputHash.charCodeAt(i) ^ storedHash.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * Verifica qual PIN foi inserido (principal, pânico ou inválido)
+ * Retorna o modo de acesso correspondente ou null se PIN inválido
+ */
+export async function verifyPinAndGetMode(pin: string): Promise<AccessMode | null> {
+  if (typeof window === 'undefined') return null;
+
+  // Verificar PIN principal primeiro
+  const isMainValid = await verifyPin(pin);
+  if (isMainValid) {
+    setCurrentAccessMode('main');
+    return 'main';
+  }
+
+  // Se modo pânico está habilitado, verificar PIN decoy
+  if (isDecoyPinEnabled()) {
+    const isDecoyValid = await verifyDecoyPin(pin);
+    if (isDecoyValid) {
+      setCurrentAccessMode('decoy');
+      return 'decoy';
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Define o modo de acesso atual (main ou decoy)
+ */
+export function setCurrentAccessMode(mode: AccessMode): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(CURRENT_MODE_KEY, mode);
+}
+
+/**
+ * Obtém o modo de acesso atual
+ */
+export function getCurrentAccessMode(): AccessMode {
+  if (typeof window === 'undefined') return 'main';
+  const stored = localStorage.getItem(CURRENT_MODE_KEY);
+  return stored === 'decoy' ? 'decoy' : 'main';
+}
+
+/**
+ * Limpa o modo de acesso (volta para main)
+ */
+export function clearAccessMode(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(CURRENT_MODE_KEY);
+}
+
+/**
+ * Remove o PIN de pânico
+ */
+export function removeDecoyPin(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(DECOY_PIN_STORAGE_KEY);
+  localStorage.removeItem(DECOY_PIN_SALT_KEY);
+  localStorage.removeItem(DECOY_PIN_ENABLED_KEY);
+}
+
+/**
+ * Altera o PIN de pânico (requer verificação do PIN atual)
+ */
+export async function changeDecoyPin(currentPin: string, newPin: string): Promise<boolean> {
+  // Verifica se o PIN atual é válido (principal ou decoy)
+  const mode = await verifyPinAndGetMode(currentPin);
+  if (!mode) {
+    return false;
+  }
+
+  if (!/^\d{4}$/.test(newPin)) {
+    return false;
+  }
+
+  return setupDecoyPin(newPin);
 }

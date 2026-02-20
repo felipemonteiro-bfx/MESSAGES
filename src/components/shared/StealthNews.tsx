@@ -53,6 +53,7 @@ interface StealthNewsProps {
 }
 
 export default function StealthNews({ onUnlockRequest, onMessageNotification }: StealthNewsProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState<string>('');
@@ -75,6 +76,10 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     setSavedIds(getSavedIds());
@@ -483,10 +488,15 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
   const getDefaultImage = (category?: string): string => getCategoryImage(category);
 
-  // Tentar carregar a imagem original - se falhar, usa imagem Unsplash da categoria
+  // Usar SVG data URI como fonte primária (funciona offline, sem CORS)
+  // Fallback para Unsplash se browser permitir
   const proxyImage = (url: string, category?: string): string => {
-    if (!url) return getCategoryImage(category);
-    return url;
+    // Em produção ou se tiver URL real, tenta Unsplash primeiro
+    if (url && url.length > 10 && url.startsWith('http') && !url.includes('data:')) {
+      return url;
+    }
+    // Fallback: usar SVG data URI (sempre funciona)
+    return getImageByCategory(category);
   };
 
   // Botão oculto: "Fale Conosco" ou duplo clique na data — resposta instantânea
@@ -531,12 +541,17 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     }
   };
 
+  if (!isMounted) {
+    return null;
+  }
+
   return (
     <div 
       className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-gray-900 font-sans pb-20 safe-area-top"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      suppressHydrationWarning
     >
       {/* Menu lateral */}
       <AnimatePresence>
@@ -648,7 +663,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 suppressHydrationWarning
               >
                 <Clock className="w-4 h-4" />
-                <span className="capitalize hidden sm:inline">{currentDate}</span>
+                <span className="capitalize hidden sm:inline" suppressHydrationWarning>{currentDate}</span>
               </div>
             </>
           )}
@@ -690,12 +705,12 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onUnlockRequest(); } }}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1" suppressHydrationWarning>
                     <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase tracking-wide animate-pulse">
                       Urgente
                     </span>
-                    <span className="text-[11px] text-gray-500 font-medium">{alert.source}</span>
-                    <span className="text-[10px] text-gray-400">• {alert.time}</span>
+                    <span className="text-[11px] text-gray-500 font-medium" suppressHydrationWarning>{alert.source}</span>
+                    <span className="text-[10px] text-gray-400" suppressHydrationWarning>• {alert.time}</span>
                   </div>
                   <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-red-800 transition-colors">
                     {alert.title}
@@ -743,8 +758,8 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       {/* Filtros de Data */}
       {!showSaved && (
-      <div className="px-4 md:px-8 py-2 border-b border-gray-100 bg-gray-50/80 max-w-6xl mx-auto">
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+      <div className="px-4 md:px-8 py-2 border-b border-gray-100 bg-gray-50/80 max-w-6xl mx-auto" suppressHydrationWarning>
+        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar" suppressHydrationWarning>
           <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
           {(['today', 'week', 'month', 'all'] as const).map((filter) => (
             <button
@@ -839,20 +854,21 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                       }}
                     >
                       <div className="flex flex-col md:flex-col">
-                        <div className="aspect-video md:aspect-[16/10] w-full overflow-hidden relative">
-                          <img
-                            src={proxyImage(item.image, item.category)}
-                            alt={item.title}
-                            data-category={item.category}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              target.onerror = null;
-                              const category = target.dataset.category || 'Geral';
-                              target.src = getCategoryImage(category);
-                            }}
-                          />
+                        <div 
+                          className="aspect-video md:aspect-[16/10] w-full overflow-hidden relative group-hover:scale-105 transition-transform duration-300"
+                          style={{ 
+                            backgroundColor: CATEGORY_COLORS[item.category as keyof typeof CATEGORY_COLORS] || '#3b82f6',
+                            backgroundImage: `url("${proxyImage(item.image, item.category)}")`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            minHeight: '180px'
+                          }}
+                          role="img"
+                          aria-label={`Imagem da categoria ${item.category}`}
+                        >
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/5">
+                            <span className="text-white font-bold text-lg drop-shadow-lg opacity-60 select-none">{item.category || 'Notícia'}</span>
+                          </div>
                         </div>
                         <div className="p-4 md:p-5 flex-1 flex flex-col">
                           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wide flex-wrap mb-2">

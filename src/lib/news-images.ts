@@ -47,9 +47,12 @@ export function getImageByCategory(category?: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-/** Mesmo que getImageByCategory — notícias usam imagem da categoria */
-export function getImageForArticle(article: { id?: string; title?: string; category?: string }): string {
-  return getImageByCategory(article.category);
+/** Retorna a imagem do artigo ou uma imagem Unsplash da categoria se não houver */
+export function getImageForArticle(article: { id?: string; title?: string; category?: string; image?: string }): string {
+  if (article.image && article.image.length > 10 && article.image.startsWith('http')) {
+    return article.image;
+  }
+  return getCategoryImage(article.category);
 }
 
 /** URLs que o navegador pode carregar diretamente (sem proxy) */

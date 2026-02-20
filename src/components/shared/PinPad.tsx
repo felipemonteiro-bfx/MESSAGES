@@ -3,12 +3,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Lock, Delete, X, RotateCcw } from 'lucide-react';
-import { verifyPin, isPinConfigured, setupPin, isLockedOut, getRemainingLockoutMs, recordFailedAttempt, clearFailedAttempts, resetPin } from '@/lib/pin';
+import { 
+  verifyPin, 
+  isPinConfigured, 
+  setupPin, 
+  isLockedOut, 
+  getRemainingLockoutMs, 
+  recordFailedAttempt, 
+  clearFailedAttempts, 
+  resetPin,
+  verifyPinAndGetMode,
+  isDecoyPinEnabled,
+  type AccessMode
+} from '@/lib/pin';
 import { pinSchema } from '@/lib/validation';
 import { toast } from 'sonner';
 
 interface PinPadProps {
-  onSuccess: () => void;
+  onSuccess: (mode: AccessMode) => void;
   onClose: () => void;
 }
 
@@ -84,7 +96,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           if (success) {
             clearFailedAttempts();
             toast.success('PIN configurado com sucesso!');
-            onSuccess();
+            onSuccess('main');
           } else {
             setError(true);
             recordFailedAttempt();
@@ -92,7 +104,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           }
         }
       } else {
-        // Verificação de PIN existente
+        // Verificação de PIN existente (com suporte a Dual PIN)
         if (isLockedOut()) {
           setError(true);
           setTimeout(() => { setPin(''); setError(false); }, 500);
@@ -100,14 +112,28 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           return;
         }
 
-        const isValid = await verifyPin(enteredPin);
-        if (isValid) {
-          clearFailedAttempts();
-          onSuccess();
+        // Usar verificação de modo dual se PIN de pânico estiver habilitado
+        if (isDecoyPinEnabled()) {
+          const mode = await verifyPinAndGetMode(enteredPin);
+          if (mode) {
+            clearFailedAttempts();
+            onSuccess(mode);
+          } else {
+            setError(true);
+            recordFailedAttempt();
+            setTimeout(() => { setPin(''); setError(false); }, 500);
+          }
         } else {
-          setError(true);
-          recordFailedAttempt();
-          setTimeout(() => { setPin(''); setError(false); }, 500);
+          // Verificação simples (apenas PIN principal)
+          const isValid = await verifyPin(enteredPin);
+          if (isValid) {
+            clearFailedAttempts();
+            onSuccess('main');
+          } else {
+            setError(true);
+            recordFailedAttempt();
+            setTimeout(() => { setPin(''); setError(false); }, 500);
+          }
         }
       }
     } finally {

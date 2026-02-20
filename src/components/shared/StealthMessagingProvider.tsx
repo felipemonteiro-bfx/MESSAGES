@@ -10,15 +10,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { X } from 'lucide-react';
 import { getAutoLockTimeout, getAutoLockOnScreenLock } from '@/lib/settings';
+import { type AccessMode, clearAccessMode, getCurrentAccessMode } from '@/lib/pin';
 
 interface StealthMessagingContextType {
   isStealthMode: boolean;
-  unlockMessaging: () => void;
+  accessMode: AccessMode;
+  unlockMessaging: (mode?: AccessMode) => void;
   lockMessaging: () => void;
 }
 
 const StealthMessagingContext = createContext<StealthMessagingContextType>({
   isStealthMode: true,
+  accessMode: 'main',
   unlockMessaging: () => {},
   lockMessaging: () => {},
 });
@@ -31,15 +34,21 @@ interface StealthMessagingProviderProps {
 
 export default function StealthMessagingProvider({ children }: StealthMessagingProviderProps) {
   const { user, supabase } = useAuth();
+  const [isMounted, setIsMounted] = useState(false);
   const [isStealthMode, setIsStealthMode] = useState(true);
+  const [accessMode, setAccessMode] = useState<AccessMode>('main');
   const [showPinPad, setShowPinPad] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signup' | 'login'>('signup');
   const [showMessaging, setShowMessaging] = useState(false);
-  // Notifications are now shown inline in the news feed (StealthNews messageAlerts)
   const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const escapePressCountRef = useRef(0);
+
+  // Marcar como montado no cliente
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Inicializar estado apenas uma vez na montagem
   useEffect(() => {
@@ -69,17 +78,20 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setIsStealthMode(true);
     setShowMessaging(false);
     setShowPinPad(false);
+    setAccessMode('main');
+    clearAccessMode();
     localStorage.setItem('n24h_mode', 'true');
     document.title = 'Noticias24h - Brasil e Mundo';
-    // Toast único — não duplicar
   }, []);
 
-  const unlockMessaging = useCallback(() => {
+  const unlockMessaging = useCallback((mode: AccessMode = 'main') => {
     setIsStealthMode(false);
     setShowPinPad(false);
     setShowMessaging(true);
+    setAccessMode(mode);
     localStorage.setItem('n24h_mode', 'false');
     document.title = 'Mensagens';
+    toast.success('Acesso concedido.', { id: 'access-granted', duration: 2000 });
   }, []);
 
   useEffect(() => {
@@ -186,8 +198,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     }
   }, [supabase]);
 
-  const handlePinSuccess = useCallback(() => {
-    unlockMessaging();
+  const handlePinSuccess = useCallback((mode: AccessMode) => {
+    unlockMessaging(mode);
   }, [unlockMessaging]);
 
   const handleMessageNotification = useCallback((fakeNewsTitle: string) => {
@@ -210,9 +222,14 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
 
   const contextValue = useMemo(() => ({
     isStealthMode,
+    accessMode,
     unlockMessaging,
     lockMessaging,
-  }), [isStealthMode, unlockMessaging, lockMessaging]);
+  }), [isStealthMode, accessMode, unlockMessaging, lockMessaging]);
+
+  if (!isMounted) {
+    return null;
+  }
 
   return (
     <StealthMessagingContext.Provider value={contextValue}>
@@ -283,7 +300,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
             exit={{ opacity: 0 }}
             className="relative min-h-screen"
           >
-            <ChatLayout />
+            <ChatLayout accessMode={accessMode} />
           </motion.div>
         ) : (
           <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

@@ -422,10 +422,12 @@ export async function GET(request: NextRequest) {
     // Buscar notícias frescas
     const articles = await fetchAllNews(category);
 
-    // Imagem única por artigo (Picsum por seed) — carregamento imediato, visual relacionado
+    // Usar imagem original do artigo se disponível, senão usar imagem Unsplash da categoria
     const articlesWithImages = articles.map(article => ({
       ...article,
-      image: getImageForArticle(article),
+      image: article.image && article.image.length > 10 && article.image.startsWith('http') 
+        ? article.image 
+        : getImageForArticle(article),
     }));
 
     const limited = articlesWithImages.slice(0, 40);

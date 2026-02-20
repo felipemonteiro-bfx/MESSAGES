@@ -15,6 +15,11 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = user.id;
+    
+    // Get access mode from query params (main or decoy)
+    const { searchParams } = new URL(request.url);
+    const accessMode = searchParams.get('mode') || 'main';
+    const isDecoyMode = accessMode === 'decoy';
 
     // 1. Get user's chat participations (using admin to bypass RLS)
     const { data: myParticipations, error: partError } = await getSupabaseAdmin()
@@ -33,11 +38,12 @@ export async function GET(request: NextRequest) {
 
     const chatIds = myParticipations.map(p => p.chat_id);
 
-    // 2. Get chat details
+    // 2. Get chat details (filtered by access mode)
     const { data: chats, error: chatsError } = await getSupabaseAdmin()
       .from('chats')
-      .select('id, type, name')
-      .in('id', chatIds);
+      .select('id, type, name, is_decoy')
+      .in('id', chatIds)
+      .eq('is_decoy', isDecoyMode);
 
     if (chatsError) {
       console.error('Error fetching chats:', chatsError);
@@ -114,6 +120,7 @@ export async function GET(request: NextRequest) {
         type: chat.type,
         name: chat.name || undefined,
         muted: mutedMap[chat.id] || false,
+        is_decoy: chat.is_decoy || false,
         recipient: otherProfile ? {
           id: otherProfile.id,
           nickname: otherProfile.nickname,

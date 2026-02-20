@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -18,8 +18,17 @@ import { queueMessage, syncPendingMessages } from '@/lib/background-sync';
 import EditNicknameModal from '@/components/shared/EditNicknameModal';
 import SettingsModal from '@/components/shared/SettingsModal';
 import AudioMessagePlayer from '@/components/messaging/AudioMessagePlayer';
+import SecurityCodeModal from '@/components/shared/SecurityCodeModal';
+import ScreenshotAlert, { ScreenshotProtectionOverlay } from '@/components/messaging/ScreenshotAlert';
+import AdvancedSearchModal from '@/components/messaging/AdvancedSearchModal';
+import { useScreenshotDetection, blurSensitiveElements } from '@/hooks/useScreenshotDetection';
 import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
 import { isIncognitoMode, clearIncognitoData } from '@/lib/settings';
+import { type AccessMode } from '@/lib/pin';
+
+interface ChatLayoutProps {
+  accessMode?: AccessMode;
+}
 
 function SwipeableChatItem({
   chat,
@@ -130,7 +139,7 @@ function SwipeableChatItem({
   );
 }
 
-export default function ChatLayout() {
+export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const { lockMessaging } = useStealthMessaging();
   const [chats, setChats] = useState<ChatWithRecipient[]>([]);
   const [selectedChat, setSelectedChat] = useState<ChatWithRecipient | null>(null);
@@ -169,6 +178,20 @@ export default function ChatLayout() {
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
   const [muteMenuOpen, setMuteMenuOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [messageReactions, setMessageReactions] = useState<Record<string, Record<string, { count: number; userReacted: boolean }>>>({});
+  const [isViewOnceMode, setIsViewOnceMode] = useState(false);
+  const [viewOnceMessageId, setViewOnceMessageId] = useState<string | null>(null);
+  const [showSecurityCode, setShowSecurityCode] = useState(false);
+  const [screenshotAlertVisible, setScreenshotAlertVisible] = useState(false);
+  const [screenshotAlertMessage, setScreenshotAlertMessage] = useState<string | undefined>();
+  const [screenshotAlertVariant, setScreenshotAlertVariant] = useState<'detected' | 'received'>('detected');
+  const [screenshotProtectionActive, setScreenshotProtectionActive] = useState(false);
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const longPressRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -186,7 +209,8 @@ export default function ChatLayout() {
       setIsLoading(true);
       
       // Usar API server-side para evitar problemas de RLS recursivo
-      const response = await fetch('/api/chats', { credentials: 'include' });
+      // Passar o modo de acesso para filtrar chats reais vs decoy
+      const response = await fetch(`/api/chats?mode=${accessMode}`, { credentials: 'include' });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -230,7 +254,57 @@ export default function ChatLayout() {
         action: { label: 'Tentar novamente', onClick: () => fetchChats(_userId) },
       });
     }
-  }, []);
+  }, [accessMode]);
+
+  // Função para notificar sobre screenshot detectado
+  const notifyScreenshotDetected = useCallback(async (method: string) => {
+    if (!selectedChat || !currentUser) return;
+
+    // Mostrar alerta local
+    setScreenshotAlertVariant('detected');
+    setScreenshotAlertMessage('Um possível screenshot foi detectado. O outro participante será notificado.');
+    setScreenshotAlertVisible(true);
+
+    // Aplicar blur temporário em elementos sensíveis
+    blurSensitiveElements(true);
+    setScreenshotProtectionActive(true);
+    setTimeout(() => {
+      blurSensitiveElements(false);
+      setScreenshotProtectionActive(false);
+    }, 500);
+
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session?.access_token) return;
+
+      await fetch('/api/messages/screenshot-alert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.session.access_token}`,
+        },
+        body: JSON.stringify({
+          chatId: selectedChat.id,
+          method,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to send screenshot alert:', error);
+    }
+  }, [selectedChat, currentUser, supabase]);
+
+  // Hook para detecção de screenshot
+  useScreenshotDetection({
+    onScreenshotDetected: notifyScreenshotDetected,
+    onBlur: () => {
+      // Quando a página perde foco, podemos aplicar proteção
+      if (selectedChat && currentUser) {
+        blurSensitiveElements(true);
+        setTimeout(() => blurSensitiveElements(false), 300);
+      }
+    },
+    enabled: !!selectedChat && !!currentUser,
+  });
 
   useEffect(() => {
     const init = async () => {
@@ -371,7 +445,21 @@ export default function ChatLayout() {
           table: 'messages',
           filter: `chat_id=eq.${selectedChat.id}` 
         }, payload => {
-          const newMessage = payload.new as Message;
+          const newMessage = payload.new as Message & { type?: string; metadata?: { type?: string } };
+          
+          // Verificar se é uma notificação de screenshot
+          if (newMessage.type === 'system' && newMessage.metadata?.type === 'screenshot_alert') {
+            if (newMessage.sender_id !== currentUser?.id) {
+              // Alguém tirou screenshot desta conversa
+              const senderName = selectedChat?.recipient?.nickname || 'Alguém';
+              setScreenshotAlertVariant('received');
+              setScreenshotAlertMessage(`${senderName} pode ter tirado uma captura de tela desta conversa.`);
+              setScreenshotAlertVisible(true);
+            }
+            // Não adicionar mensagens de sistema de screenshot na lista de mensagens visíveis
+            return;
+          }
+          
           // Sugestão 12: Notificação apenas se conversa não estiver silenciada
           if (newMessage.sender_id !== currentUser?.id && !mutedChats.has(selectedChat.id)) {
             const senderName = selectedChat?.recipient?.nickname || 'Alguém';
@@ -721,6 +809,7 @@ export default function ChatLayout() {
       if (expiresAt) msgBody.expiresAt = expiresAt;
       if (showEphemeralOption && ephemeralSeconds > 0) msgBody.isEphemeral = true;
       if (replyingTo?.id) msgBody.replyToId = replyingTo.id;
+      if (isViewOnceMode) msgBody.isViewOnce = true;
       
       const response = await fetch('/api/messages', {
         method: 'POST',
@@ -793,7 +882,11 @@ export default function ChatLayout() {
       });
       
       if (navigator.vibrate) navigator.vibrate(30);
-      toast.success('Mensagem enviada!', { duration: 1500 });
+      toast.success(isViewOnceMode ? 'Mensagem enviada (ver uma vez)!' : 'Mensagem enviada!', { duration: 1500 });
+      
+      // Reset estados especiais
+      setIsViewOnceMode(false);
+      setReplyingTo(null);
       
       // Atualizar mensagens do chat atual e lista de chats
       await fetchMessages(selectedChat.id, 1, false);
@@ -806,7 +899,188 @@ export default function ChatLayout() {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, fetchChats, fetchMessages]);
+  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, fetchMessages]);
+
+  const canEditMessage = useCallback((msg: Message) => {
+    if (!currentUser || msg.sender_id !== currentUser.id) return false;
+    if (msg.deleted_at) return false;
+    const createdAt = new Date(msg.created_at);
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    return createdAt > fifteenMinutesAgo;
+  }, [currentUser]);
+
+  const canDeleteForEveryone = useCallback((msg: Message) => {
+    if (!currentUser || msg.sender_id !== currentUser.id) return false;
+    if (msg.deleted_at) return false;
+    const createdAt = new Date(msg.created_at);
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    return createdAt > oneHourAgo;
+  }, [currentUser]);
+
+  const handleEditMessage = useCallback(async () => {
+    if (!editingMessage || !editContent.trim() || isEditing) return;
+
+    const validation = validateAndSanitizeMessage(editContent);
+    if (!validation.success) {
+      toast.error(validation.error || 'Mensagem inválida');
+      return;
+    }
+
+    setIsEditing(true);
+    try {
+      const response = await fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: editingMessage.id,
+          content: validation.data,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao editar mensagem');
+      }
+
+      setMessages(prev => prev.map(m => 
+        m.id === editingMessage.id 
+          ? { ...m, content: validation.data!, edited_at: new Date().toISOString() }
+          : m
+      ));
+      toast.success('Mensagem editada');
+      setEditingMessage(null);
+      setEditContent('');
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      toast.error(err.message);
+    } finally {
+      setIsEditing(false);
+    }
+  }, [editingMessage, editContent, isEditing]);
+
+  const handleDeleteMessage = useCallback(async (messageId: string, forEveryone: boolean) => {
+    try {
+      const response = await fetch(`/api/messages?messageId=${messageId}&forEveryone=${forEveryone}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao apagar mensagem');
+      }
+
+      if (forEveryone) {
+        setMessages(prev => prev.map(m => 
+          m.id === messageId 
+            ? { ...m, deleted_at: new Date().toISOString(), deleted_for_everyone: true, content: '' }
+            : m
+        ));
+        toast.success('Mensagem apagada para todos');
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+        toast.success('Mensagem apagada');
+      }
+      setDeleteConfirmId(null);
+      setMessageMenuId(null);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      toast.error(err.message);
+    }
+  }, []);
+
+  const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
+
+  const handleReaction = useCallback(async (messageId: string, emoji: string) => {
+    const currentReactions = messageReactions[messageId] || {};
+    const currentReaction = currentReactions[emoji];
+    const isRemoving = currentReaction?.userReacted;
+
+    // Optimistic update
+    setMessageReactions(prev => {
+      const updated = { ...prev };
+      if (!updated[messageId]) updated[messageId] = {};
+      
+      if (isRemoving) {
+        if (updated[messageId][emoji]) {
+          updated[messageId][emoji] = {
+            ...updated[messageId][emoji],
+            count: Math.max(0, updated[messageId][emoji].count - 1),
+            userReacted: false,
+          };
+          if (updated[messageId][emoji].count === 0) {
+            delete updated[messageId][emoji];
+          }
+        }
+      } else {
+        updated[messageId][emoji] = {
+          count: (updated[messageId][emoji]?.count || 0) + 1,
+          userReacted: true,
+        };
+      }
+      return updated;
+    });
+
+    setShowReactionPicker(null);
+
+    try {
+      if (isRemoving) {
+        await fetch(`/api/messages/reactions?messageId=${messageId}&emoji=${encodeURIComponent(emoji)}`, {
+          method: 'DELETE',
+        });
+      } else {
+        await fetch('/api/messages/reactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messageId, emoji }),
+        });
+      }
+    } catch (error) {
+      // Revert on error
+      setMessageReactions(prev => {
+        const updated = { ...prev };
+        if (!updated[messageId]) updated[messageId] = {};
+        
+        if (isRemoving) {
+          updated[messageId][emoji] = {
+            count: (updated[messageId][emoji]?.count || 0) + 1,
+            userReacted: true,
+          };
+        } else {
+          if (updated[messageId][emoji]) {
+            updated[messageId][emoji] = {
+              ...updated[messageId][emoji],
+              count: Math.max(0, updated[messageId][emoji].count - 1),
+              userReacted: false,
+            };
+          }
+        }
+        return updated;
+      });
+      toast.error('Erro ao reagir');
+    }
+  }, [messageReactions]);
+
+  const handleViewOnceMessage = useCallback(async (msg: Message) => {
+    if (!msg.is_view_once || msg.viewed_at || msg.sender_id === currentUser?.id) return;
+    
+    setViewOnceMessageId(msg.id);
+    
+    try {
+      const response = await fetch('/api/messages/view', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: msg.id }),
+      });
+
+      if (response.ok) {
+        setMessages(prev => prev.map(m => 
+          m.id === msg.id ? { ...m, viewed_at: new Date().toISOString() } : m
+        ));
+      }
+    } catch (error) {
+      console.error('Error marking view-once as viewed:', error);
+    }
+  }, [currentUser]);
 
   const handleAddContact = useCallback(async () => {
     if (!nicknameSearch.trim() || !currentUser || isAddingContact) return;
@@ -1118,6 +1392,14 @@ export default function ChatLayout() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-transparent border-none focus:ring-0 text-sm w-full text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
             />
+            <button 
+              onClick={() => setShowAdvancedSearch(true)}
+              className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-[#17212b] text-gray-500 dark:text-[#708499] transition-colors"
+              title="Busca avançada"
+              aria-label="Busca avançada"
+            >
+              <Search className="w-4 h-4" />
+            </button>
           </div>
           <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Configurações" aria-label="Configurações"><Settings className="w-5 h-5" /></button>
           <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato" data-testid="add-contact-button" aria-label="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
@@ -1303,6 +1585,15 @@ export default function ChatLayout() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {/* Verificar identidade */}
+                <button
+                  onClick={() => setShowSecurityCode(true)}
+                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+                  title="Verificar identidade"
+                  aria-label="Verificar identidade"
+                >
+                  <Shield className="w-4 h-4" />
+                </button>
                 {/* Histórico de mídia */}
                 <button
                   onClick={() => setShowMediaGallery(true)}
@@ -1419,23 +1710,6 @@ export default function ChatLayout() {
                     )}
                   </div>
                 )}
-                {/* Sugestão 18: Botão discreto "Esconder agora" - volta ao portal imediatamente */}
-                <button
-                  onClick={() => {
-                    if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-                    // Sugestão 3: Limpar mensagens se modo incógnito estiver ativo
-                    if (isIncognitoMode()) {
-                      setMessages([]);
-                      clearIncognitoData();
-                    }
-                    lockMessaging();
-                  }}
-                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                  title="Ver notícias"
-                  aria-label="Esconder agora"
-                >
-                  <Newspaper className="w-5 h-5" />
-                </button>
                 {selectedChat.recipient && (
                   <button
                     onClick={() => {
@@ -1473,10 +1747,11 @@ export default function ChatLayout() {
                 )}
               </div>
             </header>
-            <div 
+            <div
               ref={messagesScrollRef}
-              className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative" 
+              className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative"
               data-stealth-content="true"
+              data-sensitive="true"
               // Sugestão 23: Drag & drop de arquivos
               onDragOver={(e) => {
                 e.preventDefault();
@@ -1706,9 +1981,42 @@ export default function ChatLayout() {
                               </div>
                             ) : null;
                           })()}
-                          {msg.content && (
+                          {msg.deleted_at && msg.deleted_for_everyone ? (
+                            <div className="text-sm italic text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                              <Trash2 className="w-3 h-3" />
+                              Esta mensagem foi apagada
+                            </div>
+                          ) : msg.is_view_once && msg.sender_id !== currentUser?.id && !msg.viewed_at ? (
+                            <button
+                              onClick={() => handleViewOnceMessage(msg)}
+                              className="flex items-center gap-2 px-4 py-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
+                            >
+                              <span className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center">
+                                <span className="text-white text-lg">1</span>
+                              </span>
+                              <div className="text-left">
+                                <span className="block text-sm font-medium">Mensagem para ver uma vez</span>
+                                <span className="block text-xs opacity-75">Toque para visualizar</span>
+                              </div>
+                            </button>
+                          ) : msg.is_view_once && msg.viewed_at && msg.sender_id !== currentUser?.id ? (
+                            <div className="text-sm italic text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                              <span className="w-4 h-4 rounded-full bg-gray-400 flex items-center justify-center text-white text-[10px]">1</span>
+                              Mensagem visualizada
+                            </div>
+                          ) : msg.content && (
                             <div className="text-sm leading-relaxed whitespace-pre-wrap break-words text-gray-800 dark:text-white">
+                              {msg.is_view_once && (
+                                <span className="inline-flex items-center gap-1 text-orange-500 text-xs mr-1">
+                                  <span className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center text-white text-[8px]">1</span>
+                                </span>
+                              )}
                               {msg.content}
+                              {msg.edited_at && (
+                                <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500 italic">
+                                  (editado)
+                                </span>
+                              )}
                             </div>
                           )}
                           {msg.media_url && (
@@ -1733,6 +2041,25 @@ export default function ChatLayout() {
                             )}
                           </div>
                           )}
+                          {/* Reactions Display */}
+                          {messageReactions[msg.id] && Object.keys(messageReactions[msg.id]).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {Object.entries(messageReactions[msg.id]).map(([emoji, data]) => (
+                                <button
+                                  key={emoji}
+                                  onClick={() => handleReaction(msg.id, emoji)}
+                                  className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 transition-colors ${
+                                    data.userReacted
+                                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
+                                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                  }`}
+                                >
+                                  <span>{emoji}</span>
+                                  <span className="font-medium">{data.count}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-1 px-1">
                           <button
@@ -1742,28 +2069,73 @@ export default function ChatLayout() {
                             Responder
                           </button>
                           {messageMenuId === msg.id && (
-                            <div className="absolute bottom-full left-0 mb-1 py-1 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[140px]">
-                              <button
-                                onClick={() => {
-                                  const t = (msg.content || '').trim() || (msg.media_type ? `[${msg.media_type}]` : '');
-                                  navigator.clipboard?.writeText(t).then(() => { toast.success('Copiado'); setMessageMenuId(null); });
-                                }}
-                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                              >
-                                <Copy className="w-4 h-4" /> Copiar
-                              </button>
-                              <button
-                                onClick={() => { setReplyingTo(msg); setMessageMenuId(null); }}
-                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                              >
-                                <Reply className="w-4 h-4" /> Responder
-                              </button>
-                              <button
-                                onClick={() => { toast.info('Encaminhar em breve'); setMessageMenuId(null); }}
-                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                              >
-                                <Forward className="w-4 h-4" /> Encaminhar
-                              </button>
+                            <div className="absolute bottom-full left-0 mb-1 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[160px]">
+                              {/* Reaction Picker */}
+                              {!msg.deleted_at && (
+                                <div className="flex gap-1 p-2 border-b border-gray-200 dark:border-[#0e1621]">
+                                  {REACTION_EMOJIS.map((emoji) => (
+                                    <button
+                                      key={emoji}
+                                      onClick={() => handleReaction(msg.id, emoji)}
+                                      className={`w-8 h-8 rounded-full flex items-center justify-center text-lg hover:bg-gray-100 dark:hover:bg-[#17212b] transition-colors ${
+                                        messageReactions[msg.id]?.[emoji]?.userReacted ? 'bg-blue-100 dark:bg-blue-900/30' : ''
+                                      }`}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="py-1">
+                                {!msg.deleted_at && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        const t = (msg.content || '').trim() || (msg.media_type ? `[${msg.media_type}]` : '');
+                                        navigator.clipboard?.writeText(t).then(() => { toast.success('Copiado'); setMessageMenuId(null); });
+                                      }}
+                                      className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                                    >
+                                      <Copy className="w-4 h-4" /> Copiar
+                                    </button>
+                                    <button
+                                      onClick={() => { setReplyingTo(msg); setMessageMenuId(null); }}
+                                      className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                                    >
+                                      <Reply className="w-4 h-4" /> Responder
+                                    </button>
+                                    <button
+                                      onClick={() => { toast.info('Encaminhar em breve'); setMessageMenuId(null); }}
+                                      className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                                    >
+                                      <Forward className="w-4 h-4" /> Encaminhar
+                                    </button>
+                                  </>
+                                )}
+                                {canEditMessage(msg) && !msg.deleted_at && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingMessage(msg);
+                                      setEditContent(msg.content);
+                                      setMessageMenuId(null);
+                                    }}
+                                    className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
+                                  >
+                                    <Pencil className="w-4 h-4" /> Editar
+                                  </button>
+                                )}
+                                {msg.sender_id === currentUser?.id && !msg.deleted_at && (
+                                  <button
+                                    onClick={() => {
+                                      setDeleteConfirmId(msg.id);
+                                      setMessageMenuId(null);
+                                    }}
+                                    className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                  >
+                                    <Trash2 className="w-4 h-4" /> Apagar
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1856,13 +2228,41 @@ export default function ChatLayout() {
                     </button>
                   </div>
                 )}
+                {/* Indicador de modo View Once */}
+                {isViewOnceMode && (
+                  <div className="mb-2 flex items-center gap-2 p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg border border-orange-300 dark:border-orange-700">
+                    <span className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm font-bold">1</span>
+                    <span className="flex-1 text-sm text-orange-700 dark:text-orange-300">
+                      Mensagem para ver uma vez
+                    </span>
+                    <button
+                      onClick={() => setIsViewOnceMode(false)}
+                      className="p-1 text-orange-500 hover:text-orange-700"
+                      aria-label="Desativar modo ver uma vez"
+                    >
+                      <CloseIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-end gap-2 safe-area-bottom">
                   <button
                     onClick={() => setShowMediaMenu(!showMediaMenu)}
-                    className="w-11 h-11 bg-[#242f3d] rounded-full flex items-center justify-center text-[#4c94d5] hover:bg-[#2b5278] transition-colors"
+                    className="w-10 h-10 bg-[#242f3d] rounded-full flex items-center justify-center text-[#4c94d5] hover:bg-[#2b5278] transition-colors flex-shrink-0"
                     aria-label="Anexar arquivo"
                   >
                     <Paperclip className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setIsViewOnceMode(!isViewOnceMode)}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
+                      isViewOnceMode 
+                        ? 'bg-orange-500 text-white' 
+                        : 'bg-[#242f3d] text-[#4c94d5] hover:bg-[#2b5278]'
+                    }`}
+                    aria-label={isViewOnceMode ? 'Desativar ver uma vez' : 'Ativar ver uma vez'}
+                    title="Mensagem para ver uma vez"
+                  >
+                    <span className="text-lg font-bold">1</span>
                   </button>
                   <div className="flex-1 bg-gray-100 dark:bg-[#17212b] rounded-2xl flex items-end p-2 px-4 gap-3 min-h-[44px] border border-gray-200 dark:border-[#242f3d]">
                     <textarea 
@@ -1880,23 +2280,36 @@ export default function ChatLayout() {
                           handleSendMessage(); 
                         } 
                       }} 
-                      placeholder="Adicione um comentário..." 
+                      placeholder="Mensagem..." 
                       className="flex-1 bg-transparent border-none focus:ring-0 text-[14px] resize-none py-1 placeholder-gray-400 dark:placeholder-[#708499] text-gray-900 dark:text-white"
                       disabled={isSending}
                       data-testid="message-input"
                       data-stealth-content="true"
                     />
                   </div>
+                  {/* Botão de Áudio - sempre visível ao lado do enviar */}
+                  <button
+                    onClick={isRecording ? stopAudioRecording : startAudioRecording}
+                    className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-all touch-manipulation flex-shrink-0 ${
+                      isRecording 
+                        ? 'bg-red-500 text-white animate-pulse hover:bg-red-600' 
+                        : 'bg-[#242f3d] text-[#4c94d5] hover:bg-[#2b5278]'
+                    }`}
+                    aria-label={isRecording ? 'Parar gravação' : 'Gravar áudio'}
+                    title={isRecording ? 'Parar gravação' : 'Gravar áudio'}
+                  >
+                    <Mic className="w-5 h-5" />
+                  </button>
+                  {/* Botão de Enviar */}
                   <button 
                     onClick={() => {
-                      // Sugestão iPhone: Haptic Feedback
                       if (navigator.vibrate) {
-                        navigator.vibrate(10); // Vibração suave de 10ms
+                        navigator.vibrate(10);
                       }
                       handleSendMessage();
                     }}
                     disabled={!inputText.trim() || isSending}
-                    className={`w-11 h-11 min-w-[44px] min-h-[44px] bg-blue-600 dark:bg-[#2b5278] rounded-full flex items-center justify-center text-white transition-opacity touch-manipulation ${
+                    className={`w-11 h-11 min-w-[44px] min-h-[44px] bg-blue-600 dark:bg-[#2b5278] rounded-full flex items-center justify-center text-white transition-opacity touch-manipulation flex-shrink-0 ${
                       !inputText.trim() || isSending ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700 dark:hover:bg-[#346290] active:scale-95'
                     }`}
                     data-testid="send-button"
@@ -2103,6 +2516,169 @@ export default function ChatLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Modal de Edição de Mensagem */}
+      <AnimatePresence>
+        {editingMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => { setEditingMessage(null); setEditContent(''); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-md w-full shadow-xl"
+            >
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Pencil className="w-5 h-5" />
+                Editar mensagem
+              </h3>
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-[#242f3d] text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={4}
+                maxLength={10000}
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                {editContent.length}/10000 caracteres
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setEditingMessage(null); setEditContent(''); }}
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleEditMessage}
+                  disabled={!editContent.trim() || editContent === editingMessage.content || isEditing}
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isEditing ? 'Salvando...' : 'Salvar'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setDeleteConfirmId(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl"
+            >
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-500" />
+                Apagar mensagem?
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                Escolha como deseja apagar esta mensagem.
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleDeleteMessage(deleteConfirmId, false)}
+                  className="w-full py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors text-left"
+                >
+                  Apagar para mim
+                  <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Outros participantes ainda poderão ver a mensagem
+                  </span>
+                </button>
+                {(() => {
+                  const msg = messages.find(m => m.id === deleteConfirmId);
+                  return msg && canDeleteForEveryone(msg) && (
+                    <button
+                      onClick={() => handleDeleteMessage(deleteConfirmId, true)}
+                      className="w-full py-2.5 px-4 rounded-xl font-medium text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-left"
+                    >
+                      Apagar para todos
+                      <span className="block text-xs text-red-500 dark:text-red-400 mt-0.5">
+                        A mensagem será apagada para todos os participantes
+                      </span>
+                    </button>
+                  );
+                })()}
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="w-full py-2.5 px-4 rounded-xl font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Verificação de Identidade */}
+      {showSecurityCode && selectedChat && currentUser && selectedChat.recipient && (
+        <SecurityCodeModal
+          isOpen={showSecurityCode}
+          onClose={() => setShowSecurityCode(false)}
+          chatId={selectedChat.id}
+          currentUserId={currentUser.id}
+          recipientId={selectedChat.recipient.id}
+          recipientNickname={selectedChat.recipient.nickname || 'Usuário'}
+          onVerified={() => toast.success('Identidade verificada com sucesso!')}
+        />
+      )}
+
+      {/* Alerta de Screenshot */}
+      <ScreenshotAlert
+        isVisible={screenshotAlertVisible}
+        onClose={() => setScreenshotAlertVisible(false)}
+        message={screenshotAlertMessage}
+        variant={screenshotAlertVariant}
+      />
+
+      {/* Overlay de Proteção contra Screenshot */}
+      <ScreenshotProtectionOverlay isActive={screenshotProtectionActive} />
+
+      {/* Modal de Busca Avançada */}
+      {currentUser && (
+        <AdvancedSearchModal
+          isOpen={showAdvancedSearch}
+          onClose={() => setShowAdvancedSearch(false)}
+          messages={messages}
+          chats={chats}
+          currentUserId={currentUser.id}
+          onResultClick={(msg) => {
+            // Encontrar o chat da mensagem e selecioná-lo
+            const chat = chats.find(c => c.id === msg.chat_id);
+            if (chat) {
+              setSelectedChat(chat);
+              // Scroll para a mensagem (simplificado - requer implementação adicional)
+              setTimeout(() => {
+                const msgElement = document.querySelector(`[data-message-id="${msg.id}"]`);
+                if (msgElement) {
+                  msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  msgElement.classList.add('highlight-message');
+                  setTimeout(() => msgElement.classList.remove('highlight-message'), 2000);
+                }
+              }, 300);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
