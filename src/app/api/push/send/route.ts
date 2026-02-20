@@ -132,11 +132,26 @@ export async function POST(req: Request) {
         .eq('platform', 'ios');
 
       if (nativeRows?.length) {
+        // Calcular contagem real de mensagens não lidas para badge
+        const { count: unreadCount } = await getSupabaseAdmin()
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .in('chat_id', chatIds)
+          .neq('sender_id', recipientId)
+          .is('read_at', null);
+
+        // Obter chat_id para threadId (agrupamento de notificações)
+        const chatId = recipientChats[0]?.chat_id;
+
         const tokens = nativeRows.map((r: { token: string }) => r.token);
-        const { sent, failed } = await sendApns(tokens, {
+        const { failed } = await sendApns(tokens, {
           title: randomHeadline,
           body: `${randomSource} • Agora`,
-          badge: 1,
+          badge: unreadCount || 1,
+          threadId: chatId ? `chat-${chatId}` : undefined,
+          category: 'MESSAGE',
+          mutableContent: true,
+          data: { chatId },
         });
         if (failed.length > 0) {
           const tokenSet = new Set(failed);

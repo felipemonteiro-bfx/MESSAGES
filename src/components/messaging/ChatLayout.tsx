@@ -25,6 +25,8 @@ import { useScreenshotDetection, blurSensitiveElements } from '@/hooks/useScreen
 import { useStealthMessaging } from '@/components/shared/StealthMessagingProvider';
 import { isIncognitoMode, clearIncognitoData } from '@/lib/settings';
 import { type AccessMode } from '@/lib/pin';
+import { impactLight, impactMedium, notificationSuccess, panicVibrate } from '@/lib/haptics';
+import SwipeableMessage from '@/components/messaging/SwipeableMessage';
 
 interface ChatLayoutProps {
   accessMode?: AccessMode;
@@ -951,7 +953,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         messageLength: messageContent.length,
       });
       
-      if (navigator.vibrate) navigator.vibrate(30);
+      notificationSuccess();
       toast.success(isViewOnceMode ? 'Mensagem enviada (ver uma vez)!' : 'Mensagem enviada!', { duration: 1500 });
       
       // Reset estados especiais
@@ -1378,7 +1380,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     try {
       setShowLogoutConfirm(false);
       setIsMenuOpen(false);
-      if (navigator.vibrate) navigator.vibrate(50);
+      impactMedium();
       await supabase.auth.signOut();
       lockMessaging();
       toast.success('Logout realizado com sucesso');
@@ -1397,11 +1399,11 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       onTouchEnd={onTouchEnd}
     >
       <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-all duration-300 md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b]`}>
-        <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-[#0e1621] relative">
+        <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-[#0e1621] relative z-30">
           {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
           <button
             onClick={() => {
-              if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+              panicVibrate();
               if (isIncognitoMode()) {
                 setMessages([]);
                 clearIncognitoData();
@@ -1629,7 +1631,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                           .eq('chat_id', chat.id)
                           .eq('user_id', currentUser.id);
                         if (error) throw error;
-                        if (navigator.vibrate) navigator.vibrate(30);
+                        impactLight();
                         if (newMutedState) {
                           setMutedChats(prev => new Set(prev).add(chat.id));
                           toast.success('Notificações silenciadas', { duration: 2000 });
@@ -1763,7 +1765,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                 try {
                                   const { error } = await supabase.from('chat_participants').update({ muted: false, mute_until: null }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
                                   if (error) throw error;
-                                  if (navigator.vibrate) navigator.vibrate(30);
+                                  impactLight();
                                   setMutedChats(prev => { const s = new Set(prev); s.delete(selectedChat.id); return s; });
                                   toast.success('Notificações ativadas');
                                 } catch (e) {
@@ -1785,7 +1787,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                   try {
                                     const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: until }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
                                     if (error) throw error;
-                                    if (navigator.vibrate) navigator.vibrate(30);
+                                    impactLight();
                                     setMutedChats(prev => new Set(prev).add(selectedChat.id));
                                     toast.success('Silenciado por 1 hora');
                                   } catch (e) {
@@ -1805,7 +1807,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                   try {
                                     const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: until }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
                                     if (error) throw error;
-                                    if (navigator.vibrate) navigator.vibrate(30);
+                                    impactLight();
                                     setMutedChats(prev => new Set(prev).add(selectedChat.id));
                                     toast.success('Silenciado por 8 horas');
                                   } catch (e) {
@@ -1824,7 +1826,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                   try {
                                     const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: null }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
                                     if (error) throw error;
-                                    if (navigator.vibrate) navigator.vibrate(30);
+                                    impactLight();
                                     setMutedChats(prev => new Set(prev).add(selectedChat.id));
                                     toast.success('Notificações silenciadas');
                                   } catch (e) {
@@ -2057,12 +2059,19 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         width: '100%',
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
-                      className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
                       data-stealth-content="true"
                       data-message="true"
                       data-message-id={msg.id}
+                    >
+                    <SwipeableMessage
+                      onSwipeReply={() => setReplyingTo(msg)}
+                      isOwnMessage={msg.sender_id === currentUser?.id}
+                      disabled={msg.deleted_at !== null}
+                    >
+                    <div
+                      className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
                       onContextMenu={(e) => { e.preventDefault(); setMessageMenuId(msg.id); }}
-                      onTouchStart={() => { longPressRef.current = setTimeout(() => { setMessageMenuId(msg.id); if (navigator.vibrate) navigator.vibrate(30); }, 500); }}
+                      onTouchStart={() => { longPressRef.current = setTimeout(() => { setMessageMenuId(msg.id); impactMedium(); }, 500); }}
                       onTouchEnd={() => { if (longPressRef.current) clearTimeout(longPressRef.current); longPressRef.current = null; }}
                       onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
                     >
@@ -2279,6 +2288,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         </div>
                       </div>
                     </div>
+                    </SwipeableMessage>
+                    </div>
                       );
                     })}
                   </div>
@@ -2462,9 +2473,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   {/* Botão de Enviar */}
                   <button 
                     onClick={() => {
-                      if (navigator.vibrate) {
-                        navigator.vibrate(10);
-                      }
+                      impactLight();
                       handleSendMessage();
                     }}
                     disabled={!inputText.trim() || isSending}

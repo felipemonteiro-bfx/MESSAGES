@@ -8,6 +8,11 @@ const AUTO_LOCK_ON_SCREEN_LOCK_KEY = 'n24h_auto_lock_on_screen_lock';
 const GHOST_MODE_KEY = 'n24h_ghost_mode';
 const READ_RECEIPTS_KEY = 'n24h_read_receipts';
 const LAST_SEEN_VISIBLE_KEY = 'n24h_last_seen_visible';
+const NOTIFICATION_SOUND_KEY = 'n24h_notification_sound';
+const NOTIFICATION_VIBRATION_KEY = 'n24h_notification_vibration';
+const NOTIFICATION_PREVIEW_KEY = 'n24h_notification_preview';
+const NOTIFICATION_DND_START_KEY = 'n24h_notification_dnd_start';
+const NOTIFICATION_DND_END_KEY = 'n24h_notification_dnd_end';
 
 export type AutoLockTimeout = 10 | 30 | 60 | 300 | 0; // 10s, 30s, 1min, 5min, Nunca (0)
 
@@ -196,4 +201,119 @@ export function setLastSeenVisible(visible: boolean): void {
       localStorage.setItem(LAST_SEEN_VISIBLE_KEY, 'false');
     }
   } catch { /* ignore */ }
+}
+
+// ============================================
+// PREFERÊNCIAS DE NOTIFICAÇÃO
+// ============================================
+
+export type NotificationSound = 'default' | 'chime' | 'bell' | 'none';
+
+export function getNotificationSound(): NotificationSound {
+  if (typeof window === 'undefined') return 'default';
+  try {
+    const stored = localStorage.getItem(NOTIFICATION_SOUND_KEY);
+    return (['default', 'chime', 'bell', 'none'].includes(stored || '') ? stored : 'default') as NotificationSound;
+  } catch {
+    return 'default';
+  }
+}
+
+export function setNotificationSound(sound: NotificationSound): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(NOTIFICATION_SOUND_KEY, sound);
+  } catch { /* ignore */ }
+}
+
+export function isNotificationVibrationEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return localStorage.getItem(NOTIFICATION_VIBRATION_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function setNotificationVibration(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (enabled) {
+      localStorage.removeItem(NOTIFICATION_VIBRATION_KEY);
+    } else {
+      localStorage.setItem(NOTIFICATION_VIBRATION_KEY, 'false');
+    }
+  } catch { /* ignore */ }
+}
+
+export type NotificationPreview = 'always' | 'when_unlocked' | 'never';
+
+export function getNotificationPreview(): NotificationPreview {
+  if (typeof window === 'undefined') return 'when_unlocked';
+  try {
+    const stored = localStorage.getItem(NOTIFICATION_PREVIEW_KEY);
+    return (['always', 'when_unlocked', 'never'].includes(stored || '') ? stored : 'when_unlocked') as NotificationPreview;
+  } catch {
+    return 'when_unlocked';
+  }
+}
+
+export function setNotificationPreview(preview: NotificationPreview): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(NOTIFICATION_PREVIEW_KEY, preview);
+  } catch { /* ignore */ }
+}
+
+export interface DNDSchedule {
+  enabled: boolean;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+}
+
+export function getDNDSchedule(): DNDSchedule {
+  if (typeof window === 'undefined') return { enabled: false, startHour: 22, startMinute: 0, endHour: 7, endMinute: 0 };
+  try {
+    const start = localStorage.getItem(NOTIFICATION_DND_START_KEY);
+    const end = localStorage.getItem(NOTIFICATION_DND_END_KEY);
+    if (!start || !end) {
+      return { enabled: false, startHour: 22, startMinute: 0, endHour: 7, endMinute: 0 };
+    }
+    const [startHour, startMinute] = start.split(':').map(Number);
+    const [endHour, endMinute] = end.split(':').map(Number);
+    return { enabled: true, startHour, startMinute, endHour, endMinute };
+  } catch {
+    return { enabled: false, startHour: 22, startMinute: 0, endHour: 7, endMinute: 0 };
+  }
+}
+
+export function setDNDSchedule(schedule: DNDSchedule): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (schedule.enabled) {
+      localStorage.setItem(NOTIFICATION_DND_START_KEY, `${schedule.startHour}:${schedule.startMinute}`);
+      localStorage.setItem(NOTIFICATION_DND_END_KEY, `${schedule.endHour}:${schedule.endMinute}`);
+    } else {
+      localStorage.removeItem(NOTIFICATION_DND_START_KEY);
+      localStorage.removeItem(NOTIFICATION_DND_END_KEY);
+    }
+  } catch { /* ignore */ }
+}
+
+export function isInDNDPeriod(): boolean {
+  const schedule = getDNDSchedule();
+  if (!schedule.enabled) return false;
+  
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = schedule.startHour * 60 + schedule.startMinute;
+  const endMinutes = schedule.endHour * 60 + schedule.endMinute;
+  
+  if (startMinutes <= endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  } else {
+    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+  }
 }

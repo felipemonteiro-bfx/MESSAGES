@@ -188,3 +188,39 @@ img[loading="lazy"].loaded {
   animation: highlight-pulse 0.5s ease-in-out 3;
   border-radius: 0.75rem;
 }
+
+/* iOS Keyboard handling */
+:root {
+  --keyboard-height: 0px;
+}
+
+body.keyboard-open {
+  height: calc(100vh - var(--keyboard-height));
+  overflow: hidden;
+}
+
+body.keyboard-open .chat-input-area {
+  position: fixed;
+  bottom: var(--keyboard-height);
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+
+body.keyboard-open .chat-messages {
+  padding-bottom: calc(80px + var(--keyboard-height));
+}
+
+/* Smooth keyboard transition */
+.keyboard-aware {
+  transition: transform 0.25s ease-out, padding-bottom 0.25s ease-out;
+  will-change: transform, padding-bottom;
+}
+
+/* iOS input focus improvements */
+@supports (-webkit-touch-callout: none) {
+  .chat-input-area input:focus,
+  .chat-input-area textarea:focus {
+    transform: translateZ(0);
+  }
+}

@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Lock, EyeOff, Download, User, Camera, Shield, AlertTriangle, Eye, EyeOff as EyeOffIcon, Image as ImageIcon, Smile } from 'lucide-react';
-import { getAutoLockTimeout, setAutoLockTimeout, isIncognitoMode, setIncognitoMode, getAutoLockOnScreenLock, setAutoLockOnScreenLock, isGhostModeEnabled, setGhostMode, areReadReceiptsEnabled, setReadReceipts, type AutoLockTimeout } from '@/lib/settings';
+import { X, Lock, EyeOff, Download, User, Camera, Shield, AlertTriangle, Eye, EyeOff as EyeOffIcon, Image as ImageIcon, Smile, Bell, Volume2, Vibrate, Moon } from 'lucide-react';
+import { getAutoLockTimeout, setAutoLockTimeout, isIncognitoMode, setIncognitoMode, getAutoLockOnScreenLock, setAutoLockOnScreenLock, isGhostModeEnabled, setGhostMode, areReadReceiptsEnabled, setReadReceipts, type AutoLockTimeout, getNotificationSound, setNotificationSound, isNotificationVibrationEnabled, setNotificationVibration, getNotificationPreview, setNotificationPreview, getDNDSchedule, setDNDSchedule, type NotificationSound, type NotificationPreview, type DNDSchedule } from '@/lib/settings';
 import { isDecoyPinEnabled, isDecoyPinConfigured, setupDecoyPin, removeDecoyPin, setDecoyPinEnabled } from '@/lib/pin';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { isBiometricAvailable, isBiometricEnabled, setBiometricEnabled, getBiometryType, getBiometryLabel } from '@/lib/biometric';
 
 const AVATAR_SYMBOLS = [
   { emoji: '👤', label: 'Pessoa' },
@@ -67,6 +68,17 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
   // Modo Fantasma
   const [ghostMode, setGhostModeState] = useState(false);
   const [readReceipts, setReadReceiptsState] = useState(true);
+  
+  // Biometria
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabledState, setBiometricEnabledState] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('Biometria');
+  
+  // Preferências de notificação
+  const [notificationSound, setNotificationSoundState] = useState<NotificationSound>('default');
+  const [notificationVibration, setNotificationVibrationState] = useState(true);
+  const [notificationPreview, setNotificationPreviewState] = useState<NotificationPreview>('when_unlocked');
+  const [dndSchedule, setDNDScheduleState] = useState<DNDSchedule>({ enabled: false, startHour: 22, startMinute: 0, endHour: 7, endMinute: 0 });
 
   useEffect(() => {
     if (isOpen) {
@@ -77,6 +89,22 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
       setDecoyPinConfiguredState(isDecoyPinConfigured());
       setGhostModeState(isGhostModeEnabled());
       setReadReceiptsState(areReadReceiptsEnabled());
+      setBiometricEnabledState(isBiometricEnabled());
+      setNotificationSoundState(getNotificationSound());
+      setNotificationVibrationState(isNotificationVibrationEnabled());
+      setNotificationPreviewState(getNotificationPreview());
+      setDNDScheduleState(getDNDSchedule());
+      
+      // Check biometric availability
+      const checkBiometric = async () => {
+        const available = await isBiometricAvailable();
+        setBiometricAvailable(available);
+        if (available) {
+          const type = await getBiometryType();
+          setBiometricLabel(getBiometryLabel(type));
+        }
+      };
+      checkBiometric();
     }
   }, [isOpen]);
 
@@ -166,6 +194,39 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
     const newValue = !readReceipts;
     setReadReceipts(newValue);
     setReadReceiptsState(newValue);
+  };
+
+  const handleBiometricToggle = () => {
+    const newValue = !biometricEnabledState;
+    setBiometricEnabled(newValue);
+    setBiometricEnabledState(newValue);
+    if (newValue) {
+      toast.success(`${biometricLabel} ativado`);
+    } else {
+      toast.success(`${biometricLabel} desativado`);
+    }
+  };
+
+  const handleNotificationSoundChange = (sound: NotificationSound) => {
+    setNotificationSound(sound);
+    setNotificationSoundState(sound);
+  };
+
+  const handleNotificationVibrationToggle = () => {
+    const newValue = !notificationVibration;
+    setNotificationVibration(newValue);
+    setNotificationVibrationState(newValue);
+  };
+
+  const handleNotificationPreviewChange = (preview: NotificationPreview) => {
+    setNotificationPreview(preview);
+    setNotificationPreviewState(preview);
+  };
+
+  const handleDNDToggle = () => {
+    const newSchedule = { ...dndSchedule, enabled: !dndSchedule.enabled };
+    setDNDSchedule(newSchedule);
+    setDNDScheduleState(newSchedule);
   };
 
   const handleAvatarChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -551,6 +612,38 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   </div>
                 </div>
 
+                {/* Biometria (Face ID / Touch ID) */}
+                {biometricAvailable && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-emerald-500" />
+                        <label className="font-semibold text-sm text-gray-900 dark:text-white">
+                          {biometricLabel}
+                        </label>
+                      </div>
+                      <button
+                        onClick={handleBiometricToggle}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${
+                          biometricEnabledState ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-700'
+                        }`}
+                        aria-label={biometricEnabledState ? `Desativar ${biometricLabel}` : `Ativar ${biometricLabel}`}
+                        role="switch"
+                        aria-checked={biometricEnabledState}
+                      >
+                        <span
+                          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                            biometricEnabledState ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Use {biometricLabel} para desbloquear o app rapidamente.
+                    </p>
+                  </div>
+                )}
+
                 {/* Sugestão 3: Modo Incógnito */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -795,6 +888,117 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     Mostrar quando você leu as mensagens (✓✓).
                   </p>
+                </div>
+
+                {/* Preferências de Notificação */}
+                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-blue-500" />
+                    <label className="font-semibold text-sm text-gray-900 dark:text-white">
+                      Notificações
+                    </label>
+                  </div>
+                  
+                  {/* Som */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Som</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {([['default', 'Padrão'], ['chime', 'Sino'], ['bell', 'Campainha'], ['none', 'Nenhum']] as [NotificationSound, string][]).map(([value, label]) => (
+                        <button
+                          key={value}
+                          onClick={() => handleNotificationSoundChange(value)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            notificationSound === value
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Vibração */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Vibrate className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Vibração</span>
+                    </div>
+                    <button
+                      onClick={handleNotificationVibrationToggle}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${
+                        notificationVibration ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-700'
+                      }`}
+                      role="switch"
+                      aria-checked={notificationVibration}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                          notificationVibration ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  
+                  {/* Preview */}
+                  <div className="space-y-2">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Preview de mensagens</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([['always', 'Sempre'], ['when_unlocked', 'Desbloqueado'], ['never', 'Nunca']] as [NotificationPreview, string][]).map(([value, label]) => (
+                        <button
+                          key={value}
+                          onClick={() => handleNotificationPreviewChange(value)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            notificationPreview === value
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {notificationPreview === 'never' 
+                        ? 'Preview nunca será exibido (maior privacidade)'
+                        : notificationPreview === 'when_unlocked'
+                        ? 'Preview só aparece quando o telefone está desbloqueado'
+                        : 'Preview sempre visível nas notificações'}
+                    </p>
+                  </div>
+                  
+                  {/* Não Perturbe */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Moon className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Não Perturbe</span>
+                      </div>
+                      <button
+                        onClick={handleDNDToggle}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${
+                          dndSchedule.enabled ? 'bg-purple-500' : 'bg-gray-300 dark:bg-slate-700'
+                        }`}
+                        role="switch"
+                        aria-checked={dndSchedule.enabled}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                            dndSchedule.enabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {dndSchedule.enabled && (
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        Silenciado das {String(dndSchedule.startHour).padStart(2, '0')}:{String(dndSchedule.startMinute).padStart(2, '0')} às {String(dndSchedule.endHour).padStart(2, '0')}:{String(dndSchedule.endMinute).padStart(2, '0')}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* LGPD: Exportação de dados */}

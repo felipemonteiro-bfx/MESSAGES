@@ -1,6 +1,6 @@
-// Capacitor config - será usado após instalar @capacitor/cli
-// Para instalar: npm install
-const config = {
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig & { plugins?: Record<string, unknown> } = {
   appId: 'com.noticias24h.app',
   appName: 'Noticias24h',
   webDir: 'out',
@@ -23,6 +23,14 @@ const config = {
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
     },
+    Keyboard: {
+      resize: 'body' as any,
+      resizeOnFullScreen: true,
+    },
+    StatusBar: {
+      style: 'dark',
+      backgroundColor: '#ffffff',
+    },
     Camera: {
       permissions: {
         camera: 'Este app precisa de acesso à câmera para enviar fotos.',
@@ -37,7 +45,7 @@ const config = {
   },
   android: {
     buildOptions: {
-      keystorePath: undefined, // Configure após gerar keystore
+      keystorePath: undefined,
       keystoreAlias: undefined,
     },
     allowMixedContent: false,
@@ -45,6 +53,7 @@ const config = {
   ios: {
     scheme: 'Noticias24h',
     contentInset: 'automatic',
+    preferredContentMode: 'mobile',
   },
 };
 

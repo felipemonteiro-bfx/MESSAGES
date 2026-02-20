@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Lock, Delete, X, RotateCcw } from 'lucide-react';
+import { Lock, Delete, X, RotateCcw, Fingerprint } from 'lucide-react';
 import { 
   verifyPin, 
   isPinConfigured, 
@@ -18,6 +18,14 @@ import {
 } from '@/lib/pin';
 import { pinSchema } from '@/lib/validation';
 import { toast } from 'sonner';
+import { selectionChanged, notificationSuccess, notificationError } from '@/lib/haptics';
+import { 
+  isBiometricAvailable, 
+  isBiometricEnabled, 
+  authenticateWithBiometric,
+  getBiometryType,
+  getBiometryLabel
+} from '@/lib/biometric';
 
 interface PinPadProps {
   onSuccess: (mode: AccessMode) => void;
@@ -35,10 +43,42 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
   const [isVerifying, setIsVerifying] = useState(false);
   const [remainingSecs, setRemainingSecs] = useState(0);
   const [locked, setLocked] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('Biometria');
 
   useEffect(() => {
     setIsFirstTime(!isPinConfigured());
   }, []);
+
+  useEffect(() => {
+    const checkBiometric = async () => {
+      const available = await isBiometricAvailable();
+      setBiometricAvailable(available);
+      if (available) {
+        const type = await getBiometryType();
+        setBiometricLabel(getBiometryLabel(type));
+      }
+    };
+    checkBiometric();
+  }, []);
+
+  useEffect(() => {
+    const tryBiometricAuth = async () => {
+      if (!isFirstTime && isBiometricEnabled() && biometricAvailable && !locked && !isVerifying) {
+        setIsVerifying(true);
+        const success = await authenticateWithBiometric();
+        if (success) {
+          notificationSuccess();
+          clearFailedAttempts();
+          onSuccess('main');
+        }
+        setIsVerifying(false);
+      }
+    };
+    
+    const timer = setTimeout(tryBiometricAuth, 300);
+    return () => clearTimeout(timer);
+  }, [isFirstTime, biometricAvailable, locked, onSuccess, isVerifying]);
 
   // Atualiza estado de bloqueio
   useEffect(() => {
@@ -95,10 +135,12 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           const success = await setupPin(enteredPin);
           if (success) {
             clearFailedAttempts();
+            notificationSuccess();
             toast.success('PIN configurado com sucesso!');
             onSuccess('main');
           } else {
             setError(true);
+            notificationError();
             recordFailedAttempt();
             setTimeout(() => { setPin(''); setConfirmPin(''); setError(false); setStep('enter'); }, 500);
           }
@@ -117,9 +159,11 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           const mode = await verifyPinAndGetMode(enteredPin);
           if (mode) {
             clearFailedAttempts();
+            notificationSuccess();
             onSuccess(mode);
           } else {
             setError(true);
+            notificationError();
             recordFailedAttempt();
             setTimeout(() => { setPin(''); setError(false); }, 500);
           }
@@ -128,9 +172,11 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           const isValid = await verifyPin(enteredPin);
           if (isValid) {
             clearFailedAttempts();
+            notificationSuccess();
             onSuccess('main');
           } else {
             setError(true);
+            notificationError();
             recordFailedAttempt();
             setTimeout(() => { setPin(''); setError(false); }, 500);
           }
@@ -150,10 +196,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
     if (locked || pin.length >= 4 || isVerifying) return;
     setPin(prev => prev + digit);
     setError(false);
-    // Haptic feedback em mobile
-    if (navigator.vibrate) {
-      navigator.vibrate(10);
-    }
+    selectionChanged();
   };
 
   const handleBackspace = () => {
@@ -164,6 +207,24 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
 
   const handleForgotPin = () => {
     setStep('forgot');
+  };
+
+  const handleBiometricAuth = async () => {
+    if (!biometricAvailable || isVerifying || locked) return;
+    
+    setIsVerifying(true);
+    try {
+      const success = await authenticateWithBiometric();
+      if (success) {
+        notificationSuccess();
+        clearFailedAttempts();
+        onSuccess('main');
+      } else {
+        toast.error('Autenticação biométrica falhou');
+      }
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleResetPin = () => {
@@ -307,7 +368,19 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
               {num}
             </button>
           ))}
-          <div className="w-14 h-14 sm:w-16 sm:h-16" />
+          {biometricAvailable && !isFirstTime ? (
+            <button
+              onClick={handleBiometricAuth}
+              disabled={locked || isVerifying}
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all flex items-center justify-center mx-auto shadow-md"
+              aria-label={`Usar ${biometricLabel}`}
+              title={biometricLabel}
+            >
+              <Fingerprint className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+            </button>
+          ) : (
+            <div className="w-14 h-14 sm:w-16 sm:h-16" />
+          )}
           <button
             onClick={() => handleDigit('0')}
             disabled={locked || isVerifying}

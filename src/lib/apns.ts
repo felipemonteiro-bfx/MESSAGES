@@ -48,9 +48,19 @@ export function isApnsConfigured(): boolean {
   );
 }
 
+interface ApnsOptions {
+  title: string;
+  body: string;
+  badge?: number;
+  threadId?: string;
+  category?: string;
+  mutableContent?: boolean;
+  data?: Record<string, unknown>;
+}
+
 export async function sendApns(
   deviceTokens: string[],
-  options: { title: string; body: string; badge?: number }
+  options: ApnsOptions
 ): Promise<{ sent: string[]; failed: string[] }> {
   const prov = getProvider();
   if (!prov || deviceTokens.length === 0) {
@@ -67,7 +77,24 @@ export async function sendApns(
     body: options.body,
   };
   note.topic = bundleId;
-  note.payload = { isMessage: true, url: '/' };
+  
+  if (options.threadId) {
+    note.threadId = options.threadId;
+  }
+  
+  if (options.category) {
+    (note as any).category = options.category;
+  }
+  
+  if (options.mutableContent) {
+    (note as any).mutableContent = 1;
+  }
+  
+  note.payload = { 
+    isMessage: true, 
+    url: '/',
+    ...(options.data || {}),
+  };
 
   const result = await prov.send(note, deviceTokens);
   const sent: string[] = [];
