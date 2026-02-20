@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 
-export const dynamic = 'force-static';
+export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /** Escapa _ e % para uso em ILIKE (match exato) */

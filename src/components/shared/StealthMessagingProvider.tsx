@@ -80,7 +80,6 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setShowMessaging(true);
     localStorage.setItem('n24h_mode', 'false');
     document.title = 'Mensagens';
-    toast.success('Acesso concedido.', { duration: 2000 });
   }, []);
 
   useEffect(() => {

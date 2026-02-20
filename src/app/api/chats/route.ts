@@ -2,8 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin, getApiErrorMessage } from '@/lib/supabase/admin';
 
-export const dynamic = 'force-static';
-export const revalidate = 0;
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {

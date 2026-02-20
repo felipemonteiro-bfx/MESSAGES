@@ -47,17 +47,15 @@ export async function updateSession(request: NextRequest) {
   // API routes gerenciam sua própria autenticação — não redirecionar para /login
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
 
+  // getClaims() revalida o JWT e atualiza os cookies. getSession() NÃO revalida (Supabase).
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims;
+
   if (isPublicRoute || isApiRoute) {
-    // Para rotas públicas e API, apenas atualizar cookies de sessão sem verificar user
-    // Isso evita uma chamada de rede desnecessária ao Supabase
-    await supabase.auth.getSession(); // Leve — usa cookies locais
     return supabaseResponse;
   }
 
-  // Para rotas protegidas, verificar autenticação
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Para rotas protegidas (páginas), verificar autenticação
 
   if (!user) {
     const url = request.nextUrl.clone();
