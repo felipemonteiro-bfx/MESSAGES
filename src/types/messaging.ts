@@ -36,6 +36,8 @@ export interface Message {
   is_view_once?: boolean;
   viewed_at?: string | null;
   reactions?: Record<string, MessageReaction>;
+  is_encrypted?: boolean;
+  signature?: string | null;
 }
 
 export interface Chat {
@@ -58,6 +60,7 @@ export interface ChatWithRecipient extends Chat {
     id: string;
     nickname: string;
     avatar_url: string;
+    public_key?: string | null;
   };
   lastMessage?: string;
   time?: string;
@@ -70,4 +73,5 @@ export interface Profile {
   full_name?: string;
   is_premium?: boolean;
   created_at: string;
+  public_key?: string | null;
 }

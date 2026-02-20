@@ -426,10 +426,10 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
-            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6"
+            className="relative w-full max-w-md max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 shrink-0">
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Configurações</h2>
               <button
                 onClick={onClose}
@@ -439,7 +439,7 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-1">
                 {/* Avatar */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">

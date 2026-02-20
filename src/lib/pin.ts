@@ -21,6 +21,11 @@ const BASE_LOCKOUT_MS = 60_000; // 1 minuto base
 
 export type AccessMode = 'main' | 'decoy';
 
+function isValidPin(pin: string): boolean {
+  if (pin.length < 4 || pin.length > 32) return false;
+  return /^\d{4,8}$/.test(pin) || /^[a-zA-Z0-9!@#$%^&*]{6,32}$/.test(pin);
+}
+
 /**
  * Gera um salt aleatório para cada usuário
  */
@@ -73,8 +78,7 @@ export function isPinConfigured(): boolean {
 export async function setupPin(pin: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
-  // Validação: PIN deve ter exatamente 4 dígitos
-  if (!/^\d{4}$/.test(pin)) {
+  if (!isValidPin(pin)) {
     return false;
   }
 
@@ -138,7 +142,7 @@ export async function changePin(oldPin: string, newPin: string): Promise<boolean
     return false;
   }
 
-  if (!/^\d{4}$/.test(newPin)) {
+  if (!isValidPin(newPin)) {
     return false;
   }
 
@@ -228,7 +232,7 @@ export function setDecoyPinEnabled(enabled: boolean): void {
 export async function setupDecoyPin(pin: string): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
-  if (!/^\d{4}$/.test(pin)) {
+  if (!isValidPin(pin)) {
     return false;
   }
 
@@ -344,13 +348,12 @@ export function removeDecoyPin(): void {
  * Altera o PIN de pânico (requer verificação do PIN atual)
  */
 export async function changeDecoyPin(currentPin: string, newPin: string): Promise<boolean> {
-  // Verifica se o PIN atual é válido (principal ou decoy)
   const mode = await verifyPinAndGetMode(currentPin);
   if (!mode) {
     return false;
   }
 
-  if (!/^\d{4}$/.test(newPin)) {
+  if (!isValidPin(newPin)) {
     return false;
   }
 

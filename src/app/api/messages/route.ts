@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { chatId, content, mediaUrl, mediaType, expiresAt, isEphemeral, replyToId, isViewOnce } = body;
+    const { chatId, content, mediaUrl, mediaType, expiresAt, isEphemeral, replyToId, isViewOnce, isEncrypted, signature } = body;
 
     if (!chatId || !content) {
       return NextResponse.json({ error: 'chatId and content are required' }, { status: 400 });
@@ -101,11 +101,14 @@ export async function POST(request: NextRequest) {
       content,
     };
 
-    // Colunas opcionais
     if (mediaUrl) insertData.media_url = mediaUrl;
     if (mediaType) insertData.media_type = mediaType;
     if (replyToId && typeof replyToId === 'string') insertData.reply_to_id = replyToId;
     if (isViewOnce === true) insertData.is_view_once = true;
+    if (isEncrypted === true) insertData.is_encrypted = true;
+    if (expiresAt && typeof expiresAt === 'string') insertData.expires_at = expiresAt;
+    if (isEphemeral === true) insertData.is_ephemeral = true;
+    if (signature && typeof signature === 'string') insertData.signature = signature;
 
     const { data: message, error: msgError } = await getSupabaseAdmin()
       .from('messages')

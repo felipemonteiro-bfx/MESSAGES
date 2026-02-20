@@ -1,6 +1,7 @@
 /**
  * Geração de códigos de segurança para verificação de identidade
  * Baseado nas chaves públicas dos participantes de uma conversa
+ * Detecta substituição de chaves (MITM) ao incluir public keys no hash
  */
 
 export interface SecurityCode {
@@ -9,11 +10,9 @@ export interface SecurityCode {
   chatId: string;
   participants: string[];
   generatedAt: string;
+  includesPublicKeys: boolean;
 }
 
-/**
- * Gera um hash SHA-256 de uma string
- */
 async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -22,24 +21,35 @@ async function sha256(message: string): Promise<string> {
 }
 
 /**
- * Gera um código de segurança único para uma conversa
- * O código é derivado dos IDs dos participantes ordenados + chatId
- * Isso garante que ambos os lados gerem o mesmo código
+ * Gera um código de segurança único para uma conversa.
+ * Quando chaves públicas são fornecidas, elas são incluídas no hash --
+ * uma substituição MITM de chave pública gera um código diferente.
  */
 export async function generateSecurityCode(
   chatId: string,
-  participantIds: string[]
+  participantIds: string[],
+  publicKeys?: (string | null)[]
 ): Promise<SecurityCode> {
-  // Ordenar participantes para garantir consistência
   const sortedParticipants = [...participantIds].sort();
+
+  const keyMap: Record<string, string> = {};
+  if (publicKeys && publicKeys.length === participantIds.length) {
+    participantIds.forEach((id, i) => {
+      if (publicKeys[i]) keyMap[id] = publicKeys[i]!;
+    });
+  }
+
+  const hasKeys = sortedParticipants.every(id => !!keyMap[id]);
+
+  let baseString: string;
+  if (hasKeys) {
+    const keyParts = sortedParticipants.map(id => `${id}:${keyMap[id]}`);
+    baseString = `v2:${chatId}:${keyParts.join(':')}`;
+  } else {
+    baseString = `${chatId}:${sortedParticipants.join(':')}`;
+  }
   
-  // Criar string base para hash
-  const baseString = `${chatId}:${sortedParticipants.join(':')}`;
-  
-  // Gerar hash
   const hash = await sha256(baseString);
-  
-  // Formatar como código legível (grupos de 5 dígitos)
   const displayCode = formatSecurityCode(hash);
   
   return {
@@ -48,6 +58,7 @@ export async function generateSecurityCode(
     chatId,
     participants: sortedParticipants,
     generatedAt: new Date().toISOString(),
+    includesPublicKeys: hasKeys,
   };
 }
 

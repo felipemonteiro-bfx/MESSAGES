@@ -15,15 +15,19 @@ import { type AccessMode, clearAccessMode, getCurrentAccessMode } from '@/lib/pi
 interface StealthMessagingContextType {
   isStealthMode: boolean;
   accessMode: AccessMode;
+  e2ePin: string | null;
   unlockMessaging: (mode?: AccessMode) => void;
   lockMessaging: () => void;
+  setFilePickerActive: (active: boolean) => void;
 }
 
 const StealthMessagingContext = createContext<StealthMessagingContextType>({
   isStealthMode: true,
   accessMode: 'main',
+  e2ePin: null,
   unlockMessaging: () => {},
   lockMessaging: () => {},
+  setFilePickerActive: () => {},
 });
 
 export const useStealthMessaging = () => useContext(StealthMessagingContext);
@@ -41,9 +45,16 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signup' | 'login'>('signup');
   const [showMessaging, setShowMessaging] = useState(false);
+  const e2ePinRef = useRef<string | null>(null);
+  const [e2ePin, setE2ePin] = useState<string | null>(null);
   const visibilityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const escapePressCountRef = useRef(0);
+  const filePickerActiveRef = useRef(false);
+
+  const setFilePickerActive = useCallback((active: boolean) => {
+    filePickerActiveRef.current = active;
+  }, []);
 
   // Marcar como montado no cliente
   useEffect(() => {
@@ -79,6 +90,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     setShowMessaging(false);
     setShowPinPad(false);
     setAccessMode('main');
+    e2ePinRef.current = null;
+    setE2ePin(null);
     clearAccessMode();
     localStorage.setItem('n24h_mode', 'true');
     document.title = 'Noticias24h - Brasil e Mundo';
@@ -128,6 +141,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
 
     const handleVisibilityChange = () => {
       if (document.hidden && !isStealthMode) {
+        if (filePickerActiveRef.current) return;
         if (getAutoLockOnScreenLock()) {
           lockMessaging();
           toast.info('Sistema bloqueado automaticamente', { duration: 2000 });
@@ -140,10 +154,12 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     };
 
     const handleBlur = () => {
+      if (filePickerActiveRef.current) return;
       const timeoutSeconds = getAutoLockTimeout();
       if (timeoutSeconds === 0) return;
       
       visibilityTimeoutRef.current = setTimeout(() => {
+        if (filePickerActiveRef.current) return;
         if (!document.hasFocus() && !isStealthMode) {
           lockMessaging();
           toast.info('Sistema bloqueado automaticamente', { duration: 2000 });
@@ -198,7 +214,11 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     }
   }, [supabase]);
 
-  const handlePinSuccess = useCallback((mode: AccessMode) => {
+  const handlePinSuccess = useCallback((mode: AccessMode, pin?: string) => {
+    if (pin) {
+      e2ePinRef.current = pin;
+      setE2ePin(pin);
+    }
     unlockMessaging(mode);
   }, [unlockMessaging]);
 
@@ -223,9 +243,11 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const contextValue = useMemo(() => ({
     isStealthMode,
     accessMode,
+    e2ePin,
     unlockMessaging,
     lockMessaging,
-  }), [isStealthMode, accessMode, unlockMessaging, lockMessaging]);
+    setFilePickerActive,
+  }), [isStealthMode, accessMode, e2ePin, unlockMessaging, lockMessaging, setFilePickerActive]);
 
   if (!isMounted) {
     return null;

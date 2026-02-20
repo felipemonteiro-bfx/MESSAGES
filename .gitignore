@@ -58,3 +58,13 @@ capacitor.config.json
 
 # OS
 Thumbs.db
+
+# Test artifacts
+/test-screenshots/
+/screenshot-*.png
+/test-app.mjs
+/scripts/create-test-users.mjs
+APPLY_THIS_FIX.sql
+
+# Claude worktrees
+.claude/

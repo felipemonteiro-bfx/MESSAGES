@@ -13,6 +13,8 @@ interface SecurityCodeModalProps {
   currentUserId: string;
   recipientId: string;
   recipientNickname: string;
+  currentUserPublicKey?: string | null;
+  recipientPublicKey?: string | null;
   onVerified?: () => void;
 }
 
@@ -23,6 +25,8 @@ export default function SecurityCodeModal({
   currentUserId,
   recipientId,
   recipientNickname,
+  currentUserPublicKey,
+  recipientPublicKey,
   onVerified,
 }: SecurityCodeModalProps) {
   const [securityCode, setSecurityCode] = useState<SecurityCode | null>(null);
@@ -35,7 +39,9 @@ export default function SecurityCodeModal({
   useEffect(() => {
     if (isOpen && chatId && currentUserId && recipientId) {
       setIsLoading(true);
-      generateSecurityCode(chatId, [currentUserId, recipientId])
+      const ids = [currentUserId, recipientId];
+      const keys = [currentUserPublicKey ?? null, recipientPublicKey ?? null];
+      generateSecurityCode(chatId, ids, keys)
         .then(code => {
           setSecurityCode(code);
           setIsLoading(false);
@@ -45,7 +51,7 @@ export default function SecurityCodeModal({
           setIsLoading(false);
         });
     }
-  }, [isOpen, chatId, currentUserId, recipientId]);
+  }, [isOpen, chatId, currentUserId, recipientId, currentUserPublicKey, recipientPublicKey]);
 
   const handleCopyCode = useCallback(() => {
     if (securityCode) {
@@ -245,6 +251,11 @@ export default function SecurityCodeModal({
                   </button>
                 </div>
 
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                  {securityCode.includesPublicKeys
+                    ? 'Código inclui chaves criptográficas — detecta substituições de chave (MITM).'
+                    : 'Configure E2E para incluir chaves públicas na verificação.'}
+                </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
                   Se os códigos forem iguais, a conversa está segura e livre de interceptação.
                 </p>

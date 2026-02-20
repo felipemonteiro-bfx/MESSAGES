@@ -12,11 +12,15 @@ export const nicknameSchema = z
   .regex(/^[a-z0-9_]+$/, 'Nickname deve conter apenas letras minúsculas, números e underscore')
   .toLowerCase();
 
-// Validação de PIN (exatamente 4 dígitos)
+// Validação de PIN (4-8 dígitos ou passphrase alfanumérica de 6+ caracteres)
 export const pinSchema = z
   .string()
-  .length(4, 'PIN deve ter exatamente 4 dígitos')
-  .regex(/^\d{4}$/, 'PIN deve conter apenas números');
+  .min(4, 'PIN deve ter no mínimo 4 caracteres')
+  .max(32, 'PIN deve ter no máximo 32 caracteres')
+  .refine(
+    (val) => /^\d{4,8}$/.test(val) || /^[a-zA-Z0-9!@#$%^&*]{6,32}$/.test(val),
+    'Use 4-8 dígitos numéricos ou uma passphrase de 6-32 caracteres alfanuméricos'
+  );
 
 // Validação de mensagem
 export const messageContentSchema = z

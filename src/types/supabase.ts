@@ -93,6 +93,7 @@ export interface Database {
           read_at: string | null
           expires_at: string | null
           is_ephemeral: boolean
+          is_encrypted: boolean
         }
         Insert: {
           id?: string
@@ -105,6 +106,7 @@ export interface Database {
           read_at?: string | null
           expires_at?: string | null
           is_ephemeral?: boolean
+          is_encrypted?: boolean
         }
         Update: {
           id?: string
@@ -117,6 +119,7 @@ export interface Database {
           read_at?: string | null
           expires_at?: string | null
           is_ephemeral?: boolean
+          is_encrypted?: boolean
         }
       }
       push_subscriptions: {

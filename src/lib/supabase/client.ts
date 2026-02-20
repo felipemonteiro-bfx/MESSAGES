@@ -4,5 +4,15 @@ import { env } from '@/lib/env';
 export const createClient = () =>
   createBrowserClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+        heartbeatIntervalMs: 15000,
+        reconnectAfterMs: (tries: number) =>
+          Math.min(1000 * Math.pow(2, tries), 30000),
+      },
+    }
   );

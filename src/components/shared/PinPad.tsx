@@ -28,7 +28,7 @@ import {
 } from '@/lib/biometric';
 
 interface PinPadProps {
-  onSuccess: (mode: AccessMode) => void;
+  onSuccess: (mode: AccessMode, pin?: string) => void;
   onClose: () => void;
 }
 
@@ -137,7 +137,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
             clearFailedAttempts();
             notificationSuccess();
             toast.success('PIN configurado com sucesso!');
-            onSuccess('main');
+            onSuccess('main', enteredPin);
           } else {
             setError(true);
             notificationError();
@@ -160,7 +160,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           if (mode) {
             clearFailedAttempts();
             notificationSuccess();
-            onSuccess(mode);
+            onSuccess(mode, enteredPin);
           } else {
             setError(true);
             notificationError();
@@ -173,7 +173,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           if (isValid) {
             clearFailedAttempts();
             notificationSuccess();
-            onSuccess('main');
+            onSuccess('main', enteredPin);
           } else {
             setError(true);
             notificationError();
@@ -188,12 +188,22 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
   }, [isFirstTime, step, confirmPin, onSuccess]);
 
   useEffect(() => {
-    if (pin.length !== 4 || locked || isVerifying) return;
-    handlePinComplete(pin);
+    if (pin.length < 4 || pin.length > 8 || locked || isVerifying) return;
+    if (/^\d+$/.test(pin) && pin.length >= 4) {
+      const timer = setTimeout(() => {
+        if (pin.length >= 4) handlePinComplete(pin);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
   }, [pin, locked, isVerifying, handlePinComplete]);
 
+  const handleSubmitPin = () => {
+    if (pin.length < 4 || locked || isVerifying) return;
+    handlePinComplete(pin);
+  };
+
   const handleDigit = (digit: string) => {
-    if (locked || pin.length >= 4 || isVerifying) return;
+    if (locked || pin.length >= 32 || isVerifying) return;
     setPin(prev => prev + digit);
     setError(false);
     selectionChanged();
@@ -263,7 +273,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
           <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">
             Configure seu PIN de Segurança
           </p>
-          <p className="text-xs text-gray-400 mt-2">Escolha um PIN de 4 dígitos para proteger suas mensagens</p>
+          <p className="text-xs text-gray-400 mt-2">Escolha um PIN de 4-8 dígitos para proteger suas mensagens</p>
         </>
       );
     }
@@ -341,11 +351,11 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
         </div>
 
         {/* PIN Display */}
-        <div className="flex justify-center gap-4 mb-8" role="status" aria-label={`${pin.length} de 4 dígitos inseridos`}>
-          {[0, 1, 2, 3].map((i) => (
+        <div className="flex justify-center gap-2 mb-8 flex-wrap max-w-[200px] mx-auto" role="status" aria-label={`${pin.length} dígitos inseridos`}>
+          {Array.from({ length: Math.max(pin.length, 4) }, (_, i) => (
             <div
               key={i}
-              className={`w-4 h-4 rounded-full transition-all duration-200 ${
+              className={`w-3 h-3 rounded-full transition-all duration-200 ${
                 i < pin.length
                   ? error ? 'bg-red-500 scale-125' : 'bg-emerald-500 scale-110'
                   : 'bg-gray-700'
@@ -398,6 +408,15 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
             <Delete className="w-7 h-7 sm:w-8 sm:h-8" />
           </button>
         </div>
+
+        {pin.length >= 4 && !locked && !isVerifying && (
+          <button
+            onClick={handleSubmitPin}
+            className="w-full py-3 mb-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold transition-colors active:scale-95"
+          >
+            Confirmar
+          </button>
+        )}
 
         <div className="text-center space-y-2">
           {getStatusText()}

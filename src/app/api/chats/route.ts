@@ -63,12 +63,12 @@ export async function GET(request: NextRequest) {
 
     // 4. Get profiles for other participants
     const otherUserIds = [...new Set((allParticipants || []).map(p => p.user_id))];
-    let profilesMap: Record<string, { id: string; nickname: string; avatar_url: string | null }> = {};
+    let profilesMap: Record<string, { id: string; nickname: string; avatar_url: string | null; public_key: string | null }> = {};
 
     if (otherUserIds.length > 0) {
       const { data: profiles, error: profilesError } = await getSupabaseAdmin()
         .from('profiles')
-        .select('id, nickname, avatar_url')
+        .select('id, nickname, avatar_url, public_key')
         .in('id', otherUserIds);
 
       if (!profilesError && profiles) {
@@ -125,6 +125,7 @@ export async function GET(request: NextRequest) {
           id: otherProfile.id,
           nickname: otherProfile.nickname,
           avatar_url: otherProfile.avatar_url || '',
+          public_key: otherProfile.public_key || null,
         } : undefined,
         lastMessage: lastMsg?.content || undefined,
         time: lastMsg?.created_at || undefined,

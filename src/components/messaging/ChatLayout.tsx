@@ -27,6 +27,7 @@ import { isIncognitoMode, clearIncognitoData } from '@/lib/settings';
 import { type AccessMode } from '@/lib/pin';
 import { impactLight, impactMedium, notificationSuccess, panicVibrate } from '@/lib/haptics';
 import SwipeableMessage from '@/components/messaging/SwipeableMessage';
+import { useEncryption } from '@/hooks/useEncryption';
 
 interface ChatLayoutProps {
   accessMode?: AccessMode;
@@ -142,7 +143,7 @@ function SwipeableChatItem({
 }
 
 export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
-  const { lockMessaging } = useStealthMessaging();
+  const { lockMessaging, setFilePickerActive, e2ePin } = useStealthMessaging();
   const [chats, setChats] = useState<ChatWithRecipient[]>([]);
   const [selectedChat, setSelectedChat] = useState<ChatWithRecipient | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -204,8 +205,22 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const chatListScrollRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const activeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Memoizar cliente Supabase para evitar re-criação a cada render
   const supabase = useMemo(() => createClient(), []);
+
+  const {
+    e2eEnabled,
+    initializeKeys,
+    getRecipientPublicKey,
+    encrypt,
+    decrypt,
+    sign,
+    clearCache: clearEncryptionCache,
+  } = useEncryption({ userId: currentUser?.id ?? null, pin: e2ePin });
+
+  const [decryptedMessages, setDecryptedMessages] = useState<Record<string, string>>({});
+  const [currentUserPublicKey, setCurrentUserPublicKey] = useState<string | null>(null);
 
   const fetchChats = useCallback(async (_userId: string) => {
     try {
@@ -333,6 +348,17 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
         
         await fetchChats(user.id);
+
+        if (e2ePin) {
+          await initializeKeys();
+          try {
+            const res = await fetch('/api/profile/public-key');
+            if (res.ok) {
+              const { publicKey } = await res.json();
+              if (publicKey) setCurrentUserPublicKey(publicKey);
+            }
+          } catch { /* ignore */ }
+        }
         
         // Sugestão 15: Sincronizar mensagens pendentes ao inicializar (via API)
         try {
@@ -356,7 +382,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
     };
     init();
-  }, [supabase, fetchChats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, fetchChats, e2ePin]);
 
   // Atualizar lista de chats quando uma nova mensagem chegar
   // Debounced: evita refetch a cada mensagem individual em sequência rápida
@@ -422,12 +449,12 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   useEffect(() => {
     if (selectedChat && currentUser) {
-      // Sugestão 15: Reset paginação ao mudar de chat
       setMessagesPage(1);
       setHasMoreMessages(true);
+      setDecryptedMessages({});
+      clearEncryptionCache();
       fetchMessages(selectedChat.id, 1, false);
       
-      // Sugestão 3: Limpar mensagens se modo incógnito estiver ativo ao fechar chat anterior
       return () => {
         if (isIncognitoMode()) {
           setMessages([]);
@@ -435,12 +462,32 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
       };
     }
-  }, [selectedChat?.id, currentUser?.id, fetchMessages]);
+  }, [selectedChat?.id, currentUser?.id, fetchMessages, clearEncryptionCache]);
+
+  useEffect(() => {
+    if (!e2ePin || !currentUser) return;
+    const encryptedMsgs = messages.filter(m => m.is_encrypted && !decryptedMessages[m.id]);
+    if (encryptedMsgs.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const results: Record<string, string> = {};
+      for (const msg of encryptedMsgs) {
+        if (cancelled) break;
+        const plaintext = await decrypt(msg.content, msg.id);
+        if (plaintext) results[msg.id] = plaintext;
+      }
+      if (!cancelled && Object.keys(results).length > 0) {
+        setDecryptedMessages(prev => ({ ...prev, ...results }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [messages, e2ePin, currentUser, decrypt, decryptedMessages]);
 
   useEffect(() => {
     if (selectedChat && currentUser) {
       let reconnectAttempts = 0;
-      const maxReconnectAttempts = 5;
+      const maxReconnectAttempts = 10;
       let reconnectTimeout: NodeJS.Timeout | null = null;
       
       const setupChannel = () => {
@@ -466,13 +513,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             
             if (newMessage.sender_id !== currentUser?.id && !mutedChats.has(selectedChat.id)) {
               const senderName = selectedChat?.recipient?.nickname || 'Alguém';
-              const preview = typeof newMessage.content === 'string'
-                ? (newMessage.content.length > 50 ? newMessage.content.slice(0, 50) + '…' : newMessage.content)
-                : (newMessage.media_type === 'image' ? '📷 Imagem' : newMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio');
+              const preview = newMessage.is_encrypted
+                ? 'Mensagem criptografada'
+                : typeof newMessage.content === 'string'
+                  ? (newMessage.content.length > 50 ? newMessage.content.slice(0, 50) + '…' : newMessage.content)
+                  : (newMessage.media_type === 'image' ? '📷 Imagem' : newMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio');
               toast.info(`Nova mensagem de ${senderName}`, {
                 description: preview,
                 duration: 4000,
-                icon: '💬',
+                icon: newMessage.is_encrypted ? '🔒' : '💬',
               });
             }
             setMessages(prev => [...prev, newMessage]);
@@ -554,6 +603,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       };
 
       const channel = setupChannel();
+      activeChannelRef.current = channel;
       
       const presenceIntervalId = setInterval(() => {
         channel.track({
@@ -566,11 +616,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           fetchMessages(selectedChat.id, 1, false, true);
-          channel.track({
-            userId: currentUser.id,
-            online: true,
-            lastSeen: new Date().toISOString()
-          });
+          const state = channel.state;
+          if (state === 'closed' || state === 'errored') {
+            logger.info('Canal detectado como inativo ao retornar, reconectando...', { state });
+            supabase.removeChannel(channel);
+            setupChannel();
+          } else {
+            channel.track({
+              userId: currentUser.id,
+              online: true,
+              lastSeen: new Date().toISOString()
+            });
+          }
         }
       };
       
@@ -580,6 +637,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         if (presenceIntervalId) clearInterval(presenceIntervalId);
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
+        activeChannelRef.current = null;
         channel.untrack();
         supabase.removeChannel(channel);
       };
@@ -707,15 +765,22 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
 
       // Enviar mensagem com mídia via API
+      const mediaMsgBody: Record<string, unknown> = {
+        chatId: selectedChat.id,
+        content: type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio',
+        mediaUrl: publicUrl,
+        mediaType: type,
+      };
+      if (isViewOnceMode) mediaMsgBody.isViewOnce = true;
+      if (showEphemeralOption && ephemeralSeconds > 0) {
+        mediaMsgBody.expiresAt = new Date(Date.now() + ephemeralSeconds * 1000).toISOString();
+        mediaMsgBody.isEphemeral = true;
+      }
+
       const msgResponse = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId: selectedChat.id,
-          content: type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio',
-          mediaUrl: publicUrl,
-          mediaType: type,
-        }),
+        body: JSON.stringify(mediaMsgBody),
       });
 
       if (!msgResponse.ok) {
@@ -743,7 +808,9 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
 
       await fetchChats(currentUser.id);
-      toast.success(type === 'video' ? 'Vídeo enviado com sucesso!' : 'Mídia enviada com sucesso!', { duration: 2000 });
+      const viewOnceLabel = isViewOnceMode ? ' (ver uma vez)' : '';
+      toast.success(type === 'video' ? `Vídeo enviado${viewOnceLabel}!` : `Mídia enviada${viewOnceLabel}!`, { duration: 2000 });
+      setIsViewOnceMode(false);
     } catch (error) {
       const appError = normalizeError(error);
       logError(appError);
@@ -754,15 +821,24 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       setShowMediaMenu(false);
       setUploadProgress(null);
     }
-  }, [selectedChat, currentUser, supabase, fetchChats]);
+  }, [selectedChat, currentUser, supabase, fetchChats, isViewOnceMode, showEphemeralOption, ephemeralSeconds]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'audio') => {
+    setFilePickerActive(false);
     const files = e.target.files;
     if (!files?.length) return;
     const list = Array.from(files);
     list.forEach((file) => handleMediaUpload(file, type));
     if (e.target) e.target.value = '';
-  }, [handleMediaUpload]);
+  }, [handleMediaUpload, setFilePickerActive]);
+
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      setTimeout(() => setFilePickerActive(false), 500);
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    return () => window.removeEventListener('focus', handleWindowFocus);
+  }, [setFilePickerActive]);
 
   const startAudioRecording = useCallback(async () => {
     try {
@@ -807,15 +883,16 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     
     if (!selectedChat || !currentUser) return;
     
-    // Enviar evento de digitação
     if (!isTyping) {
       setIsTyping(true);
-      const channel = supabase.channel(`chat:${selectedChat.id}`);
-      channel.send({
-        type: 'broadcast',
-        event: 'typing',
-        payload: { userId: currentUser.id }
-      });
+      const ch = activeChannelRef.current;
+      if (ch) {
+        ch.send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: { userId: currentUser.id }
+        });
+      }
     }
     
     // Reset timeout
@@ -871,17 +948,53 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       ? new Date(Date.now() + ephemeralSeconds * 1000).toISOString()
       : null;
     
-    // Sugestão 15: Tentar enviar mensagem via API, se falhar adicionar à fila de sync
     let messageSent = false;
     try {
+      let contentToSend = messageContent;
+      let isEncrypted = false;
+      let messageSignature: string | null = null;
+
+      const resolveEncryptionKey = (raw: string | null | undefined): string | null => {
+        if (!raw) return null;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.version === 2) return parsed.encryption || null;
+        } catch { /* v1 format */ }
+        return raw;
+      };
+
+      if (e2eEnabled && selectedChat.recipient?.public_key) {
+        const encKey = resolveEncryptionKey(selectedChat.recipient.public_key);
+        if (encKey) {
+          const encrypted = await encrypt(messageContent, encKey);
+          if (encrypted) {
+            contentToSend = encrypted;
+            isEncrypted = true;
+            messageSignature = await sign(encrypted);
+          }
+        }
+      } else if (e2eEnabled && selectedChat.recipient?.id) {
+        const pubKey = await getRecipientPublicKey(selectedChat.recipient.id);
+        if (pubKey) {
+          const encrypted = await encrypt(messageContent, pubKey);
+          if (encrypted) {
+            contentToSend = encrypted;
+            isEncrypted = true;
+            messageSignature = await sign(encrypted);
+          }
+        }
+      }
+
       const msgBody: Record<string, unknown> = {
         chatId: selectedChat.id,
-        content: messageContent,
+        content: contentToSend,
       };
       if (expiresAt) msgBody.expiresAt = expiresAt;
       if (showEphemeralOption && ephemeralSeconds > 0) msgBody.isEphemeral = true;
       if (replyingTo?.id) msgBody.replyToId = replyingTo.id;
       if (isViewOnceMode) msgBody.isViewOnce = true;
+      if (isEncrypted) msgBody.isEncrypted = true;
+      if (messageSignature) msgBody.signature = messageSignature;
       
       const response = await fetch('/api/messages', {
         method: 'POST',
@@ -895,8 +1008,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         throw new Error(responseData.error || `HTTP ${response.status}`);
       }
       
-      // Atualização otimista: adicionar mensagem à lista imediatamente
       if (responseData.message) {
+        if (isEncrypted && responseData.message.id) {
+          setDecryptedMessages(prev => ({ ...prev, [responseData.message.id]: messageContent }));
+        }
         setMessages(prev => [...prev, responseData.message]);
         setReplyingTo(null);
       }
@@ -971,7 +1086,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, fetchMessages]);
+  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, fetchMessages, e2eEnabled, encrypt, getRecipientPublicKey, sign]);
 
   const canEditMessage = useCallback((msg: Message) => {
     if (!currentUser || msg.sender_id !== currentUser.id) return false;
@@ -1134,9 +1249,9 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   const handleViewOnceMessage = useCallback(async (msg: Message) => {
     if (!msg.is_view_once || msg.viewed_at || msg.sender_id === currentUser?.id) return;
-    
+
     setViewOnceMessageId(msg.id);
-    
+
     try {
       const response = await fetch('/api/messages/view', {
         method: 'POST',
@@ -1145,12 +1260,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       });
 
       if (response.ok) {
-        setMessages(prev => prev.map(m => 
-          m.id === msg.id ? { ...m, viewed_at: new Date().toISOString() } : m
-        ));
+        setTimeout(() => {
+          setViewOnceMessageId(null);
+          setMessages(prev => prev.map(m =>
+            m.id === msg.id ? { ...m, viewed_at: new Date().toISOString() } : m
+          ));
+        }, 10000);
+      } else {
+        setViewOnceMessageId(null);
       }
     } catch (error) {
       console.error('Error marking view-once as viewed:', error);
+      setViewOnceMessageId(null);
     }
   }, [currentUser]);
 
@@ -1287,7 +1408,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
       if (messageSearchQuery.trim()) {
         const q = messageSearchQuery.toLowerCase();
-        return (msg.content?.toLowerCase().includes(q) ?? false);
+        const displayContent = msg.is_encrypted ? (decryptedMessages[msg.id] || '') : (msg.content || '');
+        return displayContent.toLowerCase().includes(q);
       }
       return true;
     });
@@ -1309,14 +1431,23 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       if (index === 0 && messagesWithLoadMore) return 48;
       const msgIndex = messagesWithLoadMore ? index - 1 : index;
       const msg = filteredMessages[msgIndex];
-      if (msg?.media_url) {
-        if (msg.media_type === 'video') return 280;
-        if (msg.media_type === 'image') return 250;
-        if (msg.media_type === 'audio') return 120;
+      if (!msg) return 96;
+      
+      let height = 72;
+      if (msg.media_url) {
+        if (msg.media_type === 'video') height += 220;
+        else if (msg.media_type === 'image') height += 200;
+        else if (msg.media_type === 'audio') height += 80;
       }
-      return 96;
+      const contentLen = msg.content?.length || 0;
+      height += Math.ceil(contentLen / 40) * 20;
+      if (msg.reply_to_id) height += 48;
+      return Math.max(height, 80);
     },
     overscan: 10,
+    measureElement: typeof window !== 'undefined'
+      ? (element: Element) => element?.getBoundingClientRect().height ?? undefined
+      : undefined,
   });
   
   const handleMediaLoad = useCallback(() => {
@@ -1667,11 +1798,11 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       >
         {selectedChat ? (
           <>
-            <header className="p-3 border-b border-gray-200 dark:border-[#17212b] flex flex-col gap-2 bg-white dark:bg-[#17212b] z-10">
-              <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button className="md:hidden p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors" onClick={() => setIsSidebarOpen(true)}><ArrowLeft className="w-5 h-5" /></button>
-                <div className="relative">
+            <header className="shrink-0 relative p-3 border-b border-gray-200 dark:border-[#17212b] flex flex-col gap-2 bg-white dark:bg-[#17212b] z-20">
+              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <button className="md:hidden p-2 shrink-0 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors" onClick={() => setIsSidebarOpen(true)}><ArrowLeft className="w-5 h-5" /></button>
+                <div className="relative shrink-0">
                   <img 
                     src={selectedChat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
                     alt={selectedChat.recipient?.nickname || 'Avatar'} 
@@ -1679,7 +1810,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     loading="lazy"
                     onLoad={async (e) => {
                       e.currentTarget.classList.add('loaded');
-                      // Sugestão 13: Cachear avatar
                       const imgSrc = e.currentTarget.src;
                       if (imgSrc && imgSrc.startsWith('http')) {
                         try {
@@ -1690,14 +1820,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       }
                     }}
                   />
-                  {/* Sugestão 7: Indicador de status online no header */}
                   {selectedChat.recipient && onlineUsers.has(selectedChat.recipient.id) && (
                     <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0e1621] rounded-full"></span>
                   )}
                 </div>
-                <div>
-                  <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-white">
-                    Discussão • {selectedChat.recipient?.nickname || selectedChat.name || 'Tópico'}
+                <div className="min-w-0">
+                  <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-white truncate">
+                    {selectedChat.recipient?.nickname || selectedChat.name || 'Tópico'}
                   </h2>
                   <div className="text-[11px] text-gray-500 dark:text-[#4c94d5] flex items-center gap-1">
                     {/* Sugestão 7: Status Online/Offline melhorado */}
@@ -1720,8 +1849,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {/* Verificar identidade */}
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => setShowSecurityCode(true)}
                   className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
@@ -1846,20 +1974,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     )}
                   </div>
                 )}
-                {selectedChat.recipient && (
-                  <button
-                    onClick={() => {
-                      setEditingUserId(selectedChat.recipient!.id);
-                      setEditingNickname(selectedChat.recipient!.nickname);
-                      setShowEditNicknameModal(true);
-                    }}
-                    className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                    title="Editar nickname"
-                    aria-label="Editar nickname"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                )}
               </div>
               </div>
               {/* Sugestão 9: Busca em mensagens */}
@@ -1885,7 +1999,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             </header>
             <div
               ref={messagesScrollRef}
-              className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative smooth-scroll"
+              className="flex-1 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll"
               data-stealth-content="true"
               data-sensitive="true"
               // Sugestão 23: Drag & drop de arquivos
@@ -2024,6 +2138,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         return (
                           <div
                             key="load-more"
+                            ref={messagesVirtualizer.measureElement}
+                            data-index={virtualRow.index}
                             style={{
                               position: 'absolute',
                               top: 0,
@@ -2052,6 +2168,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       return (
                     <div
                       key={msg.id}
+                      ref={messagesVirtualizer.measureElement}
+                      data-index={virtualRow.index}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -2129,7 +2247,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               <Trash2 className="w-3 h-3" />
                               Esta mensagem foi apagada
                             </div>
-                          ) : msg.is_view_once && msg.sender_id !== currentUser?.id && !msg.viewed_at ? (
+                          ) : msg.is_view_once && msg.sender_id !== currentUser?.id && !msg.viewed_at && viewOnceMessageId !== msg.id ? (
                             <button
                               onClick={() => handleViewOnceMessage(msg)}
                               className="flex items-center gap-2 px-4 py-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
@@ -2142,6 +2260,25 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                 <span className="block text-xs opacity-75">Toque para visualizar</span>
                               </div>
                             </button>
+                          ) : msg.is_view_once && viewOnceMessageId === msg.id ? (
+                            <div className="relative">
+                              <div className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-orange-500 text-white text-[9px] rounded-full font-bold animate-pulse">
+                                Desaparece em 10s
+                              </div>
+                              {msg.media_url ? (
+                                msg.media_type === 'image' ? (
+                                  <img src={msg.media_url} alt="Imagem" className="max-h-[200px] rounded-lg object-contain" />
+                                ) : msg.media_type === 'video' ? (
+                                  <video src={msg.media_url} controls className="max-h-[220px] rounded-lg" />
+                                ) : msg.media_type === 'audio' ? (
+                                  <audio src={msg.media_url} controls className="w-full" />
+                                ) : null
+                              ) : (
+                                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words text-gray-800 dark:text-white">
+                                  {msg.content}
+                                </div>
+                              )}
+                            </div>
                           ) : msg.is_view_once && msg.viewed_at && msg.sender_id !== currentUser?.id ? (
                             <div className="text-sm italic text-gray-500 dark:text-gray-400 flex items-center gap-1">
                               <span className="w-4 h-4 rounded-full bg-gray-400 flex items-center justify-center text-white text-[10px]">1</span>
@@ -2154,7 +2291,23 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                   <span className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center text-white text-[8px]">1</span>
                                 </span>
                               )}
-                              {msg.content}
+                              {msg.is_encrypted ? (
+                                decryptedMessages[msg.id] ? (
+                                  <span>{decryptedMessages[msg.id]}</span>
+                                ) : (
+                                  <span className="italic text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                                    <Shield className="w-3 h-3" />
+                                    Descriptografando...
+                                  </span>
+                                )
+                              ) : (
+                                msg.content
+                              )}
+                              {msg.is_encrypted && decryptedMessages[msg.id] && (
+                                <span className="inline-flex items-center ml-1" aria-label="Criptografada ponta a ponta">
+                                  <Shield className="w-3 h-3 text-green-500" />
+                                </span>
+                              )}
                               {msg.edited_at && (
                                 <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500 italic">
                                   (editado)
@@ -2238,7 +2391,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                   <>
                                     <button
                                       onClick={() => {
-                                        const t = (msg.content || '').trim() || (msg.media_type ? `[${msg.media_type}]` : '');
+                                        const displayContent = msg.is_encrypted ? (decryptedMessages[msg.id] || msg.content) : msg.content;
+                                        const t = (displayContent || '').trim() || (msg.media_type ? `[${msg.media_type}]` : '');
                                         navigator.clipboard?.writeText(t).then(() => { toast.success('Copiado'); setMessageMenuId(null); });
                                       }}
                                       className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
@@ -2263,7 +2417,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                   <button
                                     onClick={() => {
                                       setEditingMessage(msg);
-                                      setEditContent(msg.content);
+                                      setEditContent(msg.is_encrypted ? (decryptedMessages[msg.id] || msg.content) : msg.content);
                                       setMessageMenuId(null);
                                     }}
                                     className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
@@ -2309,14 +2463,14 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       className="mb-2 flex gap-2 p-2 bg-[#242f3d] rounded-xl"
                     >
                       <button
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => { setFilePickerActive(true); fileInputRef.current?.click(); }}
                         className="flex-1 flex flex-col items-center gap-2 p-3 bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors"
                       >
                         <Camera className="w-5 h-5 text-[#4c94d5]" />
                         <span className="text-xs text-white">Foto</span>
                       </button>
                       <button
-                        onClick={() => videoInputRef.current?.click()}
+                        onClick={() => { setFilePickerActive(true); videoInputRef.current?.click(); }}
                         className="flex-1 flex flex-col items-center gap-2 p-3 bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors"
                       >
                         <FileVideo className="w-5 h-5 text-[#4c94d5]" />
@@ -2806,6 +2960,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           currentUserId={currentUser.id}
           recipientId={selectedChat.recipient.id}
           recipientNickname={selectedChat.recipient.nickname || 'Usuário'}
+          currentUserPublicKey={currentUserPublicKey}
+          recipientPublicKey={selectedChat.recipient.public_key}
           onVerified={() => toast.success('Identidade verificada com sucesso!')}
         />
       )}
