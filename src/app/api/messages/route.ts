@@ -110,15 +110,34 @@ export async function POST(request: NextRequest) {
     if (isEphemeral === true) insertData.is_ephemeral = true;
     if (signature && typeof signature === 'string') insertData.signature = signature;
 
-    const { data: message, error: msgError } = await getSupabaseAdmin()
+    let message;
+    const { data: msg1, error: msgError } = await getSupabaseAdmin()
       .from('messages')
       .insert(insertData)
       .select('*')
       .single();
 
     if (msgError) {
-      console.error('Error sending message:', msgError);
-      return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+      // Retry without signature column if it doesn't exist yet
+      if (msgError.message?.includes('signature') && insertData.signature) {
+        const fallbackData = { ...insertData };
+        delete fallbackData.signature;
+        const { data: msg2, error: retryErr } = await getSupabaseAdmin()
+          .from('messages')
+          .insert(fallbackData)
+          .select('*')
+          .single();
+        if (retryErr) {
+          console.error('Error sending message:', retryErr);
+          return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+        }
+        message = msg2;
+      } else {
+        console.error('Error sending message:', msgError);
+        return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+      }
+    } else {
+      message = msg1;
     }
 
     return NextResponse.json({ message });
