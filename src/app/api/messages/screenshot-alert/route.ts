@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+function getSupabaseAdmin() {
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
 
 /**
  * POST - Notifica que um screenshot foi detectado em uma conversa
