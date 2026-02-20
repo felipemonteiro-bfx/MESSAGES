@@ -111,6 +111,49 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* iOS zoom prevention - garante 16px em inputs para evitar auto-zoom */
+@supports (-webkit-touch-callout: none) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* Mobile-first input optimizations */
+input,
+textarea,
+select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Altura mínima para botões e inputs (Apple HIG: 44px) */
+button,
+[role="button"],
+input[type="submit"],
+input[type="button"] {
+  min-height: 44px;
+}
+
+/* Scroll suave para mobile */
+.smooth-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Prevenir scroll horizontal acidental */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+/* Auto-scroll quando input recebe foco (ajuda com teclado virtual) */
+input:focus,
+textarea:focus {
+  scroll-margin-bottom: 100px;
+}
+
 /* Hide scrollbar but keep functionality */
 .hide-scrollbar {
   -ms-overflow-style: none;

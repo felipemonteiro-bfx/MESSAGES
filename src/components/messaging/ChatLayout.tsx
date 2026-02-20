@@ -192,6 +192,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const [screenshotAlertVariant, setScreenshotAlertVariant] = useState<'detected' | 'received'>('detected');
   const [screenshotProtectionActive, setScreenshotProtectionActive] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ type: string; progress: number } | null>(null);
   const longPressRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -436,109 +437,122 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   useEffect(() => {
     if (selectedChat && currentUser) {
-      // Sugestão 8: Indicador digitando e status online
-      const channel = supabase
-        .channel(`chat:${selectedChat.id}`)
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages',
-          filter: `chat_id=eq.${selectedChat.id}` 
-        }, payload => {
-          const newMessage = payload.new as Message & { type?: string; metadata?: { type?: string } };
-          
-          // Verificar se é uma notificação de screenshot
-          if (newMessage.type === 'system' && newMessage.metadata?.type === 'screenshot_alert') {
-            if (newMessage.sender_id !== currentUser?.id) {
-              // Alguém tirou screenshot desta conversa
-              const senderName = selectedChat?.recipient?.nickname || 'Alguém';
-              setScreenshotAlertVariant('received');
-              setScreenshotAlertMessage(`${senderName} pode ter tirado uma captura de tela desta conversa.`);
-              setScreenshotAlertVisible(true);
-            }
-            // Não adicionar mensagens de sistema de screenshot na lista de mensagens visíveis
-            return;
-          }
-          
-          // Sugestão 12: Notificação apenas se conversa não estiver silenciada
-          if (newMessage.sender_id !== currentUser?.id && !mutedChats.has(selectedChat.id)) {
-            const senderName = selectedChat?.recipient?.nickname || 'Alguém';
-            const preview = typeof newMessage.content === 'string'
-              ? (newMessage.content.length > 50 ? newMessage.content.slice(0, 50) + '…' : newMessage.content)
-              : (newMessage.media_type === 'image' ? '📷 Imagem' : newMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio');
-            toast.info(`Nova mensagem de ${senderName}`, {
-              description: preview,
-              duration: 4000,
-              icon: '💬',
-            });
-          }
-          setMessages(prev => [...prev, newMessage]);
-          
-          // Sugestão 4: Remover mensagens efêmeras expiradas
-          if (newMessage.expires_at) {
-            const expiresAt = new Date(newMessage.expires_at);
-            const now = new Date();
-            if (expiresAt <= now) {
-              // Mensagem já expirada, não adicionar
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      let reconnectTimeout: NodeJS.Timeout | null = null;
+      
+      const setupChannel = () => {
+        const channel = supabase
+          .channel(`chat:${selectedChat.id}`)
+          .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'messages',
+            filter: `chat_id=eq.${selectedChat.id}` 
+          }, payload => {
+            const newMessage = payload.new as Message & { type?: string; metadata?: { type?: string } };
+            
+            if (newMessage.type === 'system' && newMessage.metadata?.type === 'screenshot_alert') {
+              if (newMessage.sender_id !== currentUser?.id) {
+                const senderName = selectedChat?.recipient?.nickname || 'Alguém';
+                setScreenshotAlertVariant('received');
+                setScreenshotAlertMessage(`${senderName} pode ter tirado uma captura de tela desta conversa.`);
+                setScreenshotAlertVisible(true);
+              }
               return;
             }
-            // Agendar remoção quando expirar
-            const timeout = expiresAt.getTime() - now.getTime();
-            setTimeout(() => {
-              setMessages(prev => prev.filter(m => m.id !== newMessage.id));
-            }, timeout);
-          }
-        })
-        // Sugestão 8: Escutar eventos de digitação
-        .on('broadcast', { event: 'typing' }, (payload) => {
-          if (payload.payload.userId !== currentUser.id) {
-            setOtherUserTyping(payload.payload.userId);
-            setTimeout(() => setOtherUserTyping(null), 3000);
-          }
-        })
-        // Sugestão 7: Escutar status online melhorado
-        .on('presence', { event: 'sync' }, () => {
-          const presenceState = channel.presenceState();
-          const online = new Set<string>();
-          Object.values(presenceState).forEach((presences: any[]) => {
-            presences.forEach((presence: any) => {
-              if (presence.userId && presence.online !== false) {
-                online.add(presence.userId);
-              }
-            });
-          });
-          setOnlineUsers(online);
-        })
-        .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-          // Usuário ficou online
-          newPresences.forEach((presence: any) => {
-            if (presence.userId) {
-              setOnlineUsers(prev => new Set(prev).add(presence.userId));
-            }
-          });
-        })
-        .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-          // Usuário ficou offline
-          leftPresences.forEach((presence: any) => {
-            if (presence.userId) {
-              setOnlineUsers(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(presence.userId);
-                return newSet;
+            
+            if (newMessage.sender_id !== currentUser?.id && !mutedChats.has(selectedChat.id)) {
+              const senderName = selectedChat?.recipient?.nickname || 'Alguém';
+              const preview = typeof newMessage.content === 'string'
+                ? (newMessage.content.length > 50 ? newMessage.content.slice(0, 50) + '…' : newMessage.content)
+                : (newMessage.media_type === 'image' ? '📷 Imagem' : newMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio');
+              toast.info(`Nova mensagem de ${senderName}`, {
+                description: preview,
+                duration: 4000,
+                icon: '💬',
               });
             }
+            setMessages(prev => [...prev, newMessage]);
+            
+            if (newMessage.expires_at) {
+              const expiresAt = new Date(newMessage.expires_at);
+              const now = new Date();
+              if (expiresAt <= now) return;
+              const timeout = expiresAt.getTime() - now.getTime();
+              setTimeout(() => {
+                setMessages(prev => prev.filter(m => m.id !== newMessage.id));
+              }, timeout);
+            }
+          })
+          .on('broadcast', { event: 'typing' }, (payload) => {
+            if (payload.payload.userId !== currentUser.id) {
+              setOtherUserTyping(payload.payload.userId);
+              setTimeout(() => setOtherUserTyping(null), 3000);
+            }
+          })
+          .on('presence', { event: 'sync' }, () => {
+            const presenceState = channel.presenceState();
+            const online = new Set<string>();
+            Object.values(presenceState).forEach((presences: any[]) => {
+              presences.forEach((presence: any) => {
+                if (presence.userId && presence.online !== false) {
+                  online.add(presence.userId);
+                }
+              });
+            });
+            setOnlineUsers(online);
+          })
+          .on('presence', { event: 'join' }, ({ newPresences }) => {
+            newPresences.forEach((presence: any) => {
+              if (presence.userId) {
+                setOnlineUsers(prev => new Set(prev).add(presence.userId));
+              }
+            });
+          })
+          .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+            leftPresences.forEach((presence: any) => {
+              if (presence.userId) {
+                setOnlineUsers(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(presence.userId);
+                  return newSet;
+                });
+              }
+            });
+          })
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              reconnectAttempts = 0;
+              channel.track({
+                userId: currentUser.id,
+                online: true,
+                lastSeen: new Date().toISOString()
+              });
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              logger.warn('Canal realtime desconectado', { status, chatId: selectedChat.id });
+              if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                reconnectTimeout = setTimeout(() => {
+                  logger.info('Tentando reconectar canal...', { attempt: reconnectAttempts });
+                  supabase.removeChannel(channel);
+                  setupChannel();
+                }, delay);
+              } else {
+                toast.error('Conexão perdida. Atualize a página para reconectar.', {
+                  duration: 10000,
+                  action: { label: 'Atualizar', onClick: () => window.location.reload() }
+                });
+              }
+            }
           });
-        })
-        .subscribe();
 
-      // Sugestão 7: Enviar presença online periodicamente
-      channel.track({
-        userId: currentUser.id,
-        online: true,
-        lastSeen: new Date().toISOString()
-      });
+        return channel;
+      };
+
+      const channel = setupChannel();
       
-      // Atualizar presença a cada 30 segundos
       const presenceIntervalId = setInterval(() => {
         channel.track({
           userId: currentUser.id,
@@ -546,14 +560,29 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           lastSeen: new Date().toISOString()
         });
       }, 30000);
+      
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          fetchMessages(selectedChat.id, 1, false, true);
+          channel.track({
+            userId: currentUser.id,
+            online: true,
+            lastSeen: new Date().toISOString()
+          });
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
         if (presenceIntervalId) clearInterval(presenceIntervalId);
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
         channel.untrack();
         supabase.removeChannel(channel);
       };
     }
-  }, [selectedChat, supabase, currentUser, mutedChats]);
+  }, [selectedChat, supabase, currentUser, mutedChats, fetchMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -564,6 +593,24 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   }, [messages]);
 
   const handleMediaUpload = useCallback(async (file: File, type: 'image' | 'video' | 'audio') => {
+    // Limites de tamanho por tipo
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+    const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+    const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // 25MB
+    
+    // Validar tamanho do arquivo
+    const maxSize = type === 'video' ? MAX_VIDEO_SIZE : type === 'audio' ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
+    const maxSizeMB = maxSize / (1024 * 1024);
+    
+    if (file.size > maxSize) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      const typeNames = { image: 'Imagens', video: 'Vídeos', audio: 'Áudios' };
+      toast.error(`Arquivo muito grande (${fileSizeMB}MB). ${typeNames[type]} devem ter no máximo ${maxSizeMB}MB.`, {
+        duration: 5000,
+      });
+      return;
+    }
+    
     // Sugestão 14: Otimizar imagem antes de upload
     let fileToUpload = file;
     if (type === 'image') {
@@ -576,7 +623,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         });
       } catch (error) {
         logger.warn('Erro ao otimizar imagem, usando original', { error });
-        // Continuar com arquivo original em caso de erro
       }
     }
     if (!selectedChat || !currentUser) return;
@@ -586,6 +632,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
     try {
       setIsSending(true);
+      setUploadProgress({ type, progress: 0 });
       
       // Sugestão 29: Log de início de upload
       if (typeof window !== 'undefined') {
@@ -600,6 +647,16 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           // Ignorar se monitoring não disponível
         }
       }
+      
+      // Simular progresso durante upload (Supabase não suporta progresso nativo)
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (!prev) return null;
+          const newProgress = Math.min(prev.progress + 10, 90);
+          return { ...prev, progress: newProgress };
+        });
+      }, 200);
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
       const filePath = `chat-media/${selectedChat.id}/${fileName}`;
@@ -612,13 +669,24 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           upsert: false
         });
 
+      clearInterval(progressInterval);
+      
       if (uploadError) {
         const msg = String(uploadError.message || '').toLowerCase();
         if (msg.includes('bucket') && msg.includes('not found')) {
           throw new Error('Bucket "chat-media" não existe. Execute no Supabase → SQL Editor: docs/migrations/setup_chat_media_bucket.sql');
         }
+        if (msg.includes('payload too large') || msg.includes('entity too large') || msg.includes('size')) {
+          const typeNames = { image: 'A imagem', video: 'O vídeo', audio: 'O áudio' };
+          throw new Error(`${typeNames[type]} é muito grande para enviar. Tente um arquivo menor.`);
+        }
+        if (msg.includes('timeout') || msg.includes('aborted')) {
+          throw new Error(`Upload do ${type === 'video' ? 'vídeo' : type === 'audio' ? 'áudio' : 'arquivo'} falhou. Verifique sua conexão e tente novamente.`);
+        }
         throw uploadError;
       }
+      
+      setUploadProgress({ type, progress: 95 });
 
       // Obter URL pública
       const { data: { publicUrl } } = supabase.storage
@@ -633,7 +701,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           await cacheMedia(publicUrl, blob);
         } catch (error) {
           logger.warn('Erro ao cachear mídia', { error });
-          // Não bloquear upload se cache falhar
         }
       }
 
@@ -653,6 +720,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         const errorData = await msgResponse.json().catch(() => ({}));
         throw new Error(errorData.error || 'Erro ao enviar mensagem com mídia');
       }
+      
+      setUploadProgress({ type, progress: 100 });
 
       // Enviar notificação push para o destinatário (marcar como mensagem real)
       const mediaContent = type === 'image' ? '📷 Imagem' : type === 'video' ? '🎥 Vídeo' : '🎤 Áudio';
@@ -664,23 +733,24 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           body: JSON.stringify({ 
             recipientId, 
             content: mediaContent,
-            isMessage: true // Flag para notificação de mensagem real
+            isMessage: true
           }),
         }).catch((err) => {
-          // Log silencioso - push é opcional
           console.warn('Push notification failed:', err);
         });
       }
 
       await fetchChats(currentUser.id);
-      toast.success('Bom trabalho! Mídia enviada com sucesso.', { duration: 2000 });
+      toast.success(type === 'video' ? 'Vídeo enviado com sucesso!' : 'Mídia enviada com sucesso!', { duration: 2000 });
     } catch (error) {
       const appError = normalizeError(error);
       logError(appError);
-      toast.error(getUserFriendlyMessage(appError));
+      const errorMsg = error instanceof Error ? error.message : getUserFriendlyMessage(appError);
+      toast.error(errorMsg, { duration: 5000 });
     } finally {
       setIsSending(false);
       setShowMediaMenu(false);
+      setUploadProgress(null);
     }
   }, [selectedChat, currentUser, supabase, fetchChats]);
 
@@ -1233,9 +1303,23 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const messagesVirtualizer = useVirtualizer({
     count: messagesVirtualizerCount,
     getScrollElement: () => messagesScrollRef.current,
-    estimateSize: (i) => (i === 0 && messagesWithLoadMore ? 48 : 96),
+    estimateSize: (index) => {
+      if (index === 0 && messagesWithLoadMore) return 48;
+      const msgIndex = messagesWithLoadMore ? index - 1 : index;
+      const msg = filteredMessages[msgIndex];
+      if (msg?.media_url) {
+        if (msg.media_type === 'video') return 280;
+        if (msg.media_type === 'image') return 250;
+        if (msg.media_type === 'audio') return 120;
+      }
+      return 96;
+    },
     overscan: 10,
   });
+  
+  const handleMediaLoad = useCallback(() => {
+    messagesVirtualizer.measure();
+  }, [messagesVirtualizer]);
 
   // Swipe para mobile
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -1313,7 +1397,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       onTouchEnd={onTouchEnd}
     >
       <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-all duration-300 md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b]`}>
-        <div className="p-4 flex items-center gap-4 border-b border-[#0e1621] relative">
+        <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-[#0e1621] relative">
           {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
           <button
             onClick={() => {
@@ -1325,7 +1409,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               lockMessaging();
               toast.success('Modo notícias ativado.', { duration: 2000 });
             }}
-            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+            className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0"
             title="Voltar para Noticias24h (Ctrl+Shift+L)"
             aria-label="Esconder e voltar ao portal de notícias"
           >
@@ -1334,11 +1418,11 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation"
               aria-label="Menu"
               aria-expanded={isMenuOpen}
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
             
             {/* Menu Dropdown */}
@@ -1370,6 +1454,39 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     <span>Configurações</span>
                   </button>
                   
+                  {currentUser && (
+                    <button
+                      onClick={async () => {
+                        setIsMenuOpen(false);
+                        try {
+                          const { data: profile, error: profileError } = await supabase
+                            .from('profiles')
+                            .select('nickname, avatar_url')
+                            .eq('id', currentUser.id)
+                            .single();
+                          
+                          if (profileError) {
+                            toast.error('Erro ao carregar perfil. Tente novamente.');
+                            return;
+                          }
+                          
+                          if (profile) {
+                            setCurrentUserProfile(profile);
+                            setEditingUserId(currentUser.id);
+                            setEditingNickname(profile.nickname || '');
+                            setShowEditNicknameModal(true);
+                          }
+                        } catch {
+                          toast.error('Erro ao abrir editor de nickname. Tente novamente.');
+                        }
+                      }}
+                      className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      <span>Editar meu nickname</span>
+                    </button>
+                  )}
+                  
                   <div className="border-t border-gray-200 dark:border-[#17212b]" />
                   
                   <button
@@ -1383,31 +1500,48 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               )}
             </AnimatePresence>
           </div>
-          <div className="flex-1 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center px-3 py-2">
-            <Search className="w-4 h-4 text-gray-400 dark:text-[#708499] mr-2" />
+          <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center px-2 sm:px-3 py-1.5 sm:py-2">
+            <Search className="w-4 h-4 text-gray-400 dark:text-[#708499] mr-2 flex-shrink-0" />
             <input 
               type="text" 
-              placeholder="Buscar conversas..." 
+              placeholder="Buscar..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 text-sm w-full text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
+              className="bg-transparent border-none focus:ring-0 text-base w-full min-w-0 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
             />
             <button 
               onClick={() => setShowAdvancedSearch(true)}
-              className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-[#17212b] text-gray-500 dark:text-[#708499] transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-[#17212b] text-gray-500 dark:text-[#708499] transition-colors flex-shrink-0"
               title="Busca avançada"
               aria-label="Busca avançada"
             >
               <Search className="w-4 h-4" />
             </button>
           </div>
-          <button onClick={() => setShowSettingsModal(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Configurações" aria-label="Configurações"><Settings className="w-5 h-5" /></button>
-          <button onClick={() => setIsAddContactOpen(true)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" title="Adicionar contato" data-testid="add-contact-button" aria-label="Adicionar contato"><UserPlus className="w-5 h-5" /></button>
+          {/* Botão Settings - apenas em telas maiores */}
+          <button 
+            onClick={() => setShowSettingsModal(true)} 
+            className="hidden sm:flex p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] items-center justify-center" 
+            title="Configurações" 
+            aria-label="Configurações"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          {/* Botão Adicionar contato - sempre visível mas menor em mobile */}
+          <button 
+            onClick={() => setIsAddContactOpen(true)} 
+            className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0" 
+            title="Adicionar contato" 
+            data-testid="add-contact-button" 
+            aria-label="Adicionar contato"
+          >
+            <UserPlus className="w-5 h-5" />
+          </button>
+          {/* Botão Editar nickname - apenas em telas maiores */}
           {currentUser && (
             <button 
               onClick={async () => {
                 try {
-                  // Sempre buscar o perfil mais recente antes de editar
                   const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('nickname, avatar_url')
@@ -1433,15 +1567,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   toast.error('Erro ao abrir editor de nickname. Tente novamente.');
                 }
               }}
-              className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center" 
-                    title="Editar meu nickname"
+              className="hidden sm:flex p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] items-center justify-center" 
+              title="Editar meu nickname"
               aria-label="Editar meu nickname"
             >
               <Edit2 className="w-5 h-5" />
             </button>
           )}
         </div>
-        <div ref={chatListScrollRef} className="flex-1 overflow-y-auto">
+        <div ref={chatListScrollRef} className="flex-1 overflow-y-auto smooth-scroll">
           {isLoading ? (
             <div className="flex flex-col">
               {[1, 2, 3, 4, 5, 6, 7].map((i) => (
@@ -1734,7 +1868,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   placeholder="Buscar nesta conversa..."
                   value={messageSearchQuery}
                   onChange={(e) => setMessageSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-[#0e1621] border border-gray-200 dark:border-[#17212b] text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-8 pr-3 py-2 text-base rounded-lg bg-gray-100 dark:bg-[#0e1621] border border-gray-200 dark:border-[#17212b] text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {messageSearchQuery && (
                   <button
@@ -1749,7 +1883,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             </header>
             <div
               ref={messagesScrollRef}
-              className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative"
+              className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-[#0e1621] relative smooth-scroll"
               data-stealth-content="true"
               data-sensitive="true"
               // Sugestão 23: Drag & drop de arquivos
@@ -2025,15 +2159,19 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               <img 
                                 src={msg.media_url} 
                                 alt="Imagem enviada" 
-                                className="max-w-full rounded-lg cursor-pointer"
+                                className="max-w-full max-h-[200px] object-contain rounded-lg cursor-pointer"
                                 onClick={() => window.open(msg.media_url!, '_blank')}
+                                onLoad={handleMediaLoad}
+                                loading="lazy"
                               />
                             )}
                             {msg.media_type === 'video' && (
                               <video 
                                 src={msg.media_url} 
                                 controls 
-                                className="max-w-full rounded-lg"
+                                className="max-w-full max-h-[220px] rounded-lg"
+                                onLoadedMetadata={handleMediaLoad}
+                                preload="metadata"
                               />
                             )}
                             {msg.media_type === 'audio' && (
@@ -2187,6 +2325,27 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                
+                {/* Indicador de progresso de upload */}
+                {uploadProgress && (
+                  <div className="mb-2 p-3 bg-[#242f3d] rounded-xl">
+                    <div className="flex items-center gap-3 mb-2">
+                      {uploadProgress.type === 'video' && <FileVideo className="w-5 h-5 text-[#4c94d5]" />}
+                      {uploadProgress.type === 'image' && <Camera className="w-5 h-5 text-[#4c94d5]" />}
+                      {uploadProgress.type === 'audio' && <Mic className="w-5 h-5 text-[#4c94d5]" />}
+                      <span className="text-sm text-white flex-1">
+                        Enviando {uploadProgress.type === 'video' ? 'vídeo' : uploadProgress.type === 'audio' ? 'áudio' : 'imagem'}...
+                      </span>
+                      <span className="text-sm text-[#708499]">{uploadProgress.progress}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-[#17212b] rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-[#4c94d5] rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Inputs ocultos para mídia */}
                 <input
@@ -2281,7 +2440,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         } 
                       }} 
                       placeholder="Mensagem..." 
-                      className="flex-1 bg-transparent border-none focus:ring-0 text-[14px] resize-none py-1 placeholder-gray-400 dark:placeholder-[#708499] text-gray-900 dark:text-white"
+                      className="flex-1 bg-transparent border-none focus:ring-0 text-base resize-none py-1 placeholder-gray-400 dark:placeholder-[#708499] text-gray-900 dark:text-white"
                       disabled={isSending}
                       data-testid="message-input"
                       data-stealth-content="true"
@@ -2351,7 +2510,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       value={nicknameSearch} 
                       onChange={(e) => setNicknameSearch(e.target.value)} 
                       placeholder="Digite o nickname ou email..." 
-                      className="bg-transparent border-none focus:ring-0 text-sm w-full text-white placeholder-[#708499]"
+                      className="bg-transparent border-none focus:ring-0 text-base w-full text-white placeholder-[#708499]"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           handleAddContact();
