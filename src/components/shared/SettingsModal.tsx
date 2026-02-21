@@ -8,6 +8,7 @@ import { isDecoyPinEnabled, isDecoyPinConfigured, setupDecoyPin, removeDecoyPin,
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { isBiometricAvailable, isBiometricEnabled, setBiometricEnabled, getBiometryType, getBiometryLabel } from '@/lib/biometric';
+import { DEFAULT_AVATAR_URL } from '@/lib/constants';
 
 const AVATAR_SYMBOLS = [
   { emoji: '👤', label: 'Pessoa' },
@@ -457,7 +458,7 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                       aria-label="Alterar avatar"
                     >
                       <img
-                        src={avatarUrl || 'https://i.pravatar.cc/150'}
+                        src={avatarUrl || DEFAULT_AVATAR_URL}
                         alt="Seu avatar"
                         className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 dark:border-slate-600"
                       />

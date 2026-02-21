@@ -11,6 +11,7 @@ import { Lock, Loader2, ArrowRight, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
 import { logger } from '@/lib/logger';
+import { DEFAULT_AVATAR_URL } from '@/lib/constants';
 
 interface AuthFormProps {
   type: 'login' | 'signup';
@@ -65,7 +66,7 @@ export const AuthForm = ({ type, onSuccess, onSwitchMode }: AuthFormProps) => {
           const { error: profileError } = await supabase.from('profiles').upsert({
             id: signUpData.user.id,
             nickname: cleanNickname,
-            avatar_url: `https://i.pravatar.cc/150?u=${signUpData.user.id}`,
+            avatar_url: `${DEFAULT_AVATAR_URL}?u=${signUpData.user.id}`,
           }, { onConflict: 'id' });
           
           if (profileError) {

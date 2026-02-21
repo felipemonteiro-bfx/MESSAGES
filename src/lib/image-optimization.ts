@@ -3,6 +3,8 @@
  * Redimensiona e comprime imagens antes do upload
  */
 
+import { logger } from '@/lib/logger';
+
 interface ImageOptimizationOptions {
   maxWidth?: number;
   maxHeight?: number;
@@ -166,17 +168,16 @@ export async function optimizeImage(
       }
     );
 
-    // Log de otimização (apenas em dev)
     if (process.env.NODE_ENV === 'development') {
       const originalSizeMB = (file.size / (1024 * 1024)).toFixed(2);
       const optimizedSizeMB = (optimizedFile.size / (1024 * 1024)).toFixed(2);
       const reduction = ((1 - optimizedFile.size / file.size) * 100).toFixed(1);
-      console.log(`Imagem otimizada: ${originalSizeMB}MB → ${optimizedSizeMB}MB (${reduction}% redução)`);
+      logger.debug(`Imagem otimizada: ${originalSizeMB}MB → ${optimizedSizeMB}MB (${reduction}% redução)`);
     }
 
     return optimizedFile;
   } catch (error) {
-    console.error('Erro ao otimizar imagem:', error);
+    logger.error('Erro ao otimizar imagem', error instanceof Error ? error : new Error(String(error)));
     // Em caso de erro, retornar arquivo original
     return file;
   }

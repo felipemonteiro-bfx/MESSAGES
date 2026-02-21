@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    logger.error('Erro ao salvar inscrição push', e instanceof Error ? e : new Error(String(e)));
     return NextResponse.json({ message: 'Erro ao salvar inscrição' }, { status: 500 });
   }
 }

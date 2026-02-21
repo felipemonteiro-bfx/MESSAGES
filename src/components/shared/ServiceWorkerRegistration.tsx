@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { logger } from '@/lib/logger';
 
 /**
  * Registra o Service Worker e gerencia atualizações.
@@ -16,7 +17,7 @@ export default function ServiceWorkerRegistration() {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
         registrationRef.current = registration;
-        console.log('Service Worker registrado:', registration.scope);
+        logger.info('Service Worker registrado', { scope: registration.scope });
 
         // Detectar atualizações do SW
         registration.addEventListener('updatefound', () => {
@@ -26,13 +27,13 @@ export default function ServiceWorkerRegistration() {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
               // Nova versão disponível — o usuário verá na próxima navegação
-              console.log('Nova versão do Service Worker disponível');
+              logger.info('Nova versão do Service Worker disponível');
             }
           });
         });
       })
       .catch((error) => {
-        console.error('Erro ao registrar Service Worker:', error);
+        logger.error('Erro ao registrar Service Worker', error instanceof Error ? error : new Error(String(error)));
       });
   }, []);
 

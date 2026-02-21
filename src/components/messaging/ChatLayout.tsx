@@ -28,6 +28,10 @@ import { type AccessMode } from '@/lib/pin';
 import { impactLight, impactMedium, notificationSuccess, panicVibrate } from '@/lib/haptics';
 import SwipeableMessage from '@/components/messaging/SwipeableMessage';
 import { useEncryption } from '@/hooks/useEncryption';
+import { DEFAULT_AVATAR_URL } from '@/lib/constants';
+import ChatHeader from '@/components/messaging/ChatHeader';
+import MessageInput from '@/components/messaging/MessageInput';
+import ChatModals from '@/components/messaging/ChatModals';
 
 interface ChatLayoutProps {
   accessMode?: AccessMode;
@@ -101,7 +105,7 @@ function SwipeableChatItem({
       >
         <div className="relative">
           <img
-            src={chat.recipient?.avatar_url || 'https://i.pravatar.cc/150'}
+            src={chat.recipient?.avatar_url || DEFAULT_AVATAR_URL}
             alt={chat.recipient?.nickname || 'Avatar'}
             className="w-12 h-12 rounded-full object-cover flex-shrink-0"
             loading="lazy"
@@ -2080,205 +2084,25 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       >
         {selectedChat ? (
           <>
-            <header className="shrink-0 relative p-3 border-b border-gray-200 dark:border-[#17212b] flex flex-col gap-2 bg-white dark:bg-[#17212b] z-20">
-              <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <button className="md:hidden p-2 shrink-0 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors" onClick={() => setIsSidebarOpen(true)}><ArrowLeft className="w-5 h-5" /></button>
-                <div className="relative shrink-0">
-                  <img 
-                    src={selectedChat.recipient?.avatar_url || 'https://i.pravatar.cc/150'} 
-                    alt={selectedChat.recipient?.nickname || 'Avatar'} 
-                    className="w-10 h-10 rounded-full object-cover"
-                    loading="lazy"
-                    onLoad={async (e) => {
-                      e.currentTarget.classList.add('loaded');
-                      const imgSrc = e.currentTarget.src;
-                      if (imgSrc && imgSrc.startsWith('http')) {
-                        try {
-                          await fetchMediaWithCache(imgSrc);
-                        } catch (error) {
-                          // Ignorar erros de cache
-                        }
-                      }
-                    }}
-                  />
-                  {selectedChat.recipient && onlineUsers.has(selectedChat.recipient.id) && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0e1621] rounded-full"></span>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-white truncate">
-                    {selectedChat.recipient?.nickname || selectedChat.name || 'Tópico'}
-                  </h2>
-                  <div className="text-[11px] text-gray-500 dark:text-[#4c94d5] flex items-center gap-1">
-                    {/* Sugestão 7: Status Online/Offline melhorado */}
-                    {selectedChat.recipient && (
-                      onlineUsers.has(selectedChat.recipient.id) ? (
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                          <span className="text-green-500 font-medium">Online</span>
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
-                          <span>Offline</span>
-                        </span>
-                      )
-                    )}
-                    {otherUserTyping === selectedChat.recipient?.id && (
-                      <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">digitando...</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => setShowSecurityCode(true)}
-                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                  title="Verificar identidade"
-                  aria-label="Verificar identidade"
-                >
-                  <Shield className="w-4 h-4" />
-                </button>
-                {/* Histórico de mídia */}
-                <button
-                  onClick={() => setShowMediaGallery(true)}
-                  className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                  title="Fotos e vídeos"
-                  aria-label="Ver fotos e vídeos"
-                >
-                  <ImagePlus className="w-4 h-4" />
-                </button>
-                {/* Notificações: opções granulares */}
-                {selectedChat.recipient && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setMuteMenuOpen(!muteMenuOpen)}
-                      className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
-                      title={mutedChats.has(selectedChat.id) ? 'Opções de notificação' : 'Silenciar'}
-                      aria-label="Notificações"
-                    >
-                      {mutedChats.has(selectedChat.id) ? (
-                        <BellOff className="w-4 h-4" />
-                      ) : (
-                        <Bell className="w-4 h-4" />
-                      )}
-                    </button>
-                    {muteMenuOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setMuteMenuOpen(false)} aria-hidden />
-                        <div className="absolute right-0 top-full mt-1 py-1 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[160px]">
-                          {mutedChats.has(selectedChat.id) ? (
-                            <button
-                              onClick={async () => {
-                                if (!currentUser || !selectedChat) return;
-                                try {
-                                  const { error } = await supabase.from('chat_participants').update({ muted: false, mute_until: null }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
-                                  if (error) throw error;
-                                  impactLight();
-                                  setMutedChats(prev => { const s = new Set(prev); s.delete(selectedChat.id); return s; });
-                                  toast.success('Notificações ativadas');
-                                } catch (e) {
-                                  logError(normalizeError(e));
-                                  toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
-                                }
-                                setMuteMenuOpen(false);
-                              }}
-                              className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                            >
-                              <Bell className="w-4 h-4" /> Ativar notificações
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                onClick={async () => {
-                                  if (!currentUser || !selectedChat) return;
-                                  const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-                                  try {
-                                    const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: until }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
-                                    if (error) throw error;
-                                    impactLight();
-                                    setMutedChats(prev => new Set(prev).add(selectedChat.id));
-                                    toast.success('Silenciado por 1 hora');
-                                  } catch (e) {
-                                    logError(normalizeError(e));
-                                    toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
-                                  }
-                                  setMuteMenuOpen(false);
-                                }}
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                              >
-                                Silenciar por 1 hora
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (!currentUser || !selectedChat) return;
-                                  const until = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-                                  try {
-                                    const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: until }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
-                                    if (error) throw error;
-                                    impactLight();
-                                    setMutedChats(prev => new Set(prev).add(selectedChat.id));
-                                    toast.success('Silenciado por 8 horas');
-                                  } catch (e) {
-                                    logError(normalizeError(e));
-                                    toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
-                                  }
-                                  setMuteMenuOpen(false);
-                                }}
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                              >
-                                Silenciar por 8 horas
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (!currentUser || !selectedChat) return;
-                                  try {
-                                    const { error } = await supabase.from('chat_participants').update({ muted: true, mute_until: null }).eq('chat_id', selectedChat.id).eq('user_id', currentUser.id);
-                                    if (error) throw error;
-                                    impactLight();
-                                    setMutedChats(prev => new Set(prev).add(selectedChat.id));
-                                    toast.success('Notificações silenciadas');
-                                  } catch (e) {
-                                    logError(normalizeError(e));
-                                    toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Não foi possível alterar notificações');
-                                  }
-                                  setMuteMenuOpen(false);
-                                }}
-                                className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-[#17212b]"
-                              >
-                                <BellOff className="w-4 h-4" /> Silenciar sempre
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-              </div>
-              {/* Sugestão 9: Busca em mensagens */}
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar nesta conversa..."
-                  value={messageSearchQuery}
-                  onChange={(e) => setMessageSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-base rounded-lg bg-gray-100 dark:bg-[#0e1621] border border-gray-200 dark:border-[#17212b] text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {messageSearchQuery && (
-                  <button
-                    onClick={() => setMessageSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white"
-                    aria-label="Limpar busca"
-                  >
-                    <CloseIcon className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </header>
+            <ChatHeader
+              selectedChat={selectedChat}
+              currentUser={currentUser!}
+              onlineUsers={onlineUsers}
+              mutedChats={mutedChats}
+              otherUserTyping={otherUserTyping}
+              messageSearchQuery={messageSearchQuery}
+              onBack={() => setIsSidebarOpen(true)}
+              onSetMessageSearchQuery={setMessageSearchQuery}
+              onShowSecurityCode={() => setShowSecurityCode(true)}
+              onShowMediaGallery={() => setShowMediaGallery(true)}
+              onMutedChatsChange={(chatId, muted) => {
+                if (muted) {
+                  setMutedChats(prev => new Set(prev).add(chatId));
+                } else {
+                  setMutedChats(prev => { const s = new Set(prev); s.delete(chatId); return s; });
+                }
+              }}
+            />
             <div
               ref={messagesScrollRef}
               className="flex-1 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll"
@@ -2455,8 +2279,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     >
                       <img 
                         src={msg.sender_id === currentUser?.id 
-                          ? (currentUserProfile?.avatar_url || 'https://i.pravatar.cc/150')
-                          : (selectedChat.recipient?.avatar_url || 'https://i.pravatar.cc/150')
+                          ? (currentUserProfile?.avatar_url || DEFAULT_AVATAR_URL)
+                          : (selectedChat.recipient?.avatar_url || DEFAULT_AVATAR_URL)
                         }
                         alt="Avatar" 
                         className="w-8 h-8 rounded-full object-cover flex-shrink-0" 
@@ -2721,201 +2545,27 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 <div ref={messagesEndRef} className="h-1" aria-hidden="true" />
               </div>
             </div>
-            <footer className="sticky bottom-0 p-3 bg-white dark:bg-[#17212b] border-t border-gray-200 dark:border-[#0e1621] safe-area-inset-bottom">
-              <div className="max-w-3xl mx-auto">
-                {/* Menu de Mídia */}
-                <AnimatePresence>
-                  {showMediaMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="mb-2 flex gap-2 p-2 bg-[#242f3d] rounded-xl"
-                    >
-                      <button
-                        onClick={() => { setFilePickerActive(true); fileInputRef.current?.click(); }}
-                        className="flex-1 flex flex-col items-center gap-2 p-3 bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors"
-                      >
-                        <Camera className="w-5 h-5 text-[#4c94d5]" />
-                        <span className="text-xs text-white">Foto</span>
-                      </button>
-                      <button
-                        onClick={() => { setFilePickerActive(true); videoInputRef.current?.click(); }}
-                        className="flex-1 flex flex-col items-center gap-2 p-3 bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors"
-                      >
-                        <FileVideo className="w-5 h-5 text-[#4c94d5]" />
-                        <span className="text-xs text-white">Vídeo</span>
-                      </button>
-                      <button
-                        onClick={isRecording ? stopAudioRecording : startAudioRecording}
-                        className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-lg transition-colors ${
-                          isRecording 
-                            ? 'bg-red-600 hover:bg-red-700' 
-                            : 'bg-[#17212b] hover:bg-[#2b5278]'
-                        }`}
-                      >
-                        <Mic className={`w-5 h-5 ${isRecording ? 'text-white animate-pulse' : 'text-[#4c94d5]'}`} />
-                        <span className="text-xs text-white">{isRecording ? 'Gravando...' : 'Áudio'}</span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                
-                {/* Indicador de progresso de upload */}
-                {uploadProgress && (
-                  <div className="mb-2 p-3 bg-[#242f3d] rounded-xl">
-                    <div className="flex items-center gap-3 mb-2">
-                      {uploadProgress.type === 'video' && <FileVideo className="w-5 h-5 text-[#4c94d5]" />}
-                      {uploadProgress.type === 'image' && <Camera className="w-5 h-5 text-[#4c94d5]" />}
-                      {uploadProgress.type === 'audio' && <Mic className="w-5 h-5 text-[#4c94d5]" />}
-                      <span className="text-sm text-white flex-1">
-                        Enviando {uploadProgress.type === 'video' ? 'vídeo' : uploadProgress.type === 'audio' ? 'áudio' : 'imagem'}...
-                      </span>
-                      <span className="text-sm text-[#708499]">{uploadProgress.progress}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-[#17212b] rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-[#4c94d5] rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Inputs ocultos para mídia */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handleFileSelect(e, 'image')}
-                />
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(e) => handleFileSelect(e, 'video')}
-                />
-                <input
-                  ref={audioInputRef}
-                  type="file"
-                  accept="audio/*"
-                  className="hidden"
-                  onChange={(e) => handleFileSelect(e, 'audio')}
-                />
-
-                {/* Sugestão 10: Preview de resposta */}
-                {replyingTo && (
-                  <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 dark:bg-[#242f3d] rounded-lg border-l-2 border-blue-500">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Respondendo a {replyingTo.sender_id === currentUser?.id ? 'você' : (selectedChat?.recipient?.nickname || '')}</p>
-                      <p className="text-sm text-gray-800 dark:text-white truncate">{(replyingTo.content || '').slice(0, 60)}{(replyingTo.content?.length || 0) > 60 ? '...' : ''}</p>
-                    </div>
-                    <button
-                      onClick={() => setReplyingTo(null)}
-                      className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-white"
-                      aria-label="Cancelar resposta"
-                    >
-                      <CloseIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                {/* Indicador de modo View Once */}
-                {isViewOnceMode && (
-                  <div className="mb-2 flex items-center gap-2 p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg border border-orange-300 dark:border-orange-700">
-                    <span className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-sm font-bold">1</span>
-                    <span className="flex-1 text-sm text-orange-700 dark:text-orange-300">
-                      Mensagem para ver uma vez
-                    </span>
-                    <button
-                      onClick={() => setIsViewOnceMode(false)}
-                      className="p-1 text-orange-500 hover:text-orange-700"
-                      aria-label="Desativar modo ver uma vez"
-                    >
-                      <CloseIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                <div className="flex items-end gap-2 safe-area-bottom">
-                  <button
-                    onClick={() => setShowMediaMenu(!showMediaMenu)}
-                    className="w-10 h-10 bg-[#242f3d] rounded-full flex items-center justify-center text-[#4c94d5] hover:bg-[#2b5278] transition-colors flex-shrink-0"
-                    aria-label="Anexar arquivo"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => setIsViewOnceMode(!isViewOnceMode)}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
-                      isViewOnceMode 
-                        ? 'bg-orange-500 text-white' 
-                        : 'bg-[#242f3d] text-[#4c94d5] hover:bg-[#2b5278]'
-                    }`}
-                    aria-label={isViewOnceMode ? 'Desativar ver uma vez' : 'Ativar ver uma vez'}
-                    title="Mensagem para ver uma vez"
-                  >
-                    <span className="text-lg font-bold">1</span>
-                  </button>
-                  <div className="flex-1 bg-gray-100 dark:bg-[#17212b] rounded-2xl flex items-end p-2 px-4 gap-3 min-h-[44px] border border-gray-200 dark:border-[#242f3d]">
-                    <textarea 
-                      rows={1} 
-                      value={inputText} 
-                      onChange={(e) => {
-                        handleInputChange(e);
-                        // Auto-resize textarea
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                      }}
-                      onKeyDown={(e) => { 
-                        if (e.key === 'Enter' && !e.shiftKey) { 
-                          e.preventDefault(); 
-                          handleSendMessage(); 
-                        } 
-                      }} 
-                      placeholder="Mensagem..." 
-                      className="flex-1 bg-transparent border-none focus:ring-0 text-base resize-none py-1 placeholder-gray-400 dark:placeholder-[#708499] text-gray-900 dark:text-white"
-                      disabled={isSending}
-                      data-testid="message-input"
-                      data-stealth-content="true"
-                    />
-                  </div>
-                  {/* Botão de Áudio - sempre visível ao lado do enviar */}
-                  <button
-                    onClick={isRecording ? stopAudioRecording : startAudioRecording}
-                    className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-all touch-manipulation flex-shrink-0 ${
-                      isRecording 
-                        ? 'bg-red-500 text-white animate-pulse hover:bg-red-600' 
-                        : 'bg-[#242f3d] text-[#4c94d5] hover:bg-[#2b5278]'
-                    }`}
-                    aria-label={isRecording ? 'Parar gravação' : 'Gravar áudio'}
-                    title={isRecording ? 'Parar gravação' : 'Gravar áudio'}
-                  >
-                    <Mic className="w-5 h-5" />
-                  </button>
-                  {/* Botão de Enviar */}
-                  <button 
-                    onClick={() => {
-                      impactLight();
-                      handleSendMessage();
-                    }}
-                    disabled={!inputText.trim() || isSending}
-                    className={`w-11 h-11 min-w-[44px] min-h-[44px] bg-blue-600 dark:bg-[#2b5278] rounded-full flex items-center justify-center text-white transition-opacity touch-manipulation flex-shrink-0 ${
-                      !inputText.trim() || isSending ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700 dark:hover:bg-[#346290] active:scale-95'
-                    }`}
-                    data-testid="send-button"
-                    aria-label="Enviar mensagem"
-                  >
-                    {isSending ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Send className="w-5 h-5 ml-0.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </footer>
+            <MessageInput
+              selectedChat={selectedChat}
+              currentUserId={currentUser?.id}
+              inputText={inputText}
+              isSending={isSending}
+              isRecording={isRecording}
+              showMediaMenu={showMediaMenu}
+              isViewOnceMode={isViewOnceMode}
+              replyingTo={replyingTo}
+              uploadProgress={uploadProgress}
+              onInputChange={handleInputChange}
+              onSend={handleSendMessage}
+              onToggleMediaMenu={() => setShowMediaMenu(!showMediaMenu)}
+              onToggleViewOnce={() => setIsViewOnceMode(!isViewOnceMode)}
+              onCancelReply={() => setReplyingTo(null)}
+              onStartRecording={startAudioRecording}
+              onStopRecording={stopAudioRecording}
+              onFileSelect={handleFileSelect}
+              onFilePickerActive={setFilePickerActive}
+              recipientNickname={selectedChat?.recipient?.nickname || ''}
+            />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-[#708499] p-8">
@@ -2926,434 +2576,90 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         )}
       </main>
 
-      <AnimatePresence>
-        {isAddContactOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-sm bg-[#17212b] rounded-2xl p-6 shadow-2xl border border-[#242f3d]">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white">Novo Contato</h3>
-                <button onClick={() => setIsAddContactOpen(false)} className="text-[#708499] hover:text-white transition-colors"><CloseIcon className="w-6 h-6" /></button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-[#708499] mb-2">Nickname ou Email do usuário</label>
-                  <div className="bg-[#242f3d] rounded-xl flex items-center px-4 py-3 border border-[#17212b]">
-                    <input 
-                      type="text" 
-                      value={nicknameSearch} 
-                      onChange={(e) => setNicknameSearch(e.target.value)} 
-                      placeholder="Digite o nickname ou email..." 
-                      className="bg-transparent border-none focus:ring-0 text-base w-full text-white placeholder-[#708499]"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleAddContact();
-                        }
-                      }}
-                    />
-                  </div>
-                  <p className="text-xs text-[#708499] mt-2">
-                    {nicknameSearch.includes('@') 
-                      ? 'Buscando por email...' 
-                      : 'Digite o nickname (3-20 caracteres) ou email do usuário'}
-                  </p>
-                </div>
-                <button 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleAddContact();
-                  }}
-                  disabled={!nicknameSearch.trim() || isAddingContact}
-                  className={`w-full bg-[#2b5278] hover:bg-[#346290] disabled:hover:bg-[#2b5278] py-3 rounded-xl font-bold text-white transition-colors flex items-center justify-center gap-2 ${
-                    !nicknameSearch.trim() || isAddingContact ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {isAddingContact ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Adicionando...
-                    </>
-                  ) : (
-                    'Adicionar'
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal de Edição de Nickname */}
-      {showEditNicknameModal && editingUserId && (
-        <EditNicknameModal
-          isOpen={showEditNicknameModal}
-          onClose={() => {
-            setShowEditNicknameModal(false);
-            setEditingUserId(null);
-            setEditingNickname('');
-          }}
-          currentNickname={editingNickname}
-          userId={editingUserId}
-          isOwnProfile={editingUserId === currentUser?.id}
-          onSuccess={async () => {
-            // Recarregar chats e perfil
-            if (currentUser) {
-              await fetchChats(currentUser.id);
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('nickname, avatar_url')
-                  .eq('id', currentUser.id)
-                  .single();
-                if (profile) {
-                  setCurrentUserProfile(profile);
-                }
-            }
-          }}
-        />
-      )}
-      {showSettingsModal && (
-        <SettingsModal
-          isOpen={showSettingsModal}
-          onClose={() => setShowSettingsModal(false)}
-          currentAvatarUrl={currentUserProfile?.avatar_url}
-          onAvatarUpdate={(url) => setCurrentUserProfile(prev => prev ? { ...prev, avatar_url: url } : null)}
-        />
-      )}
-      <AnimatePresence>
-        {showMediaGallery && selectedChat && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex flex-col bg-white dark:bg-[#17212b]"
-          >
-            <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-[#242f3d]">
-              <h3 className="font-bold text-gray-900 dark:text-white">Fotos e vídeos</h3>
-              <button
-                onClick={() => setShowMediaGallery(false)}
-                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] transition-colors"
-                aria-label="Fechar"
-              >
-                <CloseIcon className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {(() => {
-                const mediaItems = messages.filter(m => m.media_url && (m.media_type === 'image' || m.media_type === 'video'));
-                if (mediaItems.length === 0) {
-                  return (
-                    <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
-                      <ImageIcon className="w-12 h-12 mb-2 opacity-50" />
-                      <p className="text-sm">Nenhuma foto ou vídeo nesta conversa</p>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="grid grid-cols-3 gap-2">
-                    {mediaItems.map((m) => (
-                      <a
-                        key={m.id}
-                        href={m.media_url!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-[#242f3d] block"
-                      >
-                        {m.media_type === 'image' ? (
-                          <img src={m.media_url!} alt="" className="w-full h-full object-cover" loading="lazy" />
-                        ) : (
-                          <video src={m.media_url!} className="w-full h-full object-cover" muted />
-                        )}
-                      </a>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showLogoutConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
-            onClick={() => setShowLogoutConfirm(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl"
-            >
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Sair da conta?</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Você precisará entrar novamente para acessar suas conversas.</p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
-                >
-                  Sair
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      {/* Modal de Edição de Mensagem */}
-      <AnimatePresence>
-        {editingMessage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
-            onClick={() => { setEditingMessage(null); setEditContent(''); }}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-md w-full shadow-xl"
-            >
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <Pencil className="w-5 h-5" />
-                Editar mensagem
-              </h3>
-              <textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-[#242f3d] text-base text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={4}
-                maxLength={10000}
-                autoFocus
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
-                {editContent.length}/10000 caracteres
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { setEditingMessage(null); setEditContent(''); }}
-                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleEditMessage}
-                  disabled={!editContent.trim() || editContent === editingMessage.content || isEditing}
-                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isEditing ? 'Salvando...' : 'Salvar'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal de Confirmação de Exclusão */}
-      <AnimatePresence>
-        {deleteConfirmId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
-            onClick={() => setDeleteConfirmId(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl"
-            >
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                <Trash2 className="w-5 h-5 text-red-500" />
-                Apagar mensagem?
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                Escolha como deseja apagar esta mensagem.
-              </p>
-              <div className="space-y-2">
-                <button
-                  onClick={() => handleDeleteMessage(deleteConfirmId, false)}
-                  className="w-full py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors text-left"
-                >
-                  Apagar para mim
-                  <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    Outros participantes ainda poderão ver a mensagem
-                  </span>
-                </button>
-                {(() => {
-                  const msg = messages.find(m => m.id === deleteConfirmId);
-                  return msg && canDeleteForEveryone(msg) && (
-                    <button
-                      onClick={() => handleDeleteMessage(deleteConfirmId, true)}
-                      className="w-full py-2.5 px-4 rounded-xl font-medium text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-left"
-                    >
-                      Apagar para todos
-                      <span className="block text-xs text-red-500 dark:text-red-400 mt-0.5">
-                        A mensagem será apagada para todos os participantes
-                      </span>
-                    </button>
-                  );
-                })()}
-                <button
-                  onClick={() => setDeleteConfirmId(null)}
-                  className="w-full py-2.5 px-4 rounded-xl font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal de Verificação de Identidade */}
-      {showSecurityCode && selectedChat && currentUser && selectedChat.recipient && (
-        <SecurityCodeModal
-          isOpen={showSecurityCode}
-          onClose={() => setShowSecurityCode(false)}
-          chatId={selectedChat.id}
-          currentUserId={currentUser.id}
-          recipientId={selectedChat.recipient.id}
-          recipientNickname={selectedChat.recipient.nickname || 'Usuário'}
-          currentUserPublicKey={currentUserPublicKey}
-          recipientPublicKey={selectedChat.recipient.public_key}
-          onVerified={() => toast.success('Identidade verificada com sucesso!')}
-        />
-      )}
-
-      {/* Alerta de Screenshot */}
-      <ScreenshotAlert
-        isVisible={screenshotAlertVisible}
-        onClose={() => setScreenshotAlertVisible(false)}
-        message={screenshotAlertMessage}
-        variant={screenshotAlertVariant}
+      <ChatModals
+        currentUser={currentUser}
+        selectedChat={selectedChat}
+        chats={chats}
+        messages={messages}
+        decryptedMessages={decryptedMessages}
+        isAddContactOpen={isAddContactOpen}
+        nicknameSearch={nicknameSearch}
+        isAddingContact={isAddingContact}
+        onSetAddContactOpen={setIsAddContactOpen}
+        onSetNicknameSearch={setNicknameSearch}
+        onAddContact={handleAddContact}
+        showEditNicknameModal={showEditNicknameModal}
+        editingUserId={editingUserId}
+        editingNickname={editingNickname}
+        onCloseEditNickname={() => { setShowEditNicknameModal(false); setEditingUserId(null); setEditingNickname(''); }}
+        onEditNicknameSuccess={async () => {
+          if (currentUser) {
+            await fetchChats(currentUser.id);
+            const { data: profile } = await supabase.from('profiles').select('nickname, avatar_url').eq('id', currentUser.id).single();
+            if (profile) setCurrentUserProfile(profile);
+          }
+        }}
+        showSettingsModal={showSettingsModal}
+        currentUserProfile={currentUserProfile}
+        onCloseSettings={() => setShowSettingsModal(false)}
+        onAvatarUpdate={(url) => setCurrentUserProfile(prev => prev ? { ...prev, avatar_url: url } : null)}
+        showMediaGallery={showMediaGallery}
+        onCloseMediaGallery={() => setShowMediaGallery(false)}
+        showLogoutConfirm={showLogoutConfirm}
+        onSetShowLogoutConfirm={setShowLogoutConfirm}
+        onLogout={handleLogout}
+        editingMessage={editingMessage}
+        editContent={editContent}
+        isEditing={isEditing}
+        onSetEditContent={setEditContent}
+        onCloseEditMessage={() => { setEditingMessage(null); setEditContent(''); }}
+        onEditMessage={handleEditMessage}
+        deleteConfirmId={deleteConfirmId}
+        onSetDeleteConfirmId={setDeleteConfirmId}
+        onDeleteMessage={handleDeleteMessage}
+        canDeleteForEveryone={canDeleteForEveryone}
+        forwardingMessage={forwardingMessage}
+        onSetForwardingMessage={setForwardingMessage}
+        onForwardMessage={async (chatId) => {
+          if (!forwardingMessage) return;
+          try {
+            const fwd = forwardingMessage;
+            const displayContent = fwd.is_encrypted ? (decryptedMessages[fwd.id] || fwd.content) : fwd.content;
+            const body: Record<string, unknown> = { chatId, content: `↪ Encaminhada\n${displayContent || ''}`.trim() };
+            if (fwd.media_url) body.mediaUrl = fwd.media_url;
+            if (fwd.media_type) body.mediaType = fwd.media_type;
+            const res = await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!res.ok) throw new Error('Falha ao encaminhar');
+            const targetChat = chats.find(c => c.id === chatId);
+            toast.success(`Encaminhada para ${targetChat?.recipient?.nickname || 'chat'}`);
+            setForwardingMessage(null);
+          } catch { toast.error('Erro ao encaminhar mensagem'); }
+        }}
+        showSecurityCode={showSecurityCode}
+        currentUserPublicKey={currentUserPublicKey}
+        onCloseSecurityCode={() => setShowSecurityCode(false)}
+        screenshotAlertVisible={screenshotAlertVisible}
+        screenshotAlertMessage={screenshotAlertMessage}
+        screenshotAlertVariant={screenshotAlertVariant}
+        screenshotProtectionActive={screenshotProtectionActive}
+        onCloseScreenshotAlert={() => setScreenshotAlertVisible(false)}
+        showAdvancedSearch={showAdvancedSearch}
+        onCloseAdvancedSearch={() => setShowAdvancedSearch(false)}
+        onSearchResultClick={(msg) => {
+          const chat = chats.find(c => c.id === msg.chat_id);
+          if (chat) {
+            setSelectedChat(chat);
+            setTimeout(() => {
+              const msgElement = document.querySelector(`[data-message-id="${msg.id}"]`);
+              if (msgElement) {
+                msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                msgElement.classList.add('highlight-message');
+                setTimeout(() => msgElement.classList.remove('highlight-message'), 2000);
+              }
+            }, 300);
+          }
+        }}
       />
-
-      {/* Overlay de Proteção contra Screenshot */}
-      <ScreenshotProtectionOverlay isActive={screenshotProtectionActive} />
-
-      {/* Modal de Busca Avançada */}
-      {currentUser && (
-        <AdvancedSearchModal
-          isOpen={showAdvancedSearch}
-          onClose={() => setShowAdvancedSearch(false)}
-          messages={messages}
-          chats={chats}
-          currentUserId={currentUser.id}
-          onResultClick={(msg) => {
-            const chat = chats.find(c => c.id === msg.chat_id);
-            if (chat) {
-              setSelectedChat(chat);
-              setTimeout(() => {
-                const msgElement = document.querySelector(`[data-message-id="${msg.id}"]`);
-                if (msgElement) {
-                  msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  msgElement.classList.add('highlight-message');
-                  setTimeout(() => msgElement.classList.remove('highlight-message'), 2000);
-                }
-              }, 300);
-            }
-          }}
-        />
-      )}
-
-      {/* Modal de Encaminhar Mensagem */}
-      <AnimatePresence>
-        {forwardingMessage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
-            onClick={() => setForwardingMessage(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-[#17212b] rounded-xl shadow-2xl w-full max-w-sm max-h-[70vh] flex flex-col overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-4 border-b border-gray-200 dark:border-[#0e1621] flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900 dark:text-white">Encaminhar para...</h3>
-                <button onClick={() => setForwardingMessage(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-[#242f3d] rounded-lg">
-                  <CloseIcon className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <div className="px-3 py-2 border-b border-gray-200 dark:border-[#0e1621] bg-gray-50 dark:bg-[#0e1621]">
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <Forward className="w-3 h-3 inline mr-1" />
-                  {forwardingMessage.media_type
-                    ? `${forwardingMessage.media_type === 'image' ? '📷 Imagem' : forwardingMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio'}`
-                    : (forwardingMessage.is_encrypted
-                        ? (decryptedMessages[forwardingMessage.id] || 'Mensagem criptografada').slice(0, 60)
-                        : (forwardingMessage.content || '').slice(0, 60)
-                      )
-                  }
-                </p>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {chats.filter(c => c.id !== selectedChat?.id).map(chat => (
-                  <button
-                    key={chat.id}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-[#242f3d] transition-colors text-left"
-                    onClick={async () => {
-                      try {
-                        const fwd = forwardingMessage;
-                        const displayContent = fwd.is_encrypted
-                          ? (decryptedMessages[fwd.id] || fwd.content)
-                          : fwd.content;
-                        const body: Record<string, unknown> = {
-                          chatId: chat.id,
-                          content: `↪ Encaminhada\n${displayContent || ''}`.trim(),
-                        };
-                        if (fwd.media_url) body.mediaUrl = fwd.media_url;
-                        if (fwd.media_type) body.mediaType = fwd.media_type;
-
-                        const res = await fetch('/api/messages', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(body),
-                        });
-                        if (!res.ok) throw new Error('Falha ao encaminhar');
-                        toast.success(`Encaminhada para ${chat.recipient?.nickname || 'chat'}`);
-                        setForwardingMessage(null);
-                      } catch {
-                        toast.error('Erro ao encaminhar mensagem');
-                      }
-                    }}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                      {(chat.recipient?.nickname || '?')[0].toUpperCase()}
-                    </div>
-                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {chat.recipient?.nickname || 'Chat'}
-                    </span>
-                  </button>
-                ))}
-                {chats.filter(c => c.id !== selectedChat?.id).length === 0 && (
-                  <p className="p-4 text-sm text-gray-500 dark:text-gray-400 text-center">Nenhum outro chat disponível</p>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

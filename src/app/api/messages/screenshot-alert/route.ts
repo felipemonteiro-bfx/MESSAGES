@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-function getSupabaseAdmin() {
-  return createClient(supabaseUrl, supabaseServiceKey);
-}
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { logger } from '@/lib/logger';
 
 /**
  * POST - Notifica que um screenshot foi detectado em uma conversa
@@ -20,9 +14,9 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.substring(7);
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAdmin = getSupabaseAdmin();
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -75,13 +69,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error('Error creating screenshot alert:', insertError);
+      logger.error('Error creating screenshot alert', new Error(insertError.message));
       return NextResponse.json({ error: 'Failed to create alert' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, message });
   } catch (error) {
-    console.error('Screenshot alert error:', error);
+    logger.error('Screenshot alert error', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -97,9 +91,9 @@ export async function GET(request: NextRequest) {
     }
 
     const token = authHeader.substring(7);
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAdmin = getSupabaseAdmin();
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -134,7 +128,7 @@ export async function GET(request: NextRequest) {
       .limit(50);
 
     if (alertsError) {
-      console.error('Error fetching screenshot alerts:', alertsError);
+      logger.error('Error fetching screenshot alerts', new Error(alertsError.message));
       return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: 500 });
     }
 
@@ -145,7 +139,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ alerts: screenshotAlerts });
   } catch (error) {
-    console.error('Get screenshot alerts error:', error);
+    logger.error('Get screenshot alerts error', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

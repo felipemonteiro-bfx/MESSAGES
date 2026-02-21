@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { isApnsConfigured, sendApns } from '@/lib/apns';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,8 @@ export async function DELETE() {
     }
 
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    logger.error('Erro ao limpar badge', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ message: 'Erro ao limpar badge' }, { status: 500 });
   }
 }
@@ -67,7 +69,8 @@ export async function GET() {
       .is('read_at', null);
 
     return NextResponse.json({ count: count || 0 });
-  } catch {
+  } catch (error) {
+    logger.error('Erro ao obter contagem de badge', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ message: 'Erro ao obter contagem' }, { status: 500 });
   }
 }

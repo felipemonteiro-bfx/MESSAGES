@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
+import { DEFAULT_AVATAR_URL } from '@/lib/constants';
 
 export const dynamic = 'force-static';
 export const revalidate = 0;
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
         const { error: profileError } = await supabase.from('profiles').insert({
           id: session.user.id,
           nickname: session.user.user_metadata.nickname || `user_${session.user.id.slice(0, 5)}`,
-          avatar_url: session.user.user_metadata.avatar_url || `https://i.pravatar.cc/150?u=${session.user.id}`,
+          avatar_url: session.user.user_metadata.avatar_url || `${DEFAULT_AVATAR_URL}?u=${session.user.id}`,
         });
 
         if (profileError) {
