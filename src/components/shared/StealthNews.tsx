@@ -186,7 +186,11 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   // Clicar na "notícia" abre o modo mensagens
   // ============================================================
   const [messageAlerts, setMessageAlerts] = useState<NewsItem[]>([]);
-  const lastCheckedRef = useRef<string | null>(null);
+  const lastCheckedRef = useRef<string | null>(
+    typeof window !== 'undefined'
+      ? (() => { try { return sessionStorage.getItem('n24h_last_notified_msg'); } catch { return null; } })()
+      : null
+  );
 
   // Gerar notícia fake convincente a partir de uma mensagem real
   const generateFakeNewsFromMessage = useCallback((
@@ -268,6 +272,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
               // Notificar o provider (para toast sutil) — apenas na primeira vez que detecta nova msg
               if (onMessageNotification && lastCheckedRef.current !== unread[0].id) {
                 lastCheckedRef.current = unread[0].id;
+                try { sessionStorage.setItem('n24h_last_notified_msg', unread[0].id); } catch {}
                 onMessageNotification(alerts[0].title);
               }
             } else {

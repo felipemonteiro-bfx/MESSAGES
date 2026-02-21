@@ -150,3 +150,41 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: getApiErrorMessage(err) }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { chatId } = await request.json();
+    if (!chatId) {
+      return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
+    }
+
+    const admin = getSupabaseAdmin();
+
+    const { data: participation } = await admin
+      .from('chat_participants')
+      .select('chat_id')
+      .eq('chat_id', chatId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!participation) {
+      return NextResponse.json({ error: 'Chat not found or not authorized' }, { status: 403 });
+    }
+
+    await admin.from('messages').delete().eq('chat_id', chatId);
+    await admin.from('chat_participants').delete().eq('chat_id', chatId);
+    await admin.from('chats').delete().eq('id', chatId);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting chat:', err);
+    return NextResponse.json({ error: getApiErrorMessage(err) }, { status: 500 });
+  }
+}

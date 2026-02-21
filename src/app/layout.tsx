@@ -6,6 +6,7 @@ import ServiceWorkerRegistration from "@/components/shared/ServiceWorkerRegistra
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import OfflineBanner from "@/components/shared/OfflineBanner";
 import PrefetchRoutes from "@/components/shared/PrefetchRoutes";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </ErrorBoundary>
         <Toaster position="top-center" richColors />
+        <Analytics />
       </body>
     </html>
   );

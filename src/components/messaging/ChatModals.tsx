@@ -42,6 +42,11 @@ interface ChatModalsProps {
   onSetShowLogoutConfirm: (show: boolean) => void;
   onLogout: () => void;
 
+  deleteChatConfirm: ChatWithRecipient | null;
+  isDeletingChat: boolean;
+  onSetDeleteChatConfirm: (chat: ChatWithRecipient | null) => void;
+  onDeleteChat: (chat: ChatWithRecipient) => void;
+
   editingMessage: Message | null;
   editContent: string;
   isEditing: boolean;
@@ -83,6 +88,7 @@ export default function ChatModals(props: ChatModalsProps) {
     showSettingsModal, currentUserProfile, onCloseSettings, onAvatarUpdate,
     showMediaGallery, onCloseMediaGallery,
     showLogoutConfirm, onSetShowLogoutConfirm, onLogout,
+    deleteChatConfirm, isDeletingChat, onSetDeleteChatConfirm, onDeleteChat,
     editingMessage, editContent, isEditing,
     onSetEditContent, onCloseEditMessage, onEditMessage,
     deleteConfirmId, onSetDeleteConfirmId, onDeleteMessage, canDeleteForEveryone,
@@ -238,6 +244,27 @@ export default function ChatModals(props: ChatModalsProps) {
               <div className="flex gap-3">
                 <button onClick={() => onSetShowLogoutConfirm(false)} className="flex-1 py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors">Cancelar</button>
                 <button onClick={onLogout} className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white bg-red-600 hover:bg-red-700 transition-colors">Sair</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Chat Confirmation */}
+      <AnimatePresence>
+        {deleteChatConfirm && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4" onClick={() => onSetDeleteChatConfirm(null)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Excluir conversa?</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                Conversa com <span className="font-semibold text-gray-800 dark:text-gray-200">{deleteChatConfirm.recipient?.nickname || 'este contato'}</span>
+              </p>
+              <p className="text-sm text-red-500 dark:text-red-400 mb-6">Todas as mensagens serão apagadas permanentemente para ambos.</p>
+              <div className="flex gap-3">
+                <button onClick={() => onSetDeleteChatConfirm(null)} disabled={isDeletingChat} className="flex-1 py-2.5 px-4 rounded-xl font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#242f3d] hover:bg-gray-200 dark:hover:bg-[#2b5278] transition-colors disabled:opacity-50">Cancelar</button>
+                <button onClick={() => onDeleteChat(deleteChatConfirm)} disabled={isDeletingChat} className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50">
+                  {isDeletingChat ? 'Excluindo...' : 'Excluir'}
+                </button>
               </div>
             </motion.div>
           </motion.div>

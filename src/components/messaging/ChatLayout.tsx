@@ -46,7 +46,7 @@ function SwipeableChatItem({
   style,
   onSelect,
   onMuteToggle,
-  fetchMediaWithCache,
+  onDelete,
 }: {
   chat: ChatWithRecipient;
   selectedChat: ChatWithRecipient | null;
@@ -56,21 +56,35 @@ function SwipeableChatItem({
   style: React.CSSProperties;
   onSelect: () => void;
   onMuteToggle: () => Promise<void>;
-  fetchMediaWithCache: (url: string) => Promise<Blob>;
+  onDelete: () => void;
 }) {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState(false);
   const justSwipedRef = useRef(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const minSwipe = 60;
 
   const onTouchStart = (e: React.TouchEvent) => {
     setTouchEndX(null);
     setTouchStartX(e.targetTouches[0].clientX);
+    longPressTimerRef.current = setTimeout(() => {
+      setShowContextMenu(true);
+      justSwipedRef.current = true;
+    }, 600);
   };
   const onTouchMove = (e: React.TouchEvent) => {
     setTouchEndX(e.targetTouches[0].clientX);
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   };
   const onTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
     if (touchStartX == null || touchEndX == null) return;
     const d = touchStartX - touchEndX;
     if (d > minSwipe) {
@@ -89,6 +103,13 @@ function SwipeableChatItem({
     onSelect();
   };
 
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const close = () => setShowContextMenu(false);
+    const timer = setTimeout(() => document.addEventListener('click', close, { once: true }), 50);
+    return () => { clearTimeout(timer); document.removeEventListener('click', close); };
+  }, [showContextMenu]);
+
   return (
     <div
       style={style}
@@ -97,7 +118,8 @@ function SwipeableChatItem({
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      className="touch-manipulation"
+      onContextMenu={(e) => { e.preventDefault(); setShowContextMenu(true); }}
+      className="touch-manipulation relative"
     >
       <div
         onClick={handleSelect}
@@ -109,16 +131,6 @@ function SwipeableChatItem({
             alt={chat.recipient?.nickname || 'Avatar'}
             className="w-12 h-12 rounded-full object-cover flex-shrink-0"
             loading="lazy"
-            onLoad={async (e) => {
-              const imgSrc = e.currentTarget.src;
-              if (imgSrc?.startsWith('http')) {
-                try {
-                  await fetchMediaWithCache(imgSrc);
-                } catch {
-                  // ignorar
-                }
-              }
-            }}
           />
           {chat.recipient && onlineUsers.has(chat.recipient.id) && (
             <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#17212b] rounded-full" />
@@ -152,6 +164,35 @@ function SwipeableChatItem({
           )}
         </div>
       </div>
+      <AnimatePresence>
+        {showContextMenu && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-50 bg-white dark:bg-[#242f3d] rounded-xl shadow-xl border border-gray-200 dark:border-[#17212b] overflow-hidden min-w-[180px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => { setShowContextMenu(false); onMuteToggle(); }}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
+            >
+              {mutedChats.has(chat.id)
+                ? <><Bell className="w-4 h-4" /><span>Ativar notificações</span></>
+                : <><BellOff className="w-4 h-4" /><span>Silenciar</span></>
+              }
+            </button>
+            <button
+              onClick={() => { setShowContextMenu(false); onDelete(); }}
+              className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Excluir conversa</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -270,6 +311,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [showMediaMenu, setShowMediaMenu] = useState(false);
@@ -566,11 +608,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   // Lazy loading de mensagens (via API server-side)
   const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false, silent = false) => {
+    if (append && isLoadingMore) return;
     if (fetchAbortRef.current) {
       fetchAbortRef.current.abort();
     }
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    if (append) setIsLoadingMore(true);
     
     try {
       const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`, { 
@@ -609,7 +653,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
         setHasMoreMessages(hasMore);
 
-        if (silent && scrollEl && prevScrollTop !== undefined && prevScrollHeight !== undefined) {
+        if (append && scrollEl && prevScrollTop !== undefined && prevScrollHeight !== undefined) {
           requestAnimationFrame(() => {
             const newScrollHeight = scrollEl.scrollHeight;
             scrollEl.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
@@ -624,8 +668,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           action: page === 1 ? { label: 'Tentar novamente', onClick: () => fetchMessages(chatId, 1, false) } : undefined,
         });
       }
+    } finally {
+      if (append) setIsLoadingMore(false);
     }
-  }, []);
+  }, [isLoadingMore]);
 
   useEffect(() => {
     const closeMessageMenu = () => setMessageMenuId(null);
@@ -1012,8 +1058,12 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          const msgId = (entry.target as HTMLElement).dataset.msgReadId;
-          if (msgId) pendingReadIdsRef.current.add(msgId);
+          const el = entry.target as HTMLElement;
+          const msgId = el.dataset.msgReadId;
+          if (msgId) {
+            pendingReadIdsRef.current.add(msgId);
+            observer.unobserve(el);
+          }
         }
         if (pendingReadIdsRef.current.size > 0) {
           if (readDebounceRef.current) clearTimeout(readDebounceRef.current);
@@ -1026,17 +1076,25 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     readObserverRef.current = observer;
 
     const container = messagesScrollRef.current;
+
+    const mutObs = new MutationObserver(() => {
+      const unreadEls = container.querySelectorAll('[data-msg-read-id]');
+      unreadEls.forEach(el => observer.observe(el));
+    });
+    mutObs.observe(container, { childList: true, subtree: true });
+
     const unreadEls = container.querySelectorAll('[data-msg-read-id]');
     unreadEls.forEach(el => observer.observe(el));
 
     return () => {
       observer.disconnect();
+      mutObs.disconnect();
       if (readDebounceRef.current) {
         clearTimeout(readDebounceRef.current);
         flushPendingReads();
       }
     };
-  }, [selectedChat, currentUser, messages, flushPendingReads]);
+  }, [selectedChat?.id, currentUser?.id, flushPendingReads]);
 
   const handleMediaUpload = useCallback(async (file: File, type: 'image' | 'video' | 'audio') => {
     // Limites de tamanho por tipo
@@ -1905,6 +1963,33 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   // Handler para logout (com confirmação)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [deleteChatConfirm, setDeleteChatConfirm] = useState<ChatWithRecipient | null>(null);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
+
+  const handleDeleteChat = useCallback(async (chat: ChatWithRecipient) => {
+    setIsDeletingChat(true);
+    try {
+      const response = await fetch('/api/chats', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: chat.id }),
+      });
+      if (!response.ok) throw new Error('Failed to delete chat');
+
+      if (selectedChat?.id === chat.id) {
+        setSelectedChat(null);
+        setMessages([]);
+        setIsSidebarOpen(true);
+      }
+      setChats(prev => prev.filter(c => c.id !== chat.id));
+      toast.success('Conversa excluída', { duration: 2000 });
+    } catch {
+      toast.error('Erro ao excluir conversa. Tente novamente.');
+    } finally {
+      setIsDeletingChat(false);
+      setDeleteChatConfirm(null);
+    }
+  }, [selectedChat]);
   const handleLogout = async () => {
     try {
       setShowLogoutConfirm(false);
@@ -1928,7 +2013,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       onTouchEnd={onTouchEnd}
     >
       <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-all duration-300 md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b]`}>
-        <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-[#0e1621] relative z-30">
+        <div className="p-2 sm:p-4 flex items-center gap-1.5 sm:gap-3 border-b border-[#0e1621] relative z-30">
           {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
           <button
             onClick={() => {
@@ -1940,20 +2025,20 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               lockMessaging();
               toast.success('Modo notícias ativado.', { duration: 2000 });
             }}
-            className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0"
+            className="p-1 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0"
             title="Voltar para Noticias24h (Ctrl+Shift+L)"
             aria-label="Esconder e voltar ao portal de notícias"
           >
-            <Newspaper className="w-5 h-5" />
+            <Newspaper className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation"
+              className="p-1 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation"
               aria-label="Menu"
               aria-expanded={isMenuOpen}
             >
-              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             
             {/* Menu Dropdown */}
@@ -2031,22 +2116,22 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               )}
             </AnimatePresence>
           </div>
-          <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center px-2 sm:px-3 py-1.5 sm:py-2">
-            <Search className="w-4 h-4 text-gray-400 dark:text-[#708499] mr-2 flex-shrink-0" />
+          <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2">
+            <Search className="w-4 h-4 text-gray-400 dark:text-[#708499] flex-shrink-0" />
             <input 
               type="text" 
               placeholder="Buscar..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 text-base w-full min-w-0 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
+              className="bg-transparent border-none focus:ring-0 text-sm sm:text-base w-full min-w-0 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
             />
             <button 
               onClick={() => setShowAdvancedSearch(true)}
-              className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-[#17212b] text-gray-500 dark:text-[#708499] transition-colors flex-shrink-0"
+              className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-[#17212b] text-gray-500 dark:text-[#708499] transition-colors flex-shrink-0"
               title="Busca avançada"
               aria-label="Busca avançada"
             >
-              <SlidersHorizontal className="w-4 h-4" />
+              <SlidersHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
           {/* Botão Settings - apenas em telas maiores */}
@@ -2058,15 +2143,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           >
             <Settings className="w-5 h-5" />
           </button>
-          {/* Botão Adicionar contato - sempre visível mas menor em mobile */}
+          {/* Botão Adicionar contato */}
           <button 
             onClick={() => setIsAddContactOpen(true)} 
-            className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0" 
+            className="p-1 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0" 
             title="Adicionar contato" 
             data-testid="add-contact-button" 
             aria-label="Adicionar contato"
           >
-            <UserPlus className="w-5 h-5" />
+            <UserPlus className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           {/* Botão Editar nickname - apenas em telas maiores */}
           {currentUser && (
@@ -2177,7 +2262,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         toast.error(getUserFriendlyMessage(normalizeError(e)) || 'Erro ao alterar notificações');
                       }
                     }}
-                    fetchMediaWithCache={fetchMediaWithCache}
+                    onDelete={() => setDeleteChatConfirm(chat)}
                   />
                 );
               })}
@@ -2346,14 +2431,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                             className="flex justify-center py-2"
                           >
                             <button
+                              disabled={isLoadingMore}
                               onClick={() => {
                                 const nextPage = messagesPage + 1;
                                 setMessagesPage(nextPage);
                                 fetchMessages(selectedChat.id, nextPage, true);
                               }}
-                              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
                             >
-                              Carregar mensagens anteriores
+                              {isLoadingMore ? 'Carregando...' : 'Carregar mensagens anteriores'}
                             </button>
                           </div>
                         );
@@ -2398,19 +2484,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         alt="Avatar" 
                         className="w-8 h-8 rounded-full object-cover flex-shrink-0" 
                         loading="lazy"
-                        onLoad={async (e) => {
-                          e.currentTarget.classList.add('loaded');
-                          // Sugestão 13: Cachear avatar após carregar
-                          const imgSrc = e.currentTarget.src;
-                          if (imgSrc && imgSrc.startsWith('http')) {
-                            try {
-                              const cached = await fetchMediaWithCache(imgSrc);
-                              // Se cache funcionou, pode usar URL do blob para melhor performance
-                            } catch (error) {
-                              // Ignorar erros de cache silenciosamente
-                            }
-                          }
-                        }}
                       />
                       <div className={`flex-1 max-w-[75%] ${msg.sender_id === currentUser?.id ? 'items-end' : 'items-start'} flex flex-col`}>
                         <div className={`rounded-lg px-4 py-2.5 ${msg.sender_id === currentUser?.id 
@@ -2721,6 +2794,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         showLogoutConfirm={showLogoutConfirm}
         onSetShowLogoutConfirm={setShowLogoutConfirm}
         onLogout={handleLogout}
+        deleteChatConfirm={deleteChatConfirm}
+        isDeletingChat={isDeletingChat}
+        onSetDeleteChatConfirm={setDeleteChatConfirm}
+        onDeleteChat={handleDeleteChat}
         editingMessage={editingMessage}
         editContent={editContent}
         isEditing={isEditing}
