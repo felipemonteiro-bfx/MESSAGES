@@ -63,6 +63,8 @@ export interface ChatWithRecipient extends Chat {
     public_key?: string | null;
   };
   lastMessage?: string;
+  lastMessageEncrypted?: boolean;
+  lastMessageMediaType?: 'image' | 'video' | 'audio' | null;
   time?: string;
 }
 

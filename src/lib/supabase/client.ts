@@ -12,11 +12,13 @@ export const createClient = () => {
     {
       realtime: {
         params: {
-          eventsPerSecond: 10,
+          eventsPerSecond: 25,
         },
         heartbeatIntervalMs: 15000,
-        reconnectAfterMs: (tries: number) =>
-          Math.min(1000 * Math.pow(2, tries), 30000),
+        reconnectAfterMs: (tries: number) => {
+          const base = Math.min(1000 * Math.pow(2, tries), 30000);
+          return base + Math.random() * base * 0.3;
+        },
       },
     }
   );

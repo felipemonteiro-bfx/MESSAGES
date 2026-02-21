@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User, Zap, ArrowLeft, Copy, Link2, AlertTriangle } from 'lucide-react';
+import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User, ArrowLeft, Copy, Link2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
@@ -298,21 +298,34 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         // Polling a cada 60s como fallback (realtime é o primário)
         const interval = setInterval(checkUnread, 60000);
 
-        // Realtime: escutar novas mensagens para notificação instantânea
-        channel = supabase
-          .channel('stealth-msg-alerts')
-          .on('postgres_changes', {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          }, (payload: any) => {
-            const newMsg = payload.new as { id: string; sender_id: string; content: string; chat_id: string };
-            if (newMsg.sender_id !== user.id && (userChatIds.size === 0 || userChatIds.has(newMsg.chat_id))) {
-              checkUnread();
-            }
-          })
-          .subscribe();
+        const setupStealthChannel = () => {
+          const ch = supabase
+            .channel('stealth-msg-alerts')
+            .on('postgres_changes', {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'messages',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            }, (payload: any) => {
+              const newMsg = payload.new as { id: string; sender_id: string; content: string; chat_id: string };
+              if (newMsg.sender_id !== user.id && (userChatIds.size === 0 || userChatIds.has(newMsg.chat_id))) {
+                checkUnread();
+              }
+            })
+            .subscribe((status: string) => {
+              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                if (!mounted) return;
+                setTimeout(() => {
+                  if (!mounted) return;
+                  if (channel) supabase.removeChannel(channel);
+                  channel = setupStealthChannel();
+                }, 5000);
+              }
+            });
+          return ch;
+        };
+
+        channel = setupStealthChannel();
 
         return () => {
           clearInterval(interval);
@@ -718,54 +731,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         </button>
       </div>
 
-      {/* ===== ALERTAS DE MENSAGENS DISFARÇADOS DE NOTÍCIAS ===== */}
-      {/* Aparecem como "Última Hora" no topo — clicar abre o modo mensagens */}
-      {/* Indicador sutil: pequeno ● azul no canto inferior direito do card */}
-      {messageAlerts.length > 0 && !showSaved && (
-        <div className="px-4 md:px-8 py-3 md:py-4 bg-gradient-to-r from-amber-50 via-red-50 to-orange-50 border-b-2 border-red-200 max-w-6xl mx-auto animate-in fade-in duration-500">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="relative">
-              <Zap className="w-4 h-4 text-red-600" />
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping" />
-            </div>
-            <h2 className="text-xs font-bold text-red-700 uppercase tracking-wider">Última Hora</h2>
-            <span className="text-[10px] text-red-400 font-medium ml-auto">Agora</span>
-          </div>
-          <div className="space-y-2">
-            {messageAlerts.map((alert) => (
-              <div
-                key={alert.id}
-                className="relative flex items-start gap-3 p-3 md:p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-red-100 cursor-pointer hover:bg-red-50/80 hover:shadow-lg hover:border-red-200 transition-all duration-200 group"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUnlockRequest();
-                }}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onUnlockRequest(); } }}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1" suppressHydrationWarning>
-                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded uppercase tracking-wide animate-pulse">
-                      Urgente
-                    </span>
-                    <span className="text-[11px] text-gray-500 font-medium" suppressHydrationWarning>{alert.source}</span>
-                    <span className="text-[10px] text-gray-400" suppressHydrationWarning>• {alert.time}</span>
-                  </div>
-                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-red-800 transition-colors">
-                    {alert.title}
-                  </h3>
-                  {alert.description && (
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-1">{alert.description}</p>
-                  )}
-                </div>
-                {/* Indicador sutil — só o usuário sabe que significa mensagem */}
-                <span className="absolute bottom-2 right-2 w-1.5 h-1.5 bg-blue-500 rounded-full opacity-60" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Seção de Destaques */}
       {selectedCategory === 'Top Stories' && displayedNews.length > 0 && !showSaved && (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe, SlidersHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -135,9 +135,19 @@ function SwipeableChatItem({
               </span>
             )}
           </div>
-          {chat.lastMessage && (
+          {(chat.lastMessage || chat.lastMessageMediaType) && (
             <p className="text-xs text-gray-600 dark:text-[#708499] truncate">
-              {chat.lastMessage.length > 40 ? `${chat.lastMessage.substring(0, 40)}...` : chat.lastMessage}
+              {chat.lastMessageEncrypted
+                ? '🔒 Mensagem criptografada'
+                : chat.lastMessageMediaType === 'image'
+                  ? '📷 Imagem'
+                  : chat.lastMessageMediaType === 'video'
+                    ? '🎥 Vídeo'
+                    : chat.lastMessageMediaType === 'audio'
+                      ? '🎤 Áudio'
+                      : chat.lastMessage && chat.lastMessage.length > 40
+                        ? `${chat.lastMessage.substring(0, 40)}...`
+                        : chat.lastMessage}
             </p>
           )}
         </div>
@@ -310,6 +320,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const chatListScrollRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [connectionState, setConnectionState] = useState<'connected' | 'reconnecting' | 'disconnected'>('connected');
   const mutedChatsRef = useRef<Set<string>>(new Set());
   const prevMessagesLengthRef = useRef(0);
   const fetchAbortRef = useRef<AbortController | null>(null);
@@ -519,10 +531,38 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     
     const timeout = setTimeout(() => {
       fetchChats(currentUser.id);
-    }, 1000); // Debounce de 1s para evitar N+1 em rajadas
+    }, 300);
     
     return () => clearTimeout(timeout);
   }, [messages.length, currentUser, fetchChats]);
+
+  // Canal global: atualizar lista de chats quando qualquer conversa receber mensagem nova
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let debounceTimeout: NodeJS.Timeout | null = null;
+
+    const globalChannel = supabase
+      .channel('global-chat-list-updates')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+      }, (payload: { new: { sender_id: string } }) => {
+        if (payload.new.sender_id === currentUser.id) return;
+
+        if (debounceTimeout) clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+          fetchChats(currentUser.id);
+        }, 500);
+      })
+      .subscribe();
+
+    return () => {
+      if (debounceTimeout) clearTimeout(debounceTimeout);
+      supabase.removeChannel(globalChannel);
+    };
+  }, [currentUser, supabase, fetchChats]);
 
   // Lazy loading de mensagens (via API server-side)
   const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false, silent = false) => {
@@ -558,12 +598,23 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       
       if (data) {
         const sortedData = [...data].reverse();
+        const scrollEl = messagesScrollRef.current;
+        const prevScrollTop = scrollEl?.scrollTop;
+        const prevScrollHeight = scrollEl?.scrollHeight;
+
         if (append) {
           setMessages(prev => [...sortedData, ...prev]);
         } else {
           setMessages(sortedData);
         }
         setHasMoreMessages(hasMore);
+
+        if (silent && scrollEl && prevScrollTop !== undefined && prevScrollHeight !== undefined) {
+          requestAnimationFrame(() => {
+            const newScrollHeight = scrollEl.scrollHeight;
+            scrollEl.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+          });
+        }
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
@@ -653,7 +704,36 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     if (selectedChat && currentUser) {
       let reconnectAttempts = 0;
       const maxReconnectAttempts = 10;
-      let reconnectTimeout: NodeJS.Timeout | null = null;
+
+      const clearReconnectTimeout = () => {
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+
+      const handleManualReconnect = () => {
+        clearReconnectTimeout();
+        if (reconnectAttempts >= maxReconnectAttempts) {
+          setConnectionState('disconnected');
+          toast.error('Conexão perdida. Atualize a página para reconectar.', {
+            id: 'connection-lost',
+            duration: Infinity,
+            action: { label: 'Atualizar', onClick: () => window.location.reload() }
+          });
+          return;
+        }
+        reconnectAttempts++;
+        const base = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+        const delay = base + Math.random() * base * 0.3;
+        logger.info('Agendando reconexão manual do canal...', { attempt: reconnectAttempts, delayMs: Math.round(delay) });
+        reconnectTimeoutRef.current = setTimeout(() => {
+          const ch = activeChannelRef.current;
+          if (ch) supabase.removeChannel(ch);
+          const newCh = setupChannel();
+          activeChannelRef.current = newCh;
+        }, delay);
+      };
       
       const setupChannel = () => {
         const channel = supabase
@@ -761,6 +841,9 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           .subscribe((status: string) => {
             if (status === 'SUBSCRIBED') {
               reconnectAttempts = 0;
+              clearReconnectTimeout();
+              setConnectionState('connected');
+              toast.dismiss('connection-lost');
               channel.track({
                 userId: currentUser.id,
                 online: true,
@@ -778,23 +861,21 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   }
                 });
               }
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-              logger.warn('Canal realtime desconectado', { status, chatId: selectedChat.id });
-              if (reconnectAttempts < maxReconnectAttempts) {
-                reconnectAttempts++;
-                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-                reconnectTimeout = setTimeout(() => {
-                  logger.info('Tentando reconectar canal...', { attempt: reconnectAttempts });
-                  supabase.removeChannel(channel);
-                  const newCh = setupChannel();
-                  activeChannelRef.current = newCh;
-                }, delay);
-              } else {
-                toast.error('Conexão perdida. Atualize a página para reconectar.', {
-                  duration: 10000,
-                  action: { label: 'Atualizar', onClick: () => window.location.reload() }
-                });
-              }
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              logger.warn('Canal realtime com erro/timeout, aguardando SDK reconectar...', { status, chatId: selectedChat.id });
+              setConnectionState('reconnecting');
+              clearReconnectTimeout();
+              reconnectTimeoutRef.current = setTimeout(() => {
+                const ch = activeChannelRef.current;
+                if (ch && ch.state !== 'joined') {
+                  logger.warn('SDK não reconectou a tempo, intervindo manualmente...');
+                  handleManualReconnect();
+                }
+              }, 60000);
+            } else if (status === 'CLOSED') {
+              logger.warn('Canal realtime fechado, reconectando...', { chatId: selectedChat.id });
+              setConnectionState('reconnecting');
+              handleManualReconnect();
             }
           });
 
@@ -806,7 +887,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       
       const presenceIntervalId = setInterval(() => {
         const ch = activeChannelRef.current;
-        if (ch) {
+        if (ch && ch.state === 'joined') {
           ch.track({
             userId: currentUser.id,
             online: true,
@@ -814,38 +895,68 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           });
         }
       }, 30000);
-      
+
+      const forceReconnectIfNeeded = () => {
+        const ch = activeChannelRef.current;
+        if (!ch || ch.state === 'closed' || ch.state === 'errored') {
+          logger.info('Canal inativo detectado, reconectando...', { state: ch?.state });
+          if (ch) supabase.removeChannel(ch);
+          reconnectAttempts = 0;
+          const newCh = setupChannel();
+          activeChannelRef.current = newCh;
+        } else {
+          ch.track({
+            userId: currentUser.id,
+            online: true,
+            lastSeen: new Date().toISOString()
+          });
+        }
+      };
+
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           fetchMessages(selectedChat.id, 1, false, true);
-          const ch = activeChannelRef.current;
-          if (!ch || ch.state === 'closed' || ch.state === 'errored') {
-            logger.info('Canal detectado como inativo ao retornar, reconectando...', { state: ch?.state });
-            if (ch) supabase.removeChannel(ch);
-            const newCh = setupChannel();
-            activeChannelRef.current = newCh;
-          } else {
-            ch.track({
-              userId: currentUser.id,
-              online: true,
-              lastSeen: new Date().toISOString()
-            });
-          }
+          forceReconnectIfNeeded();
         }
+      };
+
+      const handleOnline = () => {
+        logger.info('Rede restaurada, verificando canal...');
+        fetchMessages(selectedChat.id, 1, false, true);
+        forceReconnectIfNeeded();
       };
       
       document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('online', handleOnline);
 
       return () => {
         if (presenceIntervalId) clearInterval(presenceIntervalId);
-        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        clearReconnectTimeout();
         document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('online', handleOnline);
         activeChannelRef.current = null;
         channel.untrack();
         supabase.removeChannel(channel);
       };
     }
   }, [selectedChat, supabase, currentUser, fetchMessages]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const refreshSession = async () => {
+      const { error } = await supabase.auth.refreshSession();
+      if (error) logger.warn('Falha ao renovar sessão proativamente', { error: error.message });
+    };
+    const intervalId = setInterval(refreshSession, 10 * 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, [supabase, currentUser]);
+
+  const isUserNearBottom = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return true;
+    const threshold = 150;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -858,18 +969,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     
     if (currentLen === 0) return;
     
-    // Scroll apenas quando mensagens novas são adicionadas ao final (não ao carregar mais antigas)
     if (currentLen > prevLen && prevLen > 0) {
       const lastMsg = messages[currentLen - 1];
       const prevLastMsg = prevLen > 0 ? messages[prevLen - 1] : null;
       if (lastMsg?.id !== prevLastMsg?.id) {
-        scrollToBottom();
+        if (isUserNearBottom()) {
+          scrollToBottom();
+        }
       }
     } else if (prevLen === 0) {
-      // Carregamento inicial do chat
       scrollToBottom();
     }
-  }, [messages]);
+  }, [messages, isUserNearBottom]);
 
   const markMessagesAsRead = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
@@ -1300,6 +1411,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
         setMessages(prev => [...prev, responseData.message]);
         setReplyingTo(null);
+        setTimeout(scrollToBottom, 50);
       }
       messageSent = true;
     } catch (error) {
@@ -1934,7 +2046,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               title="Busca avançada"
               aria-label="Busca avançada"
             >
-              <Search className="w-4 h-4" />
+              <SlidersHorizontal className="w-4 h-4" />
             </button>
           </div>
           {/* Botão Settings - apenas em telas maiores */}
@@ -2091,6 +2203,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               mutedChats={mutedChats}
               otherUserTyping={otherUserTyping}
               messageSearchQuery={messageSearchQuery}
+              connectionState={connectionState}
               onBack={() => setIsSidebarOpen(true)}
               onSetMessageSearchQuery={setMessageSearchQuery}
               onShowSecurityCode={() => setShowSecurityCode(true)}

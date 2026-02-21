@@ -77,17 +77,22 @@ export async function GET(request: NextRequest) {
     }
 
     // 5. Get last messages for all chats (one query per chat with LIMIT 1)
-    const lastMessageMap: Record<string, { content: string; created_at: string }> = {};
+    const lastMessageMap: Record<string, { content: string; created_at: string; is_encrypted?: boolean; media_type?: string | null }> = {};
     const lastMsgPromises = chatIds.map(async (chatId) => {
       const { data, error } = await getSupabaseAdmin()
         .from('messages')
-        .select('chat_id, content, created_at')
+        .select('chat_id, content, created_at, is_encrypted, media_type')
         .eq('chat_id', chatId)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
       if (!error && data) {
-        lastMessageMap[data.chat_id] = { content: data.content, created_at: data.created_at };
+        lastMessageMap[data.chat_id] = {
+          content: data.content,
+          created_at: data.created_at,
+          is_encrypted: data.is_encrypted ?? false,
+          media_type: data.media_type ?? null,
+        };
       }
     });
     await Promise.all(lastMsgPromises);
@@ -126,6 +131,8 @@ export async function GET(request: NextRequest) {
           public_key: otherProfile.public_key || null,
         } : undefined,
         lastMessage: lastMsg?.content || undefined,
+        lastMessageEncrypted: lastMsg?.is_encrypted || false,
+        lastMessageMediaType: lastMsg?.media_type || undefined,
         time: lastMsg?.created_at || undefined,
       };
     });

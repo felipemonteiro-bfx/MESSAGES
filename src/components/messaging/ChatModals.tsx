@@ -168,7 +168,12 @@ export default function ChatModals(props: ChatModalsProps) {
             </div>
             <div className="flex-1 overflow-auto p-4">
               {(() => {
-                const mediaItems = messages.filter(m => m.media_url && (m.media_type === 'image' || m.media_type === 'video'));
+                const mediaItems = messages.filter(m =>
+                  m.media_url &&
+                  (m.media_type === 'image' || m.media_type === 'video') &&
+                  !m.deleted_at &&
+                  !m.is_view_once
+                );
                 if (mediaItems.length === 0) {
                   return (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
@@ -180,8 +185,39 @@ export default function ChatModals(props: ChatModalsProps) {
                 return (
                   <div className="grid grid-cols-3 gap-2">
                     {mediaItems.map((m) => (
-                      <a key={m.id} href={m.media_url!} target="_blank" rel="noopener noreferrer" className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-[#242f3d] block">
-                        {m.media_type === 'image' ? <img src={m.media_url!} alt="" className="w-full h-full object-cover" loading="lazy" /> : <video src={m.media_url!} className="w-full h-full object-cover" muted />}
+                      <a key={m.id} href={m.media_url!} target="_blank" rel="noopener noreferrer" className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-[#242f3d] block relative">
+                        {m.media_type === 'image' ? (
+                          <img
+                            src={m.media_url!}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.style.display = 'none';
+                              const fallback = target.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                        ) : (
+                          <video
+                            src={m.media_url!}
+                            className="w-full h-full object-cover"
+                            muted
+                            preload="metadata"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.style.display = 'none';
+                              const fallback = target.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                        )}
+                        <div className="absolute inset-0 items-center justify-center text-gray-400" style={{ display: 'none' }}>
+                          <ImageIcon className="w-8 h-8 opacity-50" />
+                        </div>
+                        {m.media_type === 'video' && (
+                          <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">▶</div>
+                        )}
                       </a>
                     ))}
                   </div>

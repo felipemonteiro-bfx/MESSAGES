@@ -17,6 +17,7 @@ interface ChatHeaderProps {
   mutedChats: Set<string>;
   otherUserTyping: string | null;
   messageSearchQuery: string;
+  connectionState?: 'connected' | 'reconnecting' | 'disconnected';
   onBack: () => void;
   onSetMessageSearchQuery: (query: string) => void;
   onShowSecurityCode: () => void;
@@ -31,6 +32,7 @@ export default function ChatHeader({
   mutedChats,
   otherUserTyping,
   messageSearchQuery,
+  connectionState = 'connected',
   onBack,
   onSetMessageSearchQuery,
   onShowSecurityCode,
@@ -111,6 +113,20 @@ export default function ChatHeader({
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {connectionState !== 'connected' && (
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium mr-1 ${
+              connectionState === 'reconnecting'
+                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                connectionState === 'reconnecting'
+                  ? 'bg-amber-500 animate-pulse'
+                  : 'bg-red-500'
+              }`} />
+              {connectionState === 'reconnecting' ? 'Reconectando...' : 'Sem conexão'}
+            </div>
+          )}
           <button
             onClick={onShowSecurityCode}
             className="p-2 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
