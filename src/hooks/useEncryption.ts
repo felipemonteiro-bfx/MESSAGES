@@ -86,10 +86,11 @@ export function useEncryption({ userId, pin }: UseEncryptionOptions) {
 
   const encrypt = useCallback(async (
     message: string,
-    recipientPublicKey: string
+    recipientPublicKey: string,
+    senderPublicKey?: string
   ): Promise<string | null> => {
     try {
-      return await encryptMessage(message, recipientPublicKey);
+      return await encryptMessage(message, recipientPublicKey, senderPublicKey);
     } catch (error) {
       logger.warn('Encryption failed', { error });
       return null;

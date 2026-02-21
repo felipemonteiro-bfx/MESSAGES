@@ -149,8 +149,12 @@ async function decryptWithPin(encryptedData: string, pin: string, salt: Uint8Arr
   return new Uint8Array(decrypted);
 }
 
-export async function encryptMessage(message: string, recipientPublicKeyBase64: string): Promise<string> {
-  const publicKeyArray = base64ToArrayBuffer(recipientPublicKeyBase64);
+/**
+ * Encrypt for a single public key (legacy v1 format).
+ * Returns base64 of [encAesKeyLen(2B)][encAesKey][iv(12B)][encMsg]
+ */
+async function encryptForSingleKey(message: string, publicKeyBase64: string): Promise<string> {
+  const publicKeyArray = base64ToArrayBuffer(publicKeyBase64);
   const publicKeyBuffer = new Uint8Array(publicKeyArray).buffer;
   const publicKey = await crypto.subtle.importKey(
     'spki',
@@ -182,7 +186,6 @@ export async function encryptMessage(message: string, recipientPublicKeyBase64: 
     rawAesKey
   );
 
-  // Format: [encAesKeyLen(2B)][encAesKey][iv(12B)][encMsg]
   const encAesKeyBytes = new Uint8Array(encryptedAesKey);
   const encMsgBytes = new Uint8Array(encryptedMessage);
   const keyLenBytes = new Uint8Array(2);
@@ -199,26 +202,39 @@ export async function encryptMessage(message: string, recipientPublicKeyBase64: 
   return arrayBufferToBase64(combined.buffer);
 }
 
-export async function decryptMessage(encryptedMessage: string, userId: string, pin: string): Promise<string> {
-  const saltBase64 = await secureGet(`${SALT_STORAGE_PREFIX}${userId}`);
-  const encryptedPrivateKey = await secureGet(`${KEY_STORAGE_PREFIX}${userId}`);
-  
-  if (!encryptedPrivateKey || !saltBase64) {
-    throw new Error('Chave privada não encontrada. Gere um par de chaves primeiro.');
+/**
+ * Encrypt a message for both sender and recipient (dual encryption).
+ * If senderPublicKey is provided, creates a v2 dual-encrypted envelope.
+ * Otherwise falls back to single-key encryption for backward compatibility.
+ */
+export async function encryptMessage(
+  message: string,
+  recipientPublicKeyBase64: string,
+  senderPublicKeyBase64?: string
+): Promise<string> {
+  const recipientCiphertext = await encryptForSingleKey(message, recipientPublicKeyBase64);
+
+  if (!senderPublicKeyBase64) {
+    return recipientCiphertext;
   }
 
-  const salt = base64ToArrayBuffer(saltBase64);
-  const privateKeyBuffer = await decryptWithPin(encryptedPrivateKey, pin, salt);
-  const keyBuffer = new Uint8Array(privateKeyBuffer).buffer;
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    keyBuffer,
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    false,
-    ['decrypt']
-  );
+  try {
+    const senderCiphertext = await encryptForSingleKey(message, senderPublicKeyBase64);
+    return JSON.stringify({
+      v: 2,
+      r: recipientCiphertext,
+      s: senderCiphertext,
+    });
+  } catch {
+    return recipientCiphertext;
+  }
+}
 
-  const combined = base64ToArrayBuffer(encryptedMessage);
+/**
+ * Decrypt a single-key encrypted blob using the user's RSA private key.
+ */
+async function decryptSingleBlob(ciphertext: string, privateKey: CryptoKey): Promise<string> {
+  const combined = base64ToArrayBuffer(ciphertext);
   let offset = 0;
 
   const encAesKeyLen = (combined[offset] << 8) | combined[offset + 1];
@@ -252,8 +268,48 @@ export async function decryptMessage(encryptedMessage: string, userId: string, p
     new Uint8Array(encMsg).buffer
   );
 
-  const decoder = new TextDecoder();
-  return decoder.decode(decrypted);
+  return new TextDecoder().decode(decrypted);
+}
+
+/**
+ * Decrypt a message. Supports both v1 (single-key) and v2 (dual-key) formats.
+ * For v2, tries both the recipient blob and sender blob.
+ */
+export async function decryptMessage(encryptedMessage: string, userId: string, pin: string): Promise<string> {
+  const saltBase64 = await secureGet(`${SALT_STORAGE_PREFIX}${userId}`);
+  const encryptedPrivateKey = await secureGet(`${KEY_STORAGE_PREFIX}${userId}`);
+  
+  if (!encryptedPrivateKey || !saltBase64) {
+    throw new Error('Chave privada não encontrada. Gere um par de chaves primeiro.');
+  }
+
+  const salt = base64ToArrayBuffer(saltBase64);
+  const privateKeyBuffer = await decryptWithPin(encryptedPrivateKey, pin, salt);
+  const keyBuffer = new Uint8Array(privateKeyBuffer).buffer;
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    keyBuffer,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    false,
+    ['decrypt']
+  );
+
+  // Check for v2 dual-encrypted envelope
+  try {
+    const parsed = JSON.parse(encryptedMessage);
+    if (parsed.v === 2 && parsed.r && parsed.s) {
+      // Try recipient blob first, then sender blob
+      try {
+        return await decryptSingleBlob(parsed.r, privateKey);
+      } catch {
+        return await decryptSingleBlob(parsed.s, privateKey);
+      }
+    }
+  } catch {
+    // Not JSON, treat as v1 single-key format
+  }
+
+  return await decryptSingleBlob(encryptedMessage, privateKey);
 }
 
 /**

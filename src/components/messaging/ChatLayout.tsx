@@ -469,18 +469,22 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     }
   }, [selectedChat?.id, currentUser?.id, fetchMessages, clearEncryptionCache]);
 
+  const decryptFailedRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!e2ePin || !currentUser) return;
-    const encryptedMsgs = messages.filter(m => m.is_encrypted && !decryptedMessages[m.id]);
+    const encryptedMsgs = messages.filter(
+      m => m.is_encrypted && !decryptedMessages[m.id] && !decryptFailedRef.current.has(m.id)
+    );
     if (encryptedMsgs.length === 0) return;
 
     let cancelled = false;
     (async () => {
       const results: Record<string, string> = {};
+      const failed: string[] = [];
       for (const msg of encryptedMsgs) {
         if (cancelled) break;
 
-        // Check for Forward Secrecy envelope
         let plaintext: string | null = null;
         try {
           const parsed = JSON.parse(msg.content);
@@ -488,17 +492,26 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             plaintext = await decryptFS(msg.chat_id, parsed.ct, parsed.idx);
           }
         } catch {
-          // Not FS format, use standard decryption
+          // Not FS format
         }
 
         if (!plaintext) {
           plaintext = await decrypt(msg.content, msg.id);
         }
 
-        if (plaintext) results[msg.id] = plaintext;
+        if (plaintext) {
+          results[msg.id] = plaintext;
+        } else {
+          failed.push(msg.id);
+        }
       }
-      if (!cancelled && Object.keys(results).length > 0) {
-        setDecryptedMessages(prev => ({ ...prev, ...results }));
+      if (!cancelled) {
+        if (failed.length > 0) {
+          failed.forEach(id => decryptFailedRef.current.add(id));
+        }
+        if (Object.keys(results).length > 0) {
+          setDecryptedMessages(prev => ({ ...prev, ...results }));
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -1020,11 +1033,11 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
       }
 
-      // Fallback to standard RSA-based E2E
+      // Fallback to standard RSA-based E2E (dual encryption: sender + recipient)
       if (!isEncrypted && e2eEnabled && selectedChat.recipient?.public_key) {
         const encKey = resolveEncryptionKey(selectedChat.recipient.public_key);
         if (encKey) {
-          const encrypted = await encrypt(messageContent, encKey);
+          const encrypted = await encrypt(messageContent, encKey, currentUserPublicKey || undefined);
           if (encrypted) {
             contentToSend = encrypted;
             isEncrypted = true;
@@ -1034,7 +1047,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       } else if (!isEncrypted && e2eEnabled && selectedChat.recipient?.id) {
         const pubKey = await getRecipientPublicKey(selectedChat.recipient.id);
         if (pubKey) {
-          const encrypted = await encrypt(messageContent, pubKey);
+          const encrypted = await encrypt(messageContent, pubKey, currentUserPublicKey || undefined);
           if (encrypted) {
             contentToSend = encrypted;
             isEncrypted = true;
@@ -2352,9 +2365,14 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               {msg.is_encrypted ? (
                                 decryptedMessages[msg.id] ? (
                                   <span>{decryptedMessages[msg.id]}</span>
-                                ) : (
+                                ) : decryptFailedRef.current.has(msg.id) ? (
                                   <span className="italic text-gray-400 dark:text-gray-500 flex items-center gap-1">
                                     <Shield className="w-3 h-3" />
+                                    Mensagem criptografada
+                                  </span>
+                                ) : (
+                                  <span className="italic text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                                    <Shield className="w-3 h-3 animate-pulse" />
                                     Descriptografando...
                                   </span>
                                 )
