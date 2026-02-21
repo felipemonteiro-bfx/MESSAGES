@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
 
     // 5. Get last messages for all chats (one query per chat with LIMIT 1)
     const lastMessageMap: Record<string, { content: string; created_at: string; is_encrypted?: boolean; media_type?: string | null }> = {};
+    const unreadCountMap: Record<string, number> = {};
     const lastMsgPromises = chatIds.map(async (chatId) => {
       const { data, error } = await getSupabaseAdmin()
         .from('messages')
@@ -95,7 +96,20 @@ export async function GET(request: NextRequest) {
         };
       }
     });
-    await Promise.all(lastMsgPromises);
+
+    const unreadPromises = chatIds.map(async (chatId) => {
+      const { count, error } = await getSupabaseAdmin()
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('chat_id', chatId)
+        .neq('sender_id', userId)
+        .is('read_at', null);
+      if (!error && count !== null) {
+        unreadCountMap[chatId] = count;
+      }
+    });
+
+    await Promise.all([...lastMsgPromises, ...unreadPromises]);
 
     const now = new Date().toISOString();
     const mutedMap = Object.fromEntries(
@@ -134,6 +148,7 @@ export async function GET(request: NextRequest) {
         lastMessageEncrypted: lastMsg?.is_encrypted || false,
         lastMessageMediaType: lastMsg?.media_type || undefined,
         time: lastMsg?.created_at || undefined,
+        unreadCount: unreadCountMap[chat.id] || 0,
       };
     });
 

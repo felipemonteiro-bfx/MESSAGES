@@ -66,6 +66,7 @@ export interface ChatWithRecipient extends Chat {
   lastMessageEncrypted?: boolean;
   lastMessageMediaType?: 'image' | 'video' | 'audio' | null;
   time?: string;
+  unreadCount?: number;
 }
 
 export interface Profile {

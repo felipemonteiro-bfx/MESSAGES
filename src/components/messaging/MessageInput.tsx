@@ -61,7 +61,7 @@ export default function MessageInput({
   }, [onSend]);
 
   return (
-    <footer className="sticky bottom-0 p-3 bg-white dark:bg-[#17212b] border-t border-gray-200 dark:border-[#0e1621] safe-area-inset-bottom">
+    <footer className="sticky bottom-0 p-3 bg-white dark:bg-[#17212b] border-t border-gray-200 dark:border-[#0e1621] safe-area-inset-bottom chat-input-area keyboard-aware z-10">
       <div className="max-w-3xl mx-auto">
         <AnimatePresence>
           {showMediaMenu && (

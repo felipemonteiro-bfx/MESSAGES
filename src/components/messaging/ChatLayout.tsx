@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe, SlidersHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,7 +37,7 @@ interface ChatLayoutProps {
   accessMode?: AccessMode;
 }
 
-function SwipeableChatItem({
+const SwipeableChatItem = memo(function SwipeableChatItem({
   chat,
   selectedChat,
   onlineUsers,
@@ -141,27 +141,36 @@ function SwipeableChatItem({
             <h3 className="font-bold truncate text-sm text-gray-900 dark:text-white">
               {chat.recipient?.nickname || chat.name || 'Grupo'}
             </h3>
-            {chat.time && (
-              <span className="text-[10px] text-gray-500 dark:text-[#708499] flex-shrink-0">
-                {formatTime(chat.time)}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {chat.time && (
+                <span className={`text-[10px] flex-shrink-0 ${chat.unreadCount && chat.unreadCount > 0 ? 'text-blue-500 dark:text-blue-400 font-semibold' : 'text-gray-500 dark:text-[#708499]'}`}>
+                  {formatTime(chat.time)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            {(chat.lastMessage || chat.lastMessageMediaType) && (
+              <p className={`text-xs truncate flex-1 min-w-0 ${chat.unreadCount && chat.unreadCount > 0 ? 'text-gray-800 dark:text-gray-200 font-medium' : 'text-gray-600 dark:text-[#708499]'}`}>
+                {chat.lastMessageEncrypted
+                  ? '🔒 Nova mensagem'
+                  : chat.lastMessageMediaType === 'image'
+                    ? '📷 Imagem'
+                    : chat.lastMessageMediaType === 'video'
+                      ? '🎥 Vídeo'
+                      : chat.lastMessageMediaType === 'audio'
+                        ? '🎤 Áudio'
+                        : chat.lastMessage && chat.lastMessage.length > 40
+                          ? `${chat.lastMessage.substring(0, 40)}...`
+                          : chat.lastMessage}
+              </p>
+            )}
+            {chat.unreadCount !== undefined && chat.unreadCount > 0 && (
+              <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600 text-white text-[11px] font-bold unread-badge">
+                {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
               </span>
             )}
           </div>
-          {(chat.lastMessage || chat.lastMessageMediaType) && (
-            <p className="text-xs text-gray-600 dark:text-[#708499] truncate">
-              {chat.lastMessageEncrypted
-                ? '🔒 Mensagem criptografada'
-                : chat.lastMessageMediaType === 'image'
-                  ? '📷 Imagem'
-                  : chat.lastMessageMediaType === 'video'
-                    ? '🎥 Vídeo'
-                    : chat.lastMessageMediaType === 'audio'
-                      ? '🎤 Áudio'
-                      : chat.lastMessage && chat.lastMessage.length > 40
-                        ? `${chat.lastMessage.substring(0, 40)}...`
-                        : chat.lastMessage}
-            </p>
-          )}
         </div>
       </div>
       <AnimatePresence>
@@ -195,7 +204,7 @@ function SwipeableChatItem({
       </AnimatePresence>
     </div>
   );
-}
+});
 
 const URL_REGEX = /https?:\/\/[^\s<>)"']+/gi;
 
@@ -700,38 +709,51 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   const decryptFailedRef = useRef<Set<string>>(new Set());
 
+  const decryptBatchRef = useRef(false);
+
   useEffect(() => {
-    if (!e2ePin || !currentUser) return;
+    if (!currentUser) return;
     const encryptedMsgs = messages.filter(
       m => m.is_encrypted && !decryptedMessages[m.id] && !decryptFailedRef.current.has(m.id)
     );
     if (encryptedMsgs.length === 0) return;
+    if (!e2ePin) {
+      encryptedMsgs.forEach(m => decryptFailedRef.current.add(m.id));
+      return;
+    }
+    if (decryptBatchRef.current) return;
+    decryptBatchRef.current = true;
 
     let cancelled = false;
     (async () => {
       const results: Record<string, string> = {};
       const failed: string[] = [];
-      for (const msg of encryptedMsgs) {
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < encryptedMsgs.length; i += BATCH_SIZE) {
         if (cancelled) break;
-
-        let plaintext: string | null = null;
-        try {
-          const parsed = JSON.parse(msg.content);
-          if (parsed.fs && parsed.ct && typeof parsed.idx === 'number') {
-            plaintext = await decryptFS(msg.chat_id, parsed.ct, parsed.idx);
+        const batch = encryptedMsgs.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (msg) => {
+          if (cancelled) return;
+          let plaintext: string | null = null;
+          try {
+            const parsed = JSON.parse(msg.content);
+            if (parsed.fs && parsed.ct && typeof parsed.idx === 'number') {
+              plaintext = await decryptFS(msg.chat_id, parsed.ct, parsed.idx);
+            }
+          } catch {
+            // Not FS format
           }
-        } catch {
-          // Not FS format
-        }
-
-        if (!plaintext) {
-          plaintext = await decrypt(msg.content, msg.id);
-        }
-
-        if (plaintext) {
-          results[msg.id] = plaintext;
-        } else {
-          failed.push(msg.id);
+          if (!plaintext) {
+            plaintext = await decrypt(msg.content, msg.id);
+          }
+          if (plaintext) {
+            results[msg.id] = plaintext;
+          } else {
+            failed.push(msg.id);
+          }
+        }));
+        if (!cancelled && Object.keys(results).length > 0) {
+          setDecryptedMessages(prev => ({ ...prev, ...results }));
         }
       }
       if (!cancelled) {
@@ -742,8 +764,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           setDecryptedMessages(prev => ({ ...prev, ...results }));
         }
       }
-    })();
-    return () => { cancelled = true; };
+    })().finally(() => { decryptBatchRef.current = false; });
+    return () => { cancelled = true; decryptBatchRef.current = false; };
   }, [messages, e2ePin, currentUser, decrypt, decryptFS, decryptedMessages]);
 
   useEffect(() => {
@@ -1000,33 +1022,51 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const isUserNearBottom = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return true;
-    const threshold = 150;
+    const threshold = 200;
     return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
   }, []);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback((instant = false) => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: instant ? 'instant' : 'smooth',
+      });
+    });
+  }, []);
+
+  const lastMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const currentLen = messages.length;
     const prevLen = prevMessagesLengthRef.current;
     prevMessagesLengthRef.current = currentLen;
     
-    if (currentLen === 0) return;
-    
-    if (currentLen > prevLen && prevLen > 0) {
-      const lastMsg = messages[currentLen - 1];
-      const prevLastMsg = prevLen > 0 ? messages[prevLen - 1] : null;
-      if (lastMsg?.id !== prevLastMsg?.id) {
-        if (isUserNearBottom()) {
-          scrollToBottom();
-        }
-      }
-    } else if (prevLen === 0) {
-      scrollToBottom();
+    if (currentLen === 0) {
+      lastMessageIdRef.current = null;
+      return;
     }
-  }, [messages, isUserNearBottom]);
+
+    const lastMsg = messages[currentLen - 1];
+    const lastId = lastMsg?.id ?? null;
+    const prevLastId = lastMessageIdRef.current;
+    lastMessageIdRef.current = lastId;
+
+    if (prevLen === 0 || prevLastId === null) {
+      scrollToBottom(true);
+      return;
+    }
+
+    if (lastId !== prevLastId) {
+      if (lastMsg?.sender_id === currentUser?.id) {
+        scrollToBottom(false);
+      } else if (isUserNearBottom()) {
+        scrollToBottom(false);
+      }
+    }
+  }, [messages, isUserNearBottom, scrollToBottom, currentUser?.id]);
 
   const markMessagesAsRead = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
@@ -1469,7 +1509,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
         setMessages(prev => [...prev, responseData.message]);
         setReplyingTo(null);
-        setTimeout(scrollToBottom, 50);
+        setTimeout(() => scrollToBottom(false), 50);
       }
       messageSent = true;
     } catch (error) {
@@ -1842,8 +1882,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     );
   }, [chats, searchQuery]);
 
-  // Formatar hora da última mensagem
-  const formatTime = (dateString?: string) => {
+  const formatTime = useCallback((dateString?: string) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
@@ -1854,7 +1893,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     if (diffMins < 60) return `${diffMins}m`;
     if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
+  }, []);
 
   const filteredMessages = useMemo(() => {
     return messages.filter(msg => {
@@ -1875,7 +1914,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     count: filteredChats.length,
     getScrollElement: () => chatListScrollRef.current,
     estimateSize: () => 72,
-    overscan: 5,
+    overscan: 8,
   });
 
   const messagesWithLoadMore = hasMoreMessages && filteredMessages.length > 0;
@@ -1900,7 +1939,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       if (msg.reply_to_id) height += 48;
       return Math.max(height, 80);
     },
-    overscan: 10,
+    overscan: 15,
     measureElement: typeof window !== 'undefined'
       ? (element: Element) => element?.getBoundingClientRect().height ?? undefined
       : undefined,
@@ -2007,12 +2046,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   return (
     <div 
-      className="flex h-screen bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans"
+      className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans"
+      style={{ height: '100dvh', minHeight: '-webkit-fill-available' }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-all duration-300 md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b]`}>
+      <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0 overflow-hidden'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-[width] duration-200 ease-out md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] will-change-[width]`}>
         <div className="p-2 sm:p-4 flex items-center gap-1.5 sm:gap-3 border-b border-[#0e1621] relative z-30">
           {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
           <button
@@ -2191,7 +2231,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             </button>
           )}
         </div>
-        <div ref={chatListScrollRef} className="flex-1 overflow-y-auto smooth-scroll">
+        <div ref={chatListScrollRef} className="flex-1 overflow-y-auto smooth-scroll overscroll-y-contain">
           {isLoading ? (
             <div className="flex flex-col">
               {[1, 2, 3, 4, 5, 6, 7].map((i) => (
@@ -2272,7 +2312,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       </aside>
 
       <main 
-        className="flex-1 flex flex-col relative bg-gray-50 dark:bg-[#0e1621] min-w-0"
+        className="flex-1 flex flex-col relative bg-gray-50 dark:bg-[#0e1621] min-w-0 overflow-hidden"
         data-stealth-content="true"
         onContextMenu={(e) => {
           // Sugestão 6: Dificultar screenshot - aviso silencioso
@@ -2303,7 +2343,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             />
             <div
               ref={messagesScrollRef}
-              className="flex-1 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll"
+              className="flex-1 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll gpu-accelerated overscroll-y-contain"
               data-stealth-content="true"
               data-sensitive="true"
               // Sugestão 23: Drag & drop de arquivos
@@ -2485,7 +2525,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         className="w-8 h-8 rounded-full object-cover flex-shrink-0" 
                         loading="lazy"
                       />
-                      <div className={`flex-1 max-w-[75%] ${msg.sender_id === currentUser?.id ? 'items-end' : 'items-start'} flex flex-col`}>
+                      <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${msg.sender_id === currentUser?.id ? 'items-end' : 'items-start'} flex flex-col`}>
                         <div className={`rounded-lg px-4 py-2.5 ${msg.sender_id === currentUser?.id 
                           ? 'bg-blue-50 dark:bg-[#2b5278] text-gray-900 dark:text-white rounded-br-sm' 
                           : 'bg-gray-100 dark:bg-[#182533] text-gray-900 dark:text-white rounded-bl-sm border border-gray-200 dark:border-[#242f3d]'
@@ -2601,7 +2641,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               <img 
                                 src={msg.media_url} 
                                 alt="Imagem enviada" 
-                                className="max-w-full max-h-[200px] object-contain rounded-lg cursor-pointer"
+                                className="max-w-full max-h-[160px] sm:max-h-[200px] object-contain rounded-lg cursor-pointer"
                                 onClick={() => window.open(msg.media_url!, '_blank')}
                                 onLoad={handleMediaLoad}
                                 loading="lazy"
@@ -2611,7 +2651,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               <video 
                                 src={msg.media_url} 
                                 controls 
-                                className="max-w-full max-h-[220px] rounded-lg"
+                                className="max-w-full max-h-[180px] sm:max-h-[220px] rounded-lg"
                                 onLoadedMetadata={handleMediaLoad}
                                 preload="metadata"
                               />
