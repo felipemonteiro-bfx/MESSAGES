@@ -191,7 +191,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   }, [isStealthMode, lockMessaging]);
 
   const handleUnlockRequest = useCallback(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
       if (!session?.user) {
         setShowAuthModal(true);
         setAuthModalMode('signup');
@@ -203,10 +204,37 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
 
   const handleAuthSuccess = useCallback(async () => {
     setShowAuthModal(false);
-    // Aguardar sessão ser estabelecida
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
+    
+    // Escutar evento de auth ao invés de delay fixo
+    const waitForSession = (): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          subscription.unsubscribe();
+          resolve(false);
+        }, 5000);
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            clearTimeout(timeout);
+            subscription.unsubscribe();
+            resolve(true);
+          }
+        });
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase.auth.getSession().then(({ data: { session } }: any) => {
+          if (session?.user) {
+            clearTimeout(timeout);
+            subscription.unsubscribe();
+            resolve(true);
+          }
+        });
+      });
+    };
+    
+    const hasSession = await waitForSession();
+    if (hasSession) {
       setShowPinPad(true);
     } else {
       toast.error('Erro ao autenticar. Tente novamente.');

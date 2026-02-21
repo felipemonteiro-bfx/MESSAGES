@@ -161,28 +161,32 @@ async function ensureCacheSize(newItemSize: number): Promise<void> {
     const projectedSize = currentSize + newItemSize;
 
     if (projectedSize <= MAX_CACHE_SIZE) {
-      return; // Cache ainda tem espaço
+      return;
     }
 
-    // Remover itens mais antigos até ter espaço
     const database = await initDB();
-    const transaction = database.transaction(['media'], 'readwrite');
-    const store = transaction.objectStore('media');
-    const index = store.index('timestamp');
-    const request = index.getAll();
+    
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(['media'], 'readwrite');
+      const store = transaction.objectStore('media');
+      const index = store.index('timestamp');
+      const request = index.getAll();
 
-    request.onsuccess = () => {
-      const items = request.result as CachedMedia[];
-      // Ordenar por timestamp (mais antigos primeiro)
-      items.sort((a, b) => a.timestamp - b.timestamp);
+      request.onsuccess = () => {
+        const items = request.result as CachedMedia[];
+        items.sort((a, b) => a.timestamp - b.timestamp);
 
-      let sizeToFree = projectedSize - MAX_CACHE_SIZE;
-      for (const item of items) {
-        if (sizeToFree <= 0) break;
-        store.delete(item.url);
-        sizeToFree -= item.size;
-      }
-    };
+        let sizeToFree = projectedSize - MAX_CACHE_SIZE;
+        for (const item of items) {
+          if (sizeToFree <= 0) break;
+          store.delete(item.url);
+          sizeToFree -= item.size;
+        }
+      };
+      
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
   } catch (error) {
     console.error('Erro ao limpar cache:', error);
   }

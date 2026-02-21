@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User, Zap } from 'lucide-react';
+import { Search, Menu, Share2, MoreVertical, Clock, MessageCircle, TrendingUp, Calendar, ExternalLink, Bell, Home, LogOut, X, Bookmark, User, Zap, ArrowLeft, Copy, Link2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
@@ -58,10 +58,26 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState<string>('');
   const lastClickRef = useRef<number>(0);
-  const [selectedCategory, setSelectedCategory] = useState('Top Stories');
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [selectedCategory, setSelectedCategoryState] = useState(() => {
+    if (typeof window === 'undefined') return 'Top Stories';
+    return localStorage.getItem('n24h_selected_category') || 'Top Stories';
+  });
+  const [dateFilter, setDateFilterState] = useState<'today' | 'week' | 'month' | 'all'>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const v = localStorage.getItem('n24h_date_filter');
+    return (v === 'today' || v === 'week' || v === 'month' || v === 'all') ? v : 'today';
+  });
   const [breakingNews, setBreakingNews] = useState<string[]>([]);
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const setSelectedCategory = useCallback((cat: string) => {
+    setSelectedCategoryState(cat);
+    try { localStorage.setItem('n24h_selected_category', cat); } catch {}
+  }, []);
+  const setDateFilter = useCallback((f: 'today' | 'week' | 'month' | 'all') => {
+    setDateFilterState(f);
+    try { localStorage.setItem('n24h_date_filter', f); } catch {}
+  }, []);
 
   const categories = ['Top Stories', 'Brasil', 'Mundo', 'Tecnologia', 'Esportes', 'Saúde', 'Economia', 'Entretenimento', 'Política', 'Ciência'];
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -73,6 +89,9 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const [showSaved, setShowSaved] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [articleMenuId, setArticleMenuId] = useState<string | null>(null);
+  const [readingArticle, setReadingArticle] = useState<NewsItem | null>(null);
+  const [iframeError, setIframeError] = useState(false);
+  const [sharePopup, setSharePopup] = useState<{ title: string; url: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
@@ -262,8 +281,22 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
         // Verificação inicial
         await checkUnread();
 
-        // Polling a cada 20 segundos
-        const interval = setInterval(checkUnread, 20000);
+        // Buscar chatIds do usuário para filtrar o canal realtime
+        let userChatIds: Set<string> = new Set();
+        try {
+          const chatsRes = await fetch('/api/chats?mode=main');
+          if (chatsRes.ok) {
+            const { chats } = await chatsRes.json();
+            if (chats) {
+              userChatIds = new Set(chats.map((c: { id: string }) => c.id));
+            }
+          }
+        } catch {
+          // Continuar sem filtro se falhar
+        }
+
+        // Polling a cada 60s como fallback (realtime é o primário)
+        const interval = setInterval(checkUnread, 60000);
 
         // Realtime: escutar novas mensagens para notificação instantânea
         channel = supabase
@@ -272,10 +305,10 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-          }, (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          }, (payload: any) => {
             const newMsg = payload.new as { id: string; sender_id: string; content: string; chat_id: string };
-            if (newMsg.sender_id !== user.id) {
-              // Nova mensagem recebida — verificar imediatamente
+            if (newMsg.sender_id !== user.id && (userChatIds.size === 0 || userChatIds.has(newMsg.chat_id))) {
               checkUnread();
             }
           })
@@ -499,7 +532,14 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     return getImageByCategory(category);
   };
 
-  // Botão oculto: "Fale Conosco" ou duplo clique na data — resposta instantânea
+  const handleShare = useCallback((title: string, url: string) => {
+    if (navigator.share) {
+      navigator.share({ title, url }).catch(() => {});
+    } else {
+      setSharePopup({ title, url });
+    }
+  }, []);
+
   const handleSecretButton = () => {
     const now = Date.now();
     if (now - lastClickRef.current < 350) {
@@ -850,7 +890,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                       className="cursor-pointer"
                       onClick={() => {
                         if (articleMenuId) setArticleMenuId(null);
-                        else if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
+                        else if (item.url) { setReadingArticle(item); setIframeError(false); }
                       }}
                     >
                       <div className="flex flex-col md:flex-col">
@@ -892,9 +932,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                                 className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (navigator.share && item.url) {
-                                    navigator.share({ title: item.title, text: item.description || item.title, url: item.url }).catch(() => {});
-                                  }
+                                  if (item.url) handleShare(item.title, item.url);
                                 }}
                               >
                                 <Share2 className="w-4 h-4 text-gray-400 hover:text-gray-600" />
@@ -919,7 +957,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                                       className="w-full px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-lg mx-1"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (navigator.share && item.url) navigator.share({ title: item.title, url: item.url }).catch(() => {});
+                                        if (item.url) handleShare(item.title, item.url);
                                         setArticleMenuId(null);
                                       }}
                                     >
@@ -950,6 +988,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       </main>
 
       {/* Bottom Nav - 100% funcional */}
+      {!readingArticle && (
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 md:px-8 py-2 flex justify-around md:justify-center md:gap-12 lg:gap-16 items-center text-xs font-medium text-gray-500 safe-area-inset-bottom z-30 max-w-6xl mx-auto">
         <button onClick={scrollToTop} className="flex flex-col items-center gap-1 text-blue-600 hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -981,6 +1020,128 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
           <span>Perfil</span>
         </button>
       </nav>
+      )}
+
+      {/* Leitor de Artigos em Iframe */}
+      <AnimatePresence>
+        {readingArticle && (
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'tween', duration: 0.25 }}
+            className="fixed inset-0 z-50 bg-white flex flex-col"
+          >
+            <header className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-white safe-area-inset-top shrink-0">
+              <button
+                onClick={() => setReadingArticle(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-700" />
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{readingArticle.title}</p>
+                <p className="text-[11px] text-gray-500">{readingArticle.source}</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (readingArticle.url) window.open(readingArticle.url, '_blank', 'noopener,noreferrer');
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Abrir externamente"
+              >
+                <ExternalLink className="w-4 h-4 text-gray-500" />
+              </button>
+            </header>
+            {iframeError ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                <AlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
+                <p className="text-lg font-semibold text-gray-900 mb-2">Conteúdo não disponível</p>
+                <p className="text-sm text-gray-500 mb-6">Este site não permite visualização incorporada.</p>
+                <button
+                  onClick={() => { if (readingArticle.url) window.open(readingArticle.url, '_blank', 'noopener,noreferrer'); }}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Abrir em nova aba
+                </button>
+              </div>
+            ) : (
+              <iframe
+                src={readingArticle.url}
+                className="flex-1 w-full border-none"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                onError={() => setIframeError(true)}
+                title={readingArticle.title}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Popup de Compartilhamento (Fallback Desktop) */}
+      <AnimatePresence>
+        {sharePopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setSharePopup(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-900">Compartilhar</h3>
+                <p className="text-xs text-gray-500 truncate mt-1">{sharePopup.title}</p>
+              </div>
+              <div className="py-2">
+                <button
+                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                  onClick={() => {
+                    navigator.clipboard.writeText(sharePopup.url).then(() => toast.success('Link copiado!'));
+                    setSharePopup(null);
+                  }}
+                >
+                  <Copy className="w-4 h-4 text-gray-500" /> Copiar link
+                </button>
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(sharePopup.title + ' ' + sharePopup.url)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                  onClick={() => setSharePopup(null)}
+                >
+                  <Link2 className="w-4 h-4 text-green-600" /> WhatsApp
+                </a>
+                <a
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(sharePopup.title)}&url=${encodeURIComponent(sharePopup.url)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                  onClick={() => setSharePopup(null)}
+                >
+                  <Share2 className="w-4 h-4 text-sky-500" /> Twitter / X
+                </a>
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(sharePopup.url)}&text=${encodeURIComponent(sharePopup.title)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                  onClick={() => setSharePopup(null)}
+                >
+                  <Share2 className="w-4 h-4 text-blue-500" /> Telegram
+                </a>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

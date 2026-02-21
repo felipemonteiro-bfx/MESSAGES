@@ -76,23 +76,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5. Get last messages for all chats (batch query)
-    // Use a single query with DISTINCT ON to get the latest message per chat
-    const { data: lastMessages, error: msgError } = await getSupabaseAdmin()
-      .from('messages')
-      .select('chat_id, content, created_at')
-      .in('chat_id', chatIds)
-      .order('created_at', { ascending: false });
-
-    // Group by chat_id and take the first (most recent) message
+    // 5. Get last messages for all chats (one query per chat with LIMIT 1)
     const lastMessageMap: Record<string, { content: string; created_at: string }> = {};
-    if (!msgError && lastMessages) {
-      for (const msg of lastMessages) {
-        if (!lastMessageMap[msg.chat_id]) {
-          lastMessageMap[msg.chat_id] = { content: msg.content, created_at: msg.created_at };
-        }
+    const lastMsgPromises = chatIds.map(async (chatId) => {
+      const { data, error } = await getSupabaseAdmin()
+        .from('messages')
+        .select('chat_id, content, created_at')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      if (!error && data) {
+        lastMessageMap[data.chat_id] = { content: data.content, created_at: data.created_at };
       }
-    }
+    });
+    await Promise.all(lastMsgPromises);
 
     const now = new Date().toISOString();
     const mutedMap = Object.fromEntries(

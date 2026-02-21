@@ -171,7 +171,8 @@ async function incrementRetryCount(messageId: string): Promise<void> {
  * Sincronizar mensagens pendentes
  */
 export async function syncPendingMessages(
-  sendMessageFn: (message: PendingMessage) => Promise<boolean>
+  sendMessageFn: (message: PendingMessage) => Promise<boolean>,
+  onDropped?: (message: PendingMessage) => void
 ): Promise<{ sent: number; failed: number; dropped: number }> {
   const pending = await getPendingMessages();
   let sent = 0;
@@ -183,6 +184,7 @@ export async function syncPendingMessages(
       await removeQueuedMessage(message.id);
       dropped++;
       console.warn(`Mensagem ${message.id} descartada após ${MAX_RETRIES} tentativas`);
+      onDropped?.(message);
       continue;
     }
 

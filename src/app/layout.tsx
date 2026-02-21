@@ -18,10 +18,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = { 
-  themeColor: "#ffffff", 
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0e1621' },
+  ],
   width: "device-width", 
   initialScale: 1, 
-  // Permitir zoom para acessibilidade (WCAG 1.4.4)
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -142,6 +142,106 @@ function SwipeableChatItem({
   );
 }
 
+const URL_REGEX = /https?:\/\/[^\s<>)"']+/gi;
+
+function extractFirstUrl(text: string): string | null {
+  const match = text.match(URL_REGEX);
+  return match?.[0] || null;
+}
+
+function InlineLinkPreview({ url, cacheRef }: { url: string; cacheRef: React.MutableRefObject<Record<string, { title?: string; description?: string; image?: string; domain?: string } | null>> }) {
+  const [data, setData] = useState<{ title?: string; description?: string; image?: string; domain?: string } | null>(cacheRef.current[url] || null);
+  const [loading, setLoading] = useState(!cacheRef.current[url]);
+
+  useEffect(() => {
+    if (cacheRef.current[url] !== undefined) {
+      setData(cacheRef.current[url]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+        if (!cancelled) {
+          cacheRef.current[url] = d;
+          setData(d);
+        }
+      } catch {
+        if (!cancelled) cacheRef.current[url] = null;
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url, cacheRef]);
+
+  if (loading) return <div className="mt-2 h-12 bg-gray-100 dark:bg-[#1a2432] rounded-lg animate-pulse" />;
+  if (!data || !data.title) return null;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-2 block rounded-lg border border-gray-200 dark:border-[#2b3945] overflow-hidden hover:bg-gray-50 dark:hover:bg-[#1a2432] transition-colors"
+    >
+      {data.image && (
+        <div className="w-full h-28 bg-gray-100 dark:bg-[#1a2432]">
+          <img src={data.image} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        </div>
+      )}
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
+          <Globe className="w-3 h-3" />
+          {data.domain}
+        </div>
+        <p className="text-xs font-medium text-gray-900 dark:text-white line-clamp-2">{data.title}</p>
+        {data.description && (
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">{data.description}</p>
+        )}
+      </div>
+    </a>
+  );
+}
+
+function DragPreviewDisplay({ files, count }: { files: File[]; count: number }) {
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  
+  useEffect(() => {
+    const urls = files.slice(0, 3)
+      .filter(f => f.type.startsWith('image/'))
+      .map(f => URL.createObjectURL(f));
+    setPreviewUrls(urls);
+    return () => { urls.forEach(u => URL.revokeObjectURL(u)); };
+  }, [files]);
+
+  return (
+    <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+      <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+        Enviando {count} arquivo(s)...
+      </p>
+      <div className="flex gap-2 flex-wrap">
+        {files.slice(0, 3).map((file, idx) => (
+          <div key={idx} className="relative">
+            {file.type.startsWith('image/') && previewUrls[idx] && (
+              <img src={previewUrls[idx]} alt={file.name} className="w-16 h-16 object-cover rounded" />
+            )}
+            <p className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[64px]">{file.name}</p>
+          </div>
+        ))}
+        {count > 3 && (
+          <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
+            <span className="text-xs font-medium">+{count - 3}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const { lockMessaging, setFilePickerActive, e2ePin } = useStealthMessaging();
   const [chats, setChats] = useState<ChatWithRecipient[]>([]);
@@ -206,6 +306,14 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const chatListScrollRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const mutedChatsRef = useRef<Set<string>>(new Set());
+  const prevMessagesLengthRef = useRef(0);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const readObserverRef = useRef<IntersectionObserver | null>(null);
+  const pendingReadIdsRef = useRef<Set<string>>(new Set());
+  const readDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const linkPreviewCacheRef = useRef<Record<string, { title?: string; description?: string; image?: string; domain?: string } | null>>({});
   // Memoizar cliente Supabase para evitar re-criação a cada render
   const supabase = useMemo(() => createClient(), []);
 
@@ -252,7 +360,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           }
         }
         setMutedChats(newMuted);
-        
+        mutedChatsRef.current = newMuted;
+
         setChats(fetchedChats as (ChatWithRecipient & { muted?: boolean })[]);
       } else {
         setChats([]);
@@ -368,7 +477,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         
         // Sugestão 15: Sincronizar mensagens pendentes ao inicializar (via API)
         try {
-          await syncPendingMessages(async (pendingMsg) => {
+          const syncResult = await syncPendingMessages(async (pendingMsg) => {
             const response = await fetch('/api/messages', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -380,7 +489,12 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               }),
             });
             return response.ok;
+          }, (droppedMsg) => {
+            toast.warning(`Uma mensagem não pôde ser enviada e foi descartada: "${(droppedMsg.content || '').slice(0, 30)}..."`, { duration: 8000 });
           });
+          if (syncResult.dropped > 0) {
+            logger.warn('Mensagens descartadas na sincronização', { dropped: syncResult.dropped });
+          }
         } catch (error) {
           logger.warn('Erro ao sincronizar mensagens pendentes', { error });
         }
@@ -408,8 +522,19 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   // Lazy loading de mensagens (via API server-side)
   const fetchMessages = useCallback(async (chatId: string, page: number = 1, append: boolean = false, silent = false) => {
+    if (fetchAbortRef.current) {
+      fetchAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    
     try {
-      const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`, { credentials: 'include' });
+      const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`, { 
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      
+      if (controller.signal.aborted) return;
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -425,6 +550,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       
       const { messages: data, hasMore } = await response.json();
       
+      if (controller.signal.aborted) return;
+      
       if (data) {
         const sortedData = [...data].reverse();
         if (append) {
@@ -434,7 +561,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         }
         setHasMoreMessages(hasMore);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       logger.warn('Erro ao buscar mensagens', { error: err });
       if (!silent) {
         toast.error('Erro ao carregar mensagens. Verifique sua conexão.', {
@@ -531,7 +659,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             schema: 'public', 
             table: 'messages',
             filter: `chat_id=eq.${selectedChat.id}` 
-          }, payload => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          }, (payload: any) => {
             const newMessage = payload.new as Message & { type?: string; metadata?: { type?: string } };
             
             if (newMessage.type === 'system' && newMessage.metadata?.type === 'screenshot_alert') {
@@ -544,7 +673,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               return;
             }
             
-            if (newMessage.sender_id !== currentUser?.id && !mutedChats.has(selectedChat.id)) {
+            if (newMessage.sender_id !== currentUser?.id && !mutedChatsRef.current.has(selectedChat.id)) {
               const senderName = selectedChat?.recipient?.nickname || 'Alguém';
               const preview = newMessage.is_encrypted
                 ? 'Mensagem criptografada'
@@ -569,13 +698,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               }, timeout);
             }
           })
-          .on('broadcast', { event: 'typing' }, (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .on('broadcast', { event: 'typing' }, (payload: any) => {
             if (payload.payload.userId !== currentUser.id) {
               setOtherUserTyping(payload.payload.userId);
               setTimeout(() => setOtherUserTyping(null), 3000);
             }
           })
-          .on('broadcast', { event: 'fs_key_exchange' }, async (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .on('broadcast', { event: 'fs_key_exchange' }, async (payload: any) => {
             if (payload.payload.userId !== currentUser.id && payload.payload.publicKey) {
               const accepted = await acceptForwardSecrecySession(selectedChat.id, payload.payload.publicKey);
               if (accepted) {
@@ -593,7 +724,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           .on('presence', { event: 'sync' }, () => {
             const presenceState = channel.presenceState();
             const online = new Set<string>();
-            Object.values(presenceState).forEach((presences: any[]) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (Object.values(presenceState) as any[][]).forEach((presences) => {
               presences.forEach((presence: any) => {
                 if (presence.userId && presence.online !== false) {
                   online.add(presence.userId);
@@ -602,14 +734,16 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             });
             setOnlineUsers(online);
           })
-          .on('presence', { event: 'join' }, ({ newPresences }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .on('presence', { event: 'join' }, ({ newPresences }: any) => {
             newPresences.forEach((presence: any) => {
               if (presence.userId) {
                 setOnlineUsers(prev => new Set(prev).add(presence.userId));
               }
             });
           })
-          .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .on('presence', { event: 'leave' }, ({ leftPresences }: any) => {
             leftPresences.forEach((presence: any) => {
               if (presence.userId) {
                 setOnlineUsers(prev => {
@@ -620,7 +754,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               }
             });
           })
-          .subscribe((status) => {
+          .subscribe((status: string) => {
             if (status === 'SUBSCRIBED') {
               reconnectAttempts = 0;
               channel.track({
@@ -648,7 +782,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 reconnectTimeout = setTimeout(() => {
                   logger.info('Tentando reconectar canal...', { attempt: reconnectAttempts });
                   supabase.removeChannel(channel);
-                  setupChannel();
+                  const newCh = setupChannel();
+                  activeChannelRef.current = newCh;
                 }, delay);
               } else {
                 toast.error('Conexão perdida. Atualize a página para reconectar.', {
@@ -666,23 +801,27 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       activeChannelRef.current = channel;
       
       const presenceIntervalId = setInterval(() => {
-        channel.track({
-          userId: currentUser.id,
-          online: true,
-          lastSeen: new Date().toISOString()
-        });
+        const ch = activeChannelRef.current;
+        if (ch) {
+          ch.track({
+            userId: currentUser.id,
+            online: true,
+            lastSeen: new Date().toISOString()
+          });
+        }
       }, 30000);
       
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           fetchMessages(selectedChat.id, 1, false, true);
-          const state = channel.state;
-          if (state === 'closed' || state === 'errored') {
-            logger.info('Canal detectado como inativo ao retornar, reconectando...', { state });
-            supabase.removeChannel(channel);
-            setupChannel();
+          const ch = activeChannelRef.current;
+          if (!ch || ch.state === 'closed' || ch.state === 'errored') {
+            logger.info('Canal detectado como inativo ao retornar, reconectando...', { state: ch?.state });
+            if (ch) supabase.removeChannel(ch);
+            const newCh = setupChannel();
+            activeChannelRef.current = newCh;
           } else {
-            channel.track({
+            ch.track({
               userId: currentUser.id,
               online: true,
               lastSeen: new Date().toISOString()
@@ -702,15 +841,87 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         supabase.removeChannel(channel);
       };
     }
-  }, [selectedChat, supabase, currentUser, mutedChats, fetchMessages]);
+  }, [selectedChat, supabase, currentUser, fetchMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const currentLen = messages.length;
+    const prevLen = prevMessagesLengthRef.current;
+    prevMessagesLengthRef.current = currentLen;
+    
+    if (currentLen === 0) return;
+    
+    // Scroll apenas quando mensagens novas são adicionadas ao final (não ao carregar mais antigas)
+    if (currentLen > prevLen && prevLen > 0) {
+      const lastMsg = messages[currentLen - 1];
+      const prevLastMsg = prevLen > 0 ? messages[prevLen - 1] : null;
+      if (lastMsg?.id !== prevLastMsg?.id) {
+        scrollToBottom();
+      }
+    } else if (prevLen === 0) {
+      // Carregamento inicial do chat
+      scrollToBottom();
+    }
   }, [messages]);
+
+  const markMessagesAsRead = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      await fetch('/api/messages/read', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds: ids }),
+      });
+    } catch {
+      // Silently fail - will retry on next visibility
+    }
+  }, []);
+
+  const flushPendingReads = useCallback(() => {
+    const ids = Array.from(pendingReadIdsRef.current);
+    if (ids.length === 0) return;
+    pendingReadIdsRef.current.clear();
+    setMessages(prev => prev.map(m => ids.includes(m.id) ? { ...m, read_at: new Date().toISOString() } : m));
+    markMessagesAsRead(ids);
+  }, [markMessagesAsRead]);
+
+  useEffect(() => {
+    if (!selectedChat || !currentUser || !messagesScrollRef.current) return;
+
+    readObserverRef.current?.disconnect();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const msgId = (entry.target as HTMLElement).dataset.msgReadId;
+          if (msgId) pendingReadIdsRef.current.add(msgId);
+        }
+        if (pendingReadIdsRef.current.size > 0) {
+          if (readDebounceRef.current) clearTimeout(readDebounceRef.current);
+          readDebounceRef.current = setTimeout(flushPendingReads, 500);
+        }
+      },
+      { root: messagesScrollRef.current, threshold: 0.5 }
+    );
+
+    readObserverRef.current = observer;
+
+    const container = messagesScrollRef.current;
+    const unreadEls = container.querySelectorAll('[data-msg-read-id]');
+    unreadEls.forEach(el => observer.observe(el));
+
+    return () => {
+      observer.disconnect();
+      if (readDebounceRef.current) {
+        clearTimeout(readDebounceRef.current);
+        flushPendingReads();
+      }
+    };
+  }, [selectedChat, currentUser, messages, flushPendingReads]);
 
   const handleMediaUpload = useCallback(async (file: File, type: 'image' | 'video' | 'audio') => {
     // Limites de tamanho por tipo
@@ -2160,30 +2371,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                
                {/* Sugestão 23: Preview de arquivos sendo enviados */}
                {dragPreview && dragPreview.files.length > 0 && (
-                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                   <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
-                     Enviando {dragPreview.count} arquivo(s)...
-                   </p>
-                   <div className="flex gap-2 flex-wrap">
-                     {dragPreview.files.slice(0, 3).map((file, idx) => (
-                       <div key={idx} className="relative">
-                         {file.type.startsWith('image/') && (
-                           <img 
-                             src={URL.createObjectURL(file)} 
-                             alt={file.name}
-                             className="w-16 h-16 object-cover rounded"
-                           />
-                         )}
-                         <p className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[64px]">{file.name}</p>
-                       </div>
-                     ))}
-                     {dragPreview.count > 3 && (
-                       <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
-                         <span className="text-xs font-medium">+{dragPreview.count - 3}</span>
-                       </div>
-                     )}
-                   </div>
-                 </div>
+                 <DragPreviewDisplay files={dragPreview.files} count={dragPreview.count} />
                )}
                
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
@@ -2251,6 +2439,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       data-stealth-content="true"
                       data-message="true"
                       data-message-id={msg.id}
+                      {...(msg.sender_id !== currentUser?.id && !msg.read_at ? { 'data-msg-read-id': msg.id } : {})}
                     >
                     <SwipeableMessage
                       onSwipeReply={() => setReplyingTo(msg)}
@@ -2391,6 +2580,11 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               )}
                             </div>
                           )}
+                          {(() => {
+                            const text = msg.is_encrypted ? (decryptedMessages[msg.id] || '') : (msg.content || '');
+                            const firstUrl = !msg.deleted_at && !msg.is_view_once ? extractFirstUrl(text) : null;
+                            return firstUrl ? <InlineLinkPreview url={firstUrl} cacheRef={linkPreviewCacheRef} /> : null;
+                          })()}
                           {msg.media_url && (
                           <div className="mt-2">
                             {msg.media_type === 'image' && (
@@ -2482,7 +2676,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                       <Reply className="w-4 h-4" /> Responder
                                     </button>
                                     <button
-                                      onClick={() => { toast.info('Encaminhar em breve'); setMessageMenuId(null); }}
+                                      onClick={() => { setForwardingMessage(msg); setMessageMenuId(null); }}
                                       className="w-full px-3 py-2 flex items-center gap-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#17212b]"
                                     >
                                       <Forward className="w-4 h-4" /> Encaminhar
@@ -2939,7 +3133,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
-                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-[#242f3d] text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full p-3 rounded-xl bg-gray-100 dark:bg-[#242f3d] text-base text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={4}
                 maxLength={10000}
                 autoFocus
@@ -3062,11 +3256,9 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           chats={chats}
           currentUserId={currentUser.id}
           onResultClick={(msg) => {
-            // Encontrar o chat da mensagem e selecioná-lo
             const chat = chats.find(c => c.id === msg.chat_id);
             if (chat) {
               setSelectedChat(chat);
-              // Scroll para a mensagem (simplificado - requer implementação adicional)
               setTimeout(() => {
                 const msgElement = document.querySelector(`[data-message-id="${msg.id}"]`);
                 if (msgElement) {
@@ -3079,6 +3271,89 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           }}
         />
       )}
+
+      {/* Modal de Encaminhar Mensagem */}
+      <AnimatePresence>
+        {forwardingMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setForwardingMessage(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-[#17212b] rounded-xl shadow-2xl w-full max-w-sm max-h-[70vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-gray-200 dark:border-[#0e1621] flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900 dark:text-white">Encaminhar para...</h3>
+                <button onClick={() => setForwardingMessage(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-[#242f3d] rounded-lg">
+                  <CloseIcon className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="px-3 py-2 border-b border-gray-200 dark:border-[#0e1621] bg-gray-50 dark:bg-[#0e1621]">
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  <Forward className="w-3 h-3 inline mr-1" />
+                  {forwardingMessage.media_type
+                    ? `${forwardingMessage.media_type === 'image' ? '📷 Imagem' : forwardingMessage.media_type === 'video' ? '🎥 Vídeo' : '🎤 Áudio'}`
+                    : (forwardingMessage.is_encrypted
+                        ? (decryptedMessages[forwardingMessage.id] || 'Mensagem criptografada').slice(0, 60)
+                        : (forwardingMessage.content || '').slice(0, 60)
+                      )
+                  }
+                </p>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {chats.filter(c => c.id !== selectedChat?.id).map(chat => (
+                  <button
+                    key={chat.id}
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-[#242f3d] transition-colors text-left"
+                    onClick={async () => {
+                      try {
+                        const fwd = forwardingMessage;
+                        const displayContent = fwd.is_encrypted
+                          ? (decryptedMessages[fwd.id] || fwd.content)
+                          : fwd.content;
+                        const body: Record<string, unknown> = {
+                          chatId: chat.id,
+                          content: `↪ Encaminhada\n${displayContent || ''}`.trim(),
+                        };
+                        if (fwd.media_url) body.mediaUrl = fwd.media_url;
+                        if (fwd.media_type) body.mediaType = fwd.media_type;
+
+                        const res = await fetch('/api/messages', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(body),
+                        });
+                        if (!res.ok) throw new Error('Falha ao encaminhar');
+                        toast.success(`Encaminhada para ${chat.recipient?.nickname || 'chat'}`);
+                        setForwardingMessage(null);
+                      } catch {
+                        toast.error('Erro ao encaminhar mensagem');
+                      }
+                    }}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                      {(chat.recipient?.nickname || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {chat.recipient?.nickname || 'Chat'}
+                    </span>
+                  </button>
+                ))}
+                {chats.filter(c => c.id !== selectedChat?.id).length === 0 && (
+                  <p className="p-4 text-sm text-gray-500 dark:text-gray-400 text-center">Nenhum outro chat disponível</p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

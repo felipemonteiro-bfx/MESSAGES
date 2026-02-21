@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     const chatId = request.nextUrl.searchParams.get('chatId');
     const page = parseInt(request.nextUrl.searchParams.get('page') || '1');
-    const limit = parseInt(request.nextUrl.searchParams.get('limit') || '50');
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50'), 100);
 
     if (!chatId) {
       return NextResponse.json({ error: 'chatId is required' }, { status: 400 });
