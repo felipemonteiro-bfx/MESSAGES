@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { ArrowLeft, Search, Shield, ImagePlus, Bell, BellOff, X as CloseIcon } from 'lucide-react';
 import type { ChatWithRecipient, User as UserType } from '@/types/messaging';
 import { DEFAULT_AVATAR_URL } from '@/lib/constants';
-import { fetchMediaWithCache } from '@/lib/media-cache';
 import { createClient } from '@/lib/supabase/client';
 import { impactLight } from '@/lib/haptics';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
@@ -76,13 +75,6 @@ export default function ChatHeader({
               alt={selectedChat.recipient?.nickname || 'Avatar'}
               className="w-10 h-10 rounded-full object-cover"
               loading="lazy"
-              onLoad={async (e) => {
-                e.currentTarget.classList.add('loaded');
-                const imgSrc = e.currentTarget.src;
-                if (imgSrc && imgSrc.startsWith('http')) {
-                  try { await fetchMediaWithCache(imgSrc); } catch {}
-                }
-              }}
             />
             {selectedChat.recipient && onlineUsers.has(selectedChat.recipient.id) && (
               <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0e1621] rounded-full" />

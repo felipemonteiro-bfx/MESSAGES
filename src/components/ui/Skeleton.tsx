@@ -34,3 +34,28 @@ export function ChatItemSkeleton() {
     </div>
   );
 }
+
+export function MessageSkeleton({ isOwn = false }: { isOwn?: boolean }) {
+  return (
+    <div className={`flex gap-3 px-4 py-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+      <Skeleton className="w-8 h-8 rounded-full flex-shrink-0" />
+      <div className={`flex flex-col gap-1.5 ${isOwn ? 'items-end' : 'items-start'} max-w-[75%]`}>
+        <Skeleton className="h-3 w-16 rounded" />
+        <Skeleton className={`h-14 rounded-lg ${isOwn ? 'w-48' : 'w-56'}`} />
+      </div>
+    </div>
+  );
+}
+
+export function MessageListSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 max-w-3xl mx-auto py-4">
+      <MessageSkeleton />
+      <MessageSkeleton isOwn />
+      <MessageSkeleton />
+      <MessageSkeleton isOwn />
+      <MessageSkeleton />
+      <MessageSkeleton isOwn />
+    </div>
+  );
+}

@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe, SlidersHorizontal } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, ArrowDown, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe, SlidersHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Message, ChatWithRecipient, User as UserType } from '@/types/messaging';
 import { validateAndSanitizeNickname, validateAndSanitizeMessage } from '@/lib/validation';
-import { ChatItemSkeleton } from '@/components/ui/Skeleton';
+import { ChatItemSkeleton, MessageListSkeleton } from '@/components/ui/Skeleton';
 import { normalizeError, getUserFriendlyMessage, logError } from '@/lib/error-handler';
 import { checkRateLimit, getRateLimitIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
@@ -206,6 +206,26 @@ const SwipeableChatItem = memo(function SwipeableChatItem({
   );
 });
 
+function formatDateSeparator(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today.getTime() - msgDay.getTime()) / 86400000);
+  if (diffDays === 0) return 'Hoje';
+  if (diffDays === 1) return 'Ontem';
+  if (diffDays < 7) {
+    return date.toLocaleDateString('pt-BR', { weekday: 'long' });
+  }
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function isSameDay(d1: string, d2: string): boolean {
+  const a = new Date(d1);
+  const b = new Date(d2);
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
 const URL_REGEX = /https?:\/\/[^\s<>)"']+/gi;
 
 function extractFirstUrl(text: string): string | null {
@@ -320,6 +340,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
@@ -360,7 +381,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const [screenshotAlertVariant, setScreenshotAlertVariant] = useState<'detected' | 'received'>('detected');
   const [screenshotProtectionActive, setScreenshotProtectionActive] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [newMessagesWhileScrolled, setNewMessagesWhileScrolled] = useState(0);
   const [uploadProgress, setUploadProgress] = useState<{ type: string; progress: number } | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const longPressRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -624,6 +648,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     const controller = new AbortController();
     fetchAbortRef.current = controller;
     if (append) setIsLoadingMore(true);
+    if (!append && page === 1) setIsLoadingMessages(true);
     
     try {
       const response = await fetch(`/api/messages?chatId=${chatId}&page=${page}&limit=${MESSAGES_PER_PAGE}`, { 
@@ -679,6 +704,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
     } finally {
       if (append) setIsLoadingMore(false);
+      setIsLoadingMessages(false);
     }
   }, [isLoadingMore]);
 
@@ -1037,6 +1063,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     });
   }, []);
 
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+      setShowScrollToBottom(!nearBottom);
+      if (nearBottom) setNewMessagesWhileScrolled(0);
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [selectedChat?.id]);
+
   const lastMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -1064,9 +1102,28 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
         scrollToBottom(false);
       } else if (isUserNearBottom()) {
         scrollToBottom(false);
+      } else {
+        setNewMessagesWhileScrolled(prev => prev + 1);
       }
     }
   }, [messages, isUserNearBottom, scrollToBottom, currentUser?.id]);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || !selectedChat || !hasMoreMessages) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isLoadingMore && hasMoreMessages) {
+          const nextPage = messagesPage + 1;
+          setMessagesPage(nextPage);
+          fetchMessages(selectedChat.id, nextPage, true);
+        }
+      },
+      { root: messagesScrollRef.current, rootMargin: '200px 0px 0px 0px', threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [selectedChat?.id, hasMoreMessages, isLoadingMore, messagesPage, fetchMessages]);
 
   const markMessagesAsRead = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
@@ -1292,8 +1349,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
 
       await fetchChats(currentUser.id);
-      const viewOnceLabel = isViewOnceMode ? ' (ver uma vez)' : '';
-      toast.success(type === 'video' ? `Vídeo enviado${viewOnceLabel}!` : `Mídia enviada${viewOnceLabel}!`, { duration: 2000 });
       setIsViewOnceMode(false);
     } catch (error) {
       const appError = normalizeError(error);
@@ -1516,7 +1571,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       });
       
       notificationSuccess();
-      toast.success(isViewOnceMode ? 'Mensagem enviada (ver uma vez)!' : 'Mensagem enviada!', { duration: 1500 });
       
       // Reset estados especiais
       setIsViewOnceMode(false);
@@ -1865,7 +1919,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     count: filteredChats.length,
     getScrollElement: () => chatListScrollRef.current,
     estimateSize: () => 72,
-    overscan: 8,
+    overscan: 10,
   });
 
   const messagesWithLoadMore = hasMoreMessages && filteredMessages.length > 0;
@@ -1877,20 +1931,27 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       if (index === 0 && messagesWithLoadMore) return 48;
       const msgIndex = messagesWithLoadMore ? index - 1 : index;
       const msg = filteredMessages[msgIndex];
-      if (!msg) return 96;
+      if (!msg) return 80;
       
-      let height = 72;
+      let height = 64;
+      const prevMsg = msgIndex > 0 ? filteredMessages[msgIndex - 1] : null;
+      if (!prevMsg || !isSameDay(prevMsg.created_at, msg.created_at)) {
+        height += 32;
+      }
       if (msg.media_url) {
         if (msg.media_type === 'video') height += 220;
         else if (msg.media_type === 'image') height += 200;
         else if (msg.media_type === 'audio') height += 80;
       }
       const contentLen = msg.content?.length || 0;
-      height += Math.ceil(contentLen / 40) * 20;
-      if (msg.reply_to_id) height += 48;
-      return Math.max(height, 80);
+      if (contentLen > 0) {
+        height += Math.ceil(contentLen / 35) * 20;
+      }
+      if (msg.reply_to_id) height += 52;
+      return Math.max(height, 72);
     },
-    overscan: 15,
+    overscan: 20,
+    scrollMargin: 100,
     measureElement: typeof window !== 'undefined'
       ? (element: Element) => element?.getBoundingClientRect().height ?? undefined
       : undefined,
@@ -1899,34 +1960,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const handleMediaLoad = useCallback(() => {
     messagesVirtualizer.measure();
   }, [messagesVirtualizer]);
-
-  // Swipe para mobile
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX);
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-    
-    if (isLeftSwipe && isSidebarOpen && window.innerWidth < 768) {
-      setIsSidebarOpen(false);
-    }
-    if (isRightSwipe && !isSidebarOpen && window.innerWidth < 768) {
-      setIsSidebarOpen(true);
-    }
-  };
 
   // Fechar menu ao clicar fora
   useEffect(() => {
@@ -1999,11 +2032,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     <div 
       className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans"
       style={{ height: '100dvh', minHeight: '-webkit-fill-available' }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
     >
-      <aside className={`${isSidebarOpen ? 'w-full md:w-[350px]' : 'w-0 overflow-hidden'} border-r border-gray-200 dark:border-[#17212b] flex flex-col transition-[width] duration-200 ease-out md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] will-change-[width]`}>
+      <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-200 ease-out will-change-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-[350px]'}`}>
         <div className="p-2 sm:p-4 flex items-center gap-1.5 sm:gap-3 border-b border-[#0e1621] relative z-30">
           {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
           <button
@@ -2388,7 +2418,9 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                )}
                
                <div className="flex flex-col gap-3 max-w-3xl mx-auto">
-                {messages.length === 0 ? (
+                {isLoadingMessages ? (
+                  <MessageListSkeleton />
+                ) : messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-12">
                     <MessageSquare className="w-16 h-16 text-gray-400 dark:text-[#708499] mb-4 opacity-50" />
                     <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhum comentário ainda</p>
@@ -2410,7 +2442,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                         return (
                           <div
                             key="load-more"
-                            ref={messagesVirtualizer.measureElement}
+                            ref={(el) => {
+                              messagesVirtualizer.measureElement(el!);
+                              (loadMoreSentinelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                            }}
                             data-index={virtualRow.index}
                             style={{
                               position: 'absolute',
@@ -2421,23 +2456,20 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                             }}
                             className="flex justify-center py-2"
                           >
-                            <button
-                              disabled={isLoadingMore}
-                              onClick={() => {
-                                const nextPage = messagesPage + 1;
-                                setMessagesPage(nextPage);
-                                fetchMessages(selectedChat.id, nextPage, true);
-                              }}
-                              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
-                            >
-                              {isLoadingMore ? 'Carregando...' : 'Carregar mensagens anteriores'}
-                            </button>
+                            {isLoadingMore && (
+                              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                Carregando...
+                              </div>
+                            )}
                           </div>
                         );
                       }
                       const msgIdx = messagesWithLoadMore ? virtualRow.index - 1 : virtualRow.index;
                       const msg = filteredMessages[msgIdx];
                       if (!msg) return null;
+                      const prevMsg = msgIdx > 0 ? filteredMessages[msgIdx - 1] : null;
+                      const showDateSep = !prevMsg || !isSameDay(prevMsg.created_at, msg.created_at);
                       return (
                     <div
                       key={msg.id}
@@ -2455,6 +2487,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       data-message-id={msg.id}
                       {...(msg.sender_id !== currentUser?.id && !msg.read_at ? { 'data-msg-read-id': msg.id } : {})}
                     >
+                    {showDateSep && (
+                      <div className="flex items-center justify-center py-2 mb-1">
+                        <span className="px-3 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#182533] rounded-full">
+                          {formatDateSeparator(msg.created_at)}
+                        </span>
+                      </div>
+                    )}
                     <SwipeableMessage
                       onSwipeReply={() => setReplyingTo(msg)}
                       isOwnMessage={msg.sender_id === currentUser?.id}
@@ -2733,6 +2772,26 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 )}
                 <div ref={messagesEndRef} className="h-1" aria-hidden="true" />
               </div>
+              <AnimatePresence>
+                {showScrollToBottom && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={() => { scrollToBottom(false); setNewMessagesWhileScrolled(0); }}
+                    className="absolute bottom-4 right-4 z-30 w-10 h-10 rounded-full bg-white dark:bg-[#242f3d] shadow-lg border border-gray-200 dark:border-[#17212b] flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2b5278] transition-colors"
+                    aria-label="Voltar ao final"
+                  >
+                    <ArrowDown className="w-5 h-5" />
+                    {newMessagesWhileScrolled > 0 && (
+                      <span className="absolute -top-2 -right-1 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-blue-500 text-white text-[11px] font-bold">
+                        {newMessagesWhileScrolled > 99 ? '99+' : newMessagesWhileScrolled}
+                      </span>
+                    )}
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </div>
             <MessageInput
               selectedChat={selectedChat}
