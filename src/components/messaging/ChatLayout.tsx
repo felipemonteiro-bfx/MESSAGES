@@ -1576,8 +1576,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       setIsViewOnceMode(false);
       setReplyingTo(null);
       
-      // Atualizar mensagens do chat atual e lista de chats
-      await fetchMessages(selectedChat.id, 1, false);
+      // Atualizar lista lateral de chats (mensagem ja foi adicionada otimisticamente)
       await fetchChats(currentUser.id);
     } catch (error) {
       const appError = normalizeError(error);
@@ -1587,7 +1586,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     } finally {
       setIsSending(false);
     }
-  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, fetchMessages, e2eEnabled, encrypt, getRecipientPublicKey, sign, encryptFS, checkActiveSession]);
+  }, [inputText, selectedChat, currentUser, supabase, isSending, replyingTo, isViewOnceMode, fetchChats, e2eEnabled, encrypt, getRecipientPublicKey, sign, encryptFS, checkActiveSession]);
 
   const canEditMessage = useCallback((msg: Message) => {
     if (!currentUser || msg.sender_id !== currentUser.id) return false;
@@ -2030,8 +2029,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   return (
     <div 
-      className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans"
-      style={{ height: '100dvh', minHeight: '-webkit-fill-available' }}
+      className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans h-full"
     >
       <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-200 ease-out will-change-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-[350px]'}`}>
         <div className="p-2 sm:p-4 flex items-center gap-1.5 sm:gap-3 border-b border-[#0e1621] relative z-30">
