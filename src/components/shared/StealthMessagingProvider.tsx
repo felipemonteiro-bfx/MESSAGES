@@ -69,9 +69,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
         const { data: { session } } = await supabase.auth.getSession();
         
         if (storedMode === 'false' && session?.user) {
-          setIsStealthMode(false);
-          setShowMessaging(true);
-          document.title = 'Mensagens';
+          setShowPinPad(true);
+          document.title = 'Noticias24h - Brasil e Mundo';
         } else {
           setIsStealthMode(true);
           setShowMessaging(false);

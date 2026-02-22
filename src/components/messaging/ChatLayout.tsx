@@ -1434,51 +1434,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     
     let messageSent = false;
     try {
-      let contentToSend = messageContent;
-      let isEncrypted = false;
-      let messageSignature: string | null = null;
-
-      const resolveEncryptionKey = (raw: string | null | undefined): string | null => {
-        if (!raw) return null;
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed.version === 2) return parsed.encryption || null;
-        } catch { /* v1 format */ }
-        return raw;
-      };
-
-      // Prefer Forward Secrecy session if active
-      if (e2eEnabled && selectedChat.id && await checkActiveSession(selectedChat.id)) {
-        const fsResult = await encryptFS(selectedChat.id, messageContent);
-        if (fsResult) {
-          contentToSend = JSON.stringify({ fs: true, ct: fsResult.ciphertext, idx: fsResult.messageIndex });
-          isEncrypted = true;
-          messageSignature = await sign(contentToSend);
-        }
-      }
-
-      // Fallback to standard RSA-based E2E (dual encryption: sender + recipient)
-      if (!isEncrypted && e2eEnabled && selectedChat.recipient?.public_key) {
-        const encKey = resolveEncryptionKey(selectedChat.recipient.public_key);
-        if (encKey) {
-          const encrypted = await encrypt(messageContent, encKey, currentUserPublicKey || undefined);
-          if (encrypted) {
-            contentToSend = encrypted;
-            isEncrypted = true;
-            messageSignature = await sign(encrypted);
-          }
-        }
-      } else if (!isEncrypted && e2eEnabled && selectedChat.recipient?.id) {
-        const pubKey = await getRecipientPublicKey(selectedChat.recipient.id);
-        if (pubKey) {
-          const encrypted = await encrypt(messageContent, pubKey, currentUserPublicKey || undefined);
-          if (encrypted) {
-            contentToSend = encrypted;
-            isEncrypted = true;
-            messageSignature = await sign(encrypted);
-          }
-        }
-      }
+      const contentToSend = messageContent;
 
       const msgBody: Record<string, unknown> = {
         chatId: selectedChat.id,
@@ -1488,8 +1444,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       if (showEphemeralOption && ephemeralSeconds > 0) msgBody.isEphemeral = true;
       if (replyingTo?.id) msgBody.replyToId = replyingTo.id;
       if (isViewOnceMode) msgBody.isViewOnce = true;
-      if (isEncrypted) msgBody.isEncrypted = true;
-      if (messageSignature) msgBody.signature = messageSignature;
       
       const response = await fetch('/api/messages', {
         method: 'POST',
@@ -1504,9 +1458,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
       
       if (responseData.message) {
-        if (isEncrypted && responseData.message.id) {
-          setDecryptedMessages(prev => ({ ...prev, [responseData.message.id]: messageContent }));
-        }
         setMessages(prev => [...prev, responseData.message]);
         setReplyingTo(null);
         setTimeout(() => scrollToBottom(false), 50);
@@ -2603,11 +2554,28 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                               )}
                               {msg.is_encrypted ? (
                                 decryptedMessages[msg.id] ? (
-                                  <span>{decryptedMessages[msg.id]}</span>
+                                  <>
+                                    <span>{decryptedMessages[msg.id]}</span>
+                                    <span className="inline-flex items-center ml-1" aria-label="Criptografada ponta a ponta">
+                                      <Shield className="w-3 h-3 text-green-500" />
+                                    </span>
+                                  </>
                                 ) : decryptFailedRef.current.has(msg.id) ? (
                                   <span className="italic text-gray-400 dark:text-gray-500 flex items-center gap-1">
                                     <Shield className="w-3 h-3" />
-                                    Mensagem criptografada
+                                    <button
+                                      onClick={() => {
+                                        decryptFailedRef.current.delete(msg.id);
+                                        setDecryptedMessages(prev => {
+                                          const next = { ...prev };
+                                          delete next[msg.id];
+                                          return next;
+                                        });
+                                      }}
+                                      className="underline hover:text-gray-600 dark:hover:text-gray-300"
+                                    >
+                                      Mensagem protegida - toque para tentar novamente
+                                    </button>
                                   </span>
                                 ) : (
                                   <span className="italic text-gray-400 dark:text-gray-500 flex items-center gap-1">
@@ -2617,11 +2585,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                                 )
                               ) : (
                                 msg.content
-                              )}
-                              {msg.is_encrypted && decryptedMessages[msg.id] && (
-                                <span className="inline-flex items-center ml-1" aria-label="Criptografada ponta a ponta">
-                                  <Shield className="w-3 h-3 text-green-500" />
-                                </span>
                               )}
                               {msg.edited_at && (
                                 <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500 italic">
