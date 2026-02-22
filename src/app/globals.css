@@ -116,8 +116,17 @@
   input,
   textarea,
   select {
-    font-size: 16px;
+    font-size: 16px !important;
   }
+}
+
+/* Prevenir zoom por double-tap e pinch em toda a app */
+html {
+  touch-action: manipulation;
+}
+
+* {
+  -webkit-text-size-adjust: 100%;
 }
 
 /* Mobile-first input optimizations */
@@ -236,26 +245,13 @@ img[loading="lazy"] {
 }
 
 body.keyboard-open {
-  height: calc(100vh - var(--keyboard-height));
   overflow: hidden;
-}
-
-body.keyboard-open .chat-input-area {
-  position: fixed;
-  bottom: var(--keyboard-height);
-  left: 0;
-  right: 0;
-  z-index: 100;
-}
-
-body.keyboard-open .chat-messages {
-  padding-bottom: calc(80px + var(--keyboard-height));
 }
 
 /* Smooth keyboard transition */
 .keyboard-aware {
-  transition: transform 0.25s ease-out, padding-bottom 0.25s ease-out;
-  will-change: transform, padding-bottom;
+  transition: transform 0.2s ease-out;
+  will-change: transform;
 }
 
 /* iOS input focus improvements */
@@ -263,5 +259,10 @@ body.keyboard-open .chat-messages {
   .chat-input-area input:focus,
   .chat-input-area textarea:focus {
     transform: translateZ(0);
+  }
+  
+  .chat-input-area {
+    /* Prevent iOS Safari toolbar from overlapping */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }

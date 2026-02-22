@@ -491,6 +491,38 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const readDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const linkPreviewCacheRef = useRef<Record<string, { title?: string; description?: string; image?: string; domain?: string } | null>>({});
+
+  // iOS keyboard: atualizar --keyboard-height e body.keyboard-open via visualViewport
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+
+    const vv = window.visualViewport;
+
+    const onResize = () => {
+      const kbHeight = Math.max(0, window.innerHeight - vv.height);
+      document.documentElement.style.setProperty('--keyboard-height', `${kbHeight}px`);
+
+      if (kbHeight > 100) {
+        document.body.classList.add('keyboard-open');
+        // Scroll messages area to keep bottom visible when keyboard opens
+        const el = messagesScrollRef.current;
+        if (el) {
+          requestAnimationFrame(() => {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+          });
+        }
+      } else {
+        document.body.classList.remove('keyboard-open');
+      }
+    };
+
+    vv.addEventListener('resize', onResize);
+    return () => {
+      vv.removeEventListener('resize', onResize);
+      document.body.classList.remove('keyboard-open');
+      document.documentElement.style.setProperty('--keyboard-height', '0px');
+    };
+  }, []);
   // Memoizar cliente Supabase para evitar re-criação a cada render
   const supabase = useMemo(() => createClient(), []);
 
@@ -1141,11 +1173,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const scrollToBottom = useCallback((instant = false) => {
     const el = messagesScrollRef.current;
     if (!el) return;
-    requestAnimationFrame(() => {
+    const doScroll = () => {
       el.scrollTo({
         top: el.scrollHeight,
         behavior: instant ? 'instant' : 'smooth',
       });
+    };
+    // Double rAF ensures the DOM has fully laid out virtualized items
+    requestAnimationFrame(() => {
+      requestAnimationFrame(doScroll);
     });
   }, []);
 
@@ -1179,7 +1215,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     lastMessageIdRef.current = lastId;
 
     if (prevLen === 0 || prevLastId === null) {
+      // First load: scroll to bottom with multiple attempts for virtualizer to settle
       scrollToBottom(true);
+      setTimeout(() => scrollToBottom(true), 100);
+      setTimeout(() => scrollToBottom(true), 300);
       return;
     }
 
@@ -2117,7 +2156,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     <div 
       className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans h-full"
     >
-      <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-200 ease-out will-change-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-[350px]'}`}>
+      <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-300 ease-out gpu-accelerated ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-[350px]'}`}>
         <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-gray-200 dark:border-[#0e1621] relative z-30">
           <div className="relative" ref={menuRef}>
             <button
@@ -2303,6 +2342,9 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       setSelectedChat(chat);
                       setMessageSearchQuery('');
                       setReplyingTo(null);
+                      setShowMediaMenu(false);
+                      setMessageMenuId(null);
+                      prevMessagesLengthRef.current = 0;
                       if (window.innerWidth < 768) setIsSidebarOpen(false);
                     }}
                     onMuteToggle={async () => {
@@ -2359,7 +2401,20 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               otherUserTyping={otherUserTyping}
               messageSearchQuery={messageSearchQuery}
               connectionState={connectionState}
-              onBack={() => setIsSidebarOpen(true)}
+              onBack={() => {
+                setIsSidebarOpen(true);
+                // Limpar estado da conversa no mobile para evitar renderização fantasma
+                if (window.innerWidth < 768) {
+                  setMessageSearchQuery('');
+                  setReplyingTo(null);
+                  setShowMediaMenu(false);
+                  setMessageMenuId(null);
+                  // Blurrar input ativo para fechar teclado
+                  if (document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                  }
+                }
+              }}
               onSetMessageSearchQuery={setMessageSearchQuery}
               onShowSecurityCode={() => setShowSecurityCode(true)}
               onShowMediaGallery={() => setShowMediaGallery(true)}

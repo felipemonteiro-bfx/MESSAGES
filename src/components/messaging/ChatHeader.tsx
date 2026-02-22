@@ -64,10 +64,11 @@ export default function ChatHeader({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
-            className="md:hidden p-2 shrink-0 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors"
+            className="md:hidden p-2 shrink-0 text-gray-500 dark:text-[#708499] hover:text-gray-700 dark:hover:text-white transition-colors touch-manipulation active:bg-gray-100 dark:active:bg-[#242f3d] rounded-lg"
             onClick={onBack}
+            aria-label="Voltar para conversas"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="relative shrink-0">
             <img
