@@ -58,41 +58,85 @@ const SwipeableChatItem = memo(function SwipeableChatItem({
   onMuteToggle: () => Promise<void>;
   onDelete: () => void;
 }) {
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const [touchEndX, setTouchEndX] = useState<number | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
   const [showContextMenu, setShowContextMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<'top' | 'bottom'>('bottom');
   const justSwipedRef = useRef(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const minSwipe = 60;
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const isHorizontalSwipeRef = useRef<boolean | null>(null);
+  const itemRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  const MIN_SWIPE = 80;
+  const IOS_EDGE_ZONE = 30;
+  const MAX_SWIPE_VISUAL = 100;
 
   const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEndX(null);
-    setTouchStartX(e.targetTouches[0].clientX);
+    const startX = e.targetTouches[0].clientX;
+    const startY = e.targetTouches[0].clientY;
+
+    if (startX < IOS_EDGE_ZONE) return;
+
+    touchStartXRef.current = startX;
+    touchStartYRef.current = startY;
+    isHorizontalSwipeRef.current = null;
+    setSwipeOffset(0);
+
     longPressTimerRef.current = setTimeout(() => {
+      impactMedium();
       setShowContextMenu(true);
       justSwipedRef.current = true;
-    }, 600);
+
+      if (itemRef.current) {
+        const rect = itemRef.current.getBoundingClientRect();
+        const viewportH = window.innerHeight;
+        setMenuPosition(rect.bottom + 120 > viewportH ? 'top' : 'bottom');
+      }
+    }, 400);
   };
+
   const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEndX(e.targetTouches[0].clientX);
+    if (touchStartXRef.current == null || touchStartYRef.current == null) return;
+
+    const currentX = e.targetTouches[0].clientX;
+    const currentY = e.targetTouches[0].clientY;
+    const dx = touchStartXRef.current - currentX;
+    const dy = Math.abs(currentY - touchStartYRef.current);
+
+    if (isHorizontalSwipeRef.current === null) {
+      if (Math.abs(dx) > 8 || dy > 8) {
+        isHorizontalSwipeRef.current = Math.abs(dx) > dy;
+      }
+    }
+
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+
+    if (isHorizontalSwipeRef.current && dx > 0) {
+      setSwipeOffset(Math.min(dx, MAX_SWIPE_VISUAL));
+    }
   };
+
   const onTouchEnd = () => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-    if (touchStartX == null || touchEndX == null) return;
-    const d = touchStartX - touchEndX;
-    if (d > minSwipe) {
+
+    if (swipeOffset >= MIN_SWIPE) {
       justSwipedRef.current = true;
+      impactLight();
       onMuteToggle();
     }
-    setTouchStartX(null);
-    setTouchEndX(null);
+
+    setSwipeOffset(0);
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    isHorizontalSwipeRef.current = null;
   };
 
   const handleSelect = () => {
@@ -103,33 +147,74 @@ const SwipeableChatItem = memo(function SwipeableChatItem({
     onSelect();
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    impactMedium();
+    setShowContextMenu(true);
+    if (itemRef.current) {
+      const rect = itemRef.current.getBoundingClientRect();
+      const viewportH = window.innerHeight;
+      setMenuPosition(rect.bottom + 120 > viewportH ? 'top' : 'bottom');
+    }
+  };
+
   useEffect(() => {
     if (!showContextMenu) return;
-    const close = () => setShowContextMenu(false);
-    const timer = setTimeout(() => document.addEventListener('click', close, { once: true }), 50);
-    return () => { clearTimeout(timer); document.removeEventListener('click', close); };
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setShowContextMenu(false);
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('click', close);
+      document.addEventListener('touchstart', close);
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', close);
+      document.removeEventListener('touchstart', close);
+    };
   }, [showContextMenu]);
+
+  const isMuted = mutedChats.has(chat.id);
+  const swipeProgress = Math.min(swipeOffset / MIN_SWIPE, 1);
 
   return (
     <div
+      ref={itemRef}
       style={style}
       data-chat="true"
       data-chat-id={chat.id}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      onContextMenu={(e) => { e.preventDefault(); setShowContextMenu(true); }}
-      className="touch-manipulation relative"
+      onContextMenu={handleContextMenu}
+      className="touch-manipulation relative overflow-hidden"
     >
+      {/* Swipe reveal layer */}
+      <div
+        className="absolute inset-0 flex items-center justify-end px-5 transition-opacity"
+        style={{ opacity: swipeProgress }}
+      >
+        <div className={`flex items-center gap-2 text-sm font-medium ${isMuted ? 'text-green-500' : 'text-orange-500'}`}>
+          {isMuted ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+          <span className="hidden sm:inline">{isMuted ? 'Ativar' : 'Silenciar'}</span>
+        </div>
+      </div>
+
       <div
         onClick={handleSelect}
-        className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#202b36] transition-colors ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-[#2b5278]' : ''}`}
+        className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#202b36] transition-colors relative bg-white dark:bg-[#17212b] ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-[#2b5278]' : ''}`}
+        style={{
+          transform: swipeOffset > 0 ? `translateX(-${swipeOffset}px)` : undefined,
+          transition: swipeOffset > 0 ? 'none' : 'transform 0.2s ease-out',
+        }}
       >
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <img
             src={chat.recipient?.avatar_url || DEFAULT_AVATAR_URL}
             alt={chat.recipient?.nickname || 'Avatar'}
-            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+            className="w-12 h-12 rounded-full object-cover"
             loading="lazy"
           />
           {chat.recipient && onlineUsers.has(chat.recipient.id) && (
@@ -176,18 +261,19 @@ const SwipeableChatItem = memo(function SwipeableChatItem({
       <AnimatePresence>
         {showContextMenu && (
           <motion.div
+            ref={contextMenuRef}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-50 bg-white dark:bg-[#242f3d] rounded-xl shadow-xl border border-gray-200 dark:border-[#17212b] overflow-hidden min-w-[180px]"
+            className={`absolute right-3 z-50 bg-white dark:bg-[#242f3d] rounded-xl shadow-xl border border-gray-200 dark:border-[#17212b] overflow-hidden min-w-[180px] ${menuPosition === 'top' ? 'bottom-1' : 'top-1'}`}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => { setShowContextMenu(false); onMuteToggle(); }}
               className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
             >
-              {mutedChats.has(chat.id)
+              {isMuted
                 ? <><Bell className="w-4 h-4" /><span>Ativar notificações</span></>
                 : <><BellOff className="w-4 h-4" /><span>Silenciar</span></>
               }
@@ -2032,32 +2118,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans h-full"
     >
       <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-200 ease-out will-change-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-[350px]'}`}>
-        <div className="p-2 sm:p-4 flex items-center gap-1.5 sm:gap-3 border-b border-[#0e1621] relative z-30">
-          {/* Botão pânico — volta ao portal de notícias; na barra superior, longe do envio */}
-          <button
-            onClick={() => {
-              panicVibrate();
-              if (isIncognitoMode()) {
-                setMessages([]);
-                clearIncognitoData();
-              }
-              lockMessaging();
-              toast.success('Modo notícias ativado.', { duration: 2000 });
-            }}
-            className="p-1 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0"
-            title="Voltar para Noticias24h (Ctrl+Shift+L)"
-            aria-label="Esconder e voltar ao portal de notícias"
-          >
-            <Newspaper className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
+        <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-gray-200 dark:border-[#0e1621] relative z-30">
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-1 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#242f3d] text-[#708499] hover:text-white transition-colors touch-manipulation btn-compact flex items-center justify-center"
               aria-label="Menu"
               aria-expanded={isMenuOpen}
             >
-              <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Menu className="w-5 h-5" />
             </button>
             
             {/* Menu Dropdown */}
@@ -2068,8 +2137,25 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
-                  className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#17212b] overflow-hidden z-50"
+                  className="absolute top-full left-0 mt-2 w-52 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#17212b] overflow-hidden z-50"
                 >
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      panicVibrate();
+                      if (isIncognitoMode()) {
+                        setMessages([]);
+                        clearIncognitoData();
+                      }
+                      lockMessaging();
+                      toast.success('Modo notícias ativado.', { duration: 2000 });
+                    }}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
+                  >
+                    <Newspaper className="w-4 h-4" />
+                    <span>Modo notícias</span>
+                  </button>
+                  
                   <button
                     onClick={handleGoToNews}
                     className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2b5278] transition-colors"
@@ -2077,6 +2163,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     <Home className="w-4 h-4" />
                     <span>Voltar para Noticias24h</span>
                   </button>
+                  
+                  <div className="border-t border-gray-200 dark:border-[#17212b]" />
                   
                   <button
                     onClick={() => {
@@ -2135,14 +2223,14 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               )}
             </AnimatePresence>
           </div>
-          <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2">
+          <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#242f3d] rounded-xl flex items-center gap-1.5 px-3 py-2">
             <Search className="w-4 h-4 text-gray-400 dark:text-[#708499] flex-shrink-0" />
             <input 
               type="text" 
               placeholder="Buscar..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 text-sm sm:text-base w-full min-w-0 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
+              className="bg-transparent border-none focus:ring-0 text-sm w-full min-w-0 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#708499]" 
             />
             <button 
               onClick={() => setShowAdvancedSearch(true)}
@@ -2150,13 +2238,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               title="Busca avançada"
               aria-label="Busca avançada"
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <SlidersHorizontal className="w-4 h-4" />
             </button>
           </div>
           {/* Botão Settings - apenas em telas maiores */}
           <button 
             onClick={() => setShowSettingsModal(true)} 
-            className="hidden sm:flex p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation min-w-[44px] min-h-[44px] items-center justify-center" 
+            className="hidden sm:flex p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-gray-600 dark:text-[#708499] transition-colors touch-manipulation btn-touch items-center justify-center" 
             title="Configurações" 
             aria-label="Configurações"
           >
@@ -2165,50 +2253,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
           {/* Botão Adicionar contato */}
           <button 
             onClick={() => setIsAddContactOpen(true)} 
-            className="p-1 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center flex-shrink-0" 
+            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation btn-compact sm:btn-touch flex items-center justify-center flex-shrink-0" 
             title="Adicionar contato" 
             data-testid="add-contact-button" 
             aria-label="Adicionar contato"
           >
-            <UserPlus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <UserPlus className="w-5 h-5" />
           </button>
-          {/* Botão Editar nickname - apenas em telas maiores */}
-          {currentUser && (
-            <button 
-              onClick={async () => {
-                try {
-                  const { data: profile, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('nickname, avatar_url')
-                    .eq('id', currentUser.id)
-                    .single();
-                  
-                  if (profileError) {
-                    console.error('Erro ao buscar perfil:', profileError);
-                    toast.error('Erro ao carregar perfil. Tente novamente.');
-                    return;
-                  }
-                  
-                  if (profile) {
-                    setCurrentUserProfile(profile);
-                    setEditingUserId(currentUser.id);
-                    setEditingNickname(profile.nickname || '');
-                    setShowEditNicknameModal(true);
-                  } else {
-                    toast.error('Perfil não encontrado. Por favor, faça login novamente.');
-                  }
-                } catch (error: any) {
-                  console.error('Erro ao abrir modal de edição:', error);
-                  toast.error('Erro ao abrir editor de nickname. Tente novamente.');
-                }
-              }}
-              className="hidden sm:flex p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#242f3d] text-blue-600 dark:text-[#4c94d5] transition-colors touch-manipulation min-w-[44px] min-h-[44px] items-center justify-center" 
-              title="Editar meu nickname"
-              aria-label="Editar meu nickname"
-            >
-              <Edit2 className="w-5 h-5" />
-            </button>
-          )}
         </div>
         <div ref={chatListScrollRef} className="flex-1 overflow-y-auto smooth-scroll overscroll-y-contain">
           {isLoading ? (

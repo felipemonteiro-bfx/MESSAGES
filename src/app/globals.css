@@ -128,12 +128,16 @@ select {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Altura mínima para botões e inputs (Apple HIG: 44px) */
-button,
-[role="button"],
-input[type="submit"],
-input[type="button"] {
+/* Botões interativos principais (Apple HIG: 44px) — aplicar via classe */
+.btn-touch {
   min-height: 44px;
+  min-width: 44px;
+}
+
+/* Botões compactos de toolbar/header */
+.btn-compact {
+  min-height: 36px;
+  min-width: 36px;
 }
 
 /* Scroll suave para mobile */

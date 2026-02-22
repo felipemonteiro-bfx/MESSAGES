@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack -p 3005",
+    "dev": "next dev --webpack -p 3005 --hostname 0.0.0.0",
     "build": "next build --webpack",
     "build:mobile": "cross-env CAPACITOR=true next build && npx cap sync",
     "start": "next start",
