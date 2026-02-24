@@ -1,8 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // Configuração para Capacitor (gera export estático quando CAPACITOR=true)
-  output: process.env.CAPACITOR === 'true' ? 'export' : undefined,
+  // Configuração para Capacitor (gera export estático quando CAPACITOR=true); standalone para Docker/K8s
+  output: process.env.CAPACITOR === 'true' ? 'export' : (process.env.DOCKER_BUILD === 'true' ? 'standalone' : undefined),
   
   images: {
     unoptimized: process.env.CAPACITOR === 'true',

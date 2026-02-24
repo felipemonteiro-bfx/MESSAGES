@@ -1203,18 +1203,32 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
   }, []);
 
+  const messagesVirtualizerCountRef = useRef(0);
+
   const scrollToBottom = useCallback((instant = false) => {
     const el = messagesScrollRef.current;
-    if (!el) return;
+    const virtualizer = messagesVirtualizerRef.current;
+    const count = messagesVirtualizerCountRef.current;
+    const lastIndex = Math.max(0, count - 1);
+    const behavior = instant ? 'auto' : 'smooth';
     const doScroll = () => {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: instant ? 'instant' : 'smooth',
-      });
+      if (virtualizer) {
+        virtualizer.scrollToIndex(lastIndex, { align: 'end', behavior });
+      }
+      if (el) {
+        el.scrollTop = el.scrollHeight - el.clientHeight;
+      }
     };
-    // Double rAF ensures the DOM has fully laid out virtualized items
+    const reapplyNativeScroll = () => {
+      if (el) {
+        el.scrollTop = el.scrollHeight - el.clientHeight;
+      }
+    };
     requestAnimationFrame(() => {
-      requestAnimationFrame(doScroll);
+      requestAnimationFrame(() => {
+        doScroll();
+        requestAnimationFrame(reapplyNativeScroll);
+      });
     });
   }, []);
 
@@ -1254,7 +1268,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
     if (lastId !== prevLastId) {
       if (lastMsg?.sender_id === currentUser?.id) {
-        scrollToBottom(false);
+        scrollToBottom(true);
       } else if (isUserNearBottom()) {
         scrollToBottom(false);
       } else {
@@ -1262,6 +1276,18 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
     }
   }, [messages, isUserNearBottom, scrollToBottom, currentUser?.id]);
+
+  // Manter scroll no fim ao enviar: executar antes do paint para evitar ver a lista saltar para o topo
+  useLayoutEffect(() => {
+    if (messages.length === 0 || !currentUser?.id) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.sender_id !== currentUser.id) return;
+    const prevLen = prevMessagesLengthRef.current;
+    if (prevLen > 0 && messages.length > prevLen) {
+      messagesVirtualizerRef.current?.measure();
+      scrollToBottom(true);
+    }
+  }, [messages, currentUser?.id, scrollToBottom]);
 
   useEffect(() => {
     const sentinel = loadMoreSentinelRef.current;
@@ -1691,7 +1717,13 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       if (responseData.message) {
         setMessages(prev => [...prev, responseData.message]);
         setReplyingTo(null);
-        setTimeout(() => scrollToBottom(false), 50);
+        // Scroll após virtualizer atualizar: measure() para tamanho do novo item, depois scroll para o fim
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            messagesVirtualizerRef.current?.measure();
+            setTimeout(() => scrollToBottom(true), 100);
+          });
+        });
       }
       messageSent = true;
     } catch (error) {
@@ -2099,6 +2131,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   const messagesWithLoadMore = hasMoreMessages && filteredMessages.length > 0;
   const messagesVirtualizerCount = (messagesWithLoadMore ? 1 : 0) + filteredMessages.length;
+  messagesVirtualizerCountRef.current = messagesVirtualizerCount;
   const messagesEstimateSize = useCallback((index: number) => {
     if (index === 0 && messagesWithLoadMore) return 48;
     const msgIndex = messagesWithLoadMore ? index - 1 : index;

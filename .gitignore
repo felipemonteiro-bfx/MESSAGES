@@ -32,6 +32,9 @@ yarn-error.log*
 .env
 .env.test
 
+# k8s secrets (nunca commitar)
+k8s/secret.yaml
+
 # vercel
 .vercel
 

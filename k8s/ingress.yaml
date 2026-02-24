@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stealth-messaging
+  namespace: stealth-messaging
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: stealth-messaging.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stealth-messaging
+                port:
+                  number: 80
+  # Descomente para TLS (ajuste o secret)
+  # tls:
+  #   - hosts:
+  #       - stealth-messaging.local
+  #     secretName: stealth-messaging-tls

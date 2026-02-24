@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build / cache
+.next
+out
+.turbo
+*.tsbuildinfo
+
+# Env (inject via K8s Secret)
+.env*
+!.env.example
+
+# Git / IDE
+.git
+.gitignore
+.cursor
+.vscode
+*.md
+!README.md
+
+# Tests / misc
+coverage
+.nyc_output
+*.log
+playwright-report
+test-results
+ai-text-demo
+
+# Mobile (não necessário na imagem)
+android
+ios
+capacitor.config.*
