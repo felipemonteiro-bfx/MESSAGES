@@ -73,21 +73,21 @@ export default function MessageInput({
             >
               <button
                 onClick={() => { onFilePickerActive(true); fileInputRef.current?.click(); }}
-                className="flex-1 flex flex-col items-center gap-2 p-3 bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] min-w-[44px] bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors touch-manipulation"
               >
                 <Camera className="w-5 h-5 text-[#4c94d5]" />
                 <span className="text-xs text-white">Foto</span>
               </button>
               <button
                 onClick={() => { onFilePickerActive(true); videoInputRef.current?.click(); }}
-                className="flex-1 flex flex-col items-center gap-2 p-3 bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] min-w-[44px] bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors touch-manipulation"
               >
                 <FileVideo className="w-5 h-5 text-[#4c94d5]" />
                 <span className="text-xs text-white">Vídeo</span>
               </button>
               <button
                 onClick={isRecording ? onStopRecording : onStartRecording}
-                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-lg transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] min-w-[44px] rounded-lg transition-colors touch-manipulation ${
                   isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-[#17212b] hover:bg-[#2b5278]'
                 }`}
               >

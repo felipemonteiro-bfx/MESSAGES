@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, MoreVertical, Phone, Video, Send, Paperclip, Smile, Check, CheckCheck, Menu, User, Settings, LogOut, ArrowLeft, ArrowDown, Image as ImageIcon, Mic, UserPlus, X as CloseIcon, MessageSquare, Camera, FileVideo, FileAudio, Edit2, Clock, Newspaper, Bell, BellOff, Home, AlertCircle, ImagePlus, Copy, Reply, Forward, Trash2, Pencil, Shield, ExternalLink, Globe, SlidersHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,6 +35,35 @@ import ChatModals from '@/components/messaging/ChatModals';
 
 interface ChatLayoutProps {
   accessMode?: AccessMode;
+}
+
+/** Virtualizer de mensagens que monta só quando há mensagens e usa initialOffset para abrir já no fim (sem rolar). */
+function MessagesVirtualListWithInitialScroll({
+  scrollRef,
+  count,
+  estimateSize,
+  virtualizerRef,
+  children,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  count: number;
+  estimateSize: (index: number) => number;
+  virtualizerRef: React.MutableRefObject<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>> | null>;
+  children: (virtualizer: ReturnType<typeof useVirtualizer<HTMLDivElement, Element>>) => React.ReactNode;
+}) {
+  const virtualizer = useVirtualizer({
+    count,
+    getScrollElement: () => scrollRef.current,
+    initialOffset: () => 999999999,
+    estimateSize,
+    overscan: 20,
+    scrollMargin: 100,
+    measureElement: typeof window !== 'undefined'
+      ? (element: Element) => element?.getBoundingClientRect().height ?? undefined
+      : undefined,
+  });
+  virtualizerRef.current = virtualizer;
+  return <>{children(virtualizer)}</>;
 }
 
 const SwipeableChatItem = memo(function SwipeableChatItem({
@@ -489,6 +518,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const readObserverRef = useRef<IntersectionObserver | null>(null);
   const pendingReadIdsRef = useRef<Set<string>>(new Set());
   const readDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const markedChatAsReadOnOpenRef = useRef<string | null>(null);
+  const messagesVirtualizerRef = useRef<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>> | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const linkPreviewCacheRef = useRef<Record<string, { title?: string; description?: string; image?: string; domain?: string } | null>>({});
 
@@ -551,7 +582,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       
       // Usar API server-side para evitar problemas de RLS recursivo
       // Passar o modo de acesso para filtrar chats reais vs decoy
-      const response = await fetch(`/api/chats?mode=${accessMode}`, { credentials: 'include' });
+      const response = await fetch(`/api/chats?mode=${accessMode}`, { credentials: 'include', cache: 'no-store' });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -836,10 +867,12 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   useEffect(() => {
     if (selectedChat && currentUser) {
+      setMessages([]);
       setMessagesPage(1);
       setHasMoreMessages(true);
       setDecryptedMessages({});
       clearEncryptionCache();
+      markedChatAsReadOnOpenRef.current = null;
       fetchMessages(selectedChat.id, 1, false);
       
       return () => {
@@ -1215,10 +1248,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     lastMessageIdRef.current = lastId;
 
     if (prevLen === 0 || prevLastId === null) {
-      // First load: scroll to bottom with multiple attempts for virtualizer to settle
-      scrollToBottom(true);
-      setTimeout(() => scrollToBottom(true), 100);
-      setTimeout(() => scrollToBottom(true), 300);
+      // First load: scrollToIndex handles this in separate effect (after virtualizer)
       return;
     }
 
@@ -1317,6 +1347,27 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       }
     };
   }, [selectedChat?.id, currentUser?.id, flushPendingReads]);
+
+  // Ao abrir a conversa: marcar todas as mensagens não lidas como lidas e atualizar a lista (badge)
+  useEffect(() => {
+    if (!selectedChat || !currentUser || isLoadingMessages || messages.length === 0) return;
+    const unreadIds = messages
+      .filter((m) => m.sender_id !== currentUser.id && !m.read_at)
+      .map((m) => m.id);
+    if (unreadIds.length === 0) return;
+    if (markedChatAsReadOnOpenRef.current === selectedChat.id) return;
+    markedChatAsReadOnOpenRef.current = selectedChat.id;
+    setMessages((prev) =>
+      prev.map((m) => (unreadIds.includes(m.id) ? { ...m, read_at: new Date().toISOString() } : m))
+    );
+    setChats((prev) =>
+      prev.map((c) => (c.id === selectedChat.id ? { ...c, unreadCount: 0 } : c))
+    );
+    (async () => {
+      await markMessagesAsRead(unreadIds);
+      if (currentUser) fetchChats(currentUser.id);
+    })();
+  }, [selectedChat?.id, currentUser?.id, isLoadingMessages, messages.length, markMessagesAsRead, fetchChats]);
 
   const handleMediaUpload = useCallback(async (file: File, type: 'image' | 'video' | 'audio') => {
     // Limites de tamanho por tipo
@@ -2048,42 +2099,30 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
   const messagesWithLoadMore = hasMoreMessages && filteredMessages.length > 0;
   const messagesVirtualizerCount = (messagesWithLoadMore ? 1 : 0) + filteredMessages.length;
-  const messagesVirtualizer = useVirtualizer({
-    count: messagesVirtualizerCount,
-    getScrollElement: () => messagesScrollRef.current,
-    estimateSize: (index) => {
-      if (index === 0 && messagesWithLoadMore) return 48;
-      const msgIndex = messagesWithLoadMore ? index - 1 : index;
-      const msg = filteredMessages[msgIndex];
-      if (!msg) return 80;
-      
-      let height = 64;
-      const prevMsg = msgIndex > 0 ? filteredMessages[msgIndex - 1] : null;
-      if (!prevMsg || !isSameDay(prevMsg.created_at, msg.created_at)) {
-        height += 32;
-      }
-      if (msg.media_url) {
-        if (msg.media_type === 'video') height += 220;
-        else if (msg.media_type === 'image') height += 200;
-        else if (msg.media_type === 'audio') height += 80;
-      }
-      const contentLen = msg.content?.length || 0;
-      if (contentLen > 0) {
-        height += Math.ceil(contentLen / 35) * 20;
-      }
-      if (msg.reply_to_id) height += 52;
-      return Math.max(height, 72);
-    },
-    overscan: 20,
-    scrollMargin: 100,
-    measureElement: typeof window !== 'undefined'
-      ? (element: Element) => element?.getBoundingClientRect().height ?? undefined
-      : undefined,
-  });
-  
+  const messagesEstimateSize = useCallback((index: number) => {
+    if (index === 0 && messagesWithLoadMore) return 48;
+    const msgIndex = messagesWithLoadMore ? index - 1 : index;
+    const msg = filteredMessages[msgIndex];
+    if (!msg) return 80;
+    let height = 64;
+    const prevMsg = msgIndex > 0 ? filteredMessages[msgIndex - 1] : null;
+    if (!prevMsg || !isSameDay(prevMsg.created_at, msg.created_at)) height += 32;
+    if (msg.media_url) {
+      if (msg.media_type === 'video') height += 220;
+      else if (msg.media_type === 'image') height += 200;
+      else if (msg.media_type === 'audio') height += 80;
+    }
+    const contentLen = msg.content?.length || 0;
+    if (contentLen > 0) height += Math.ceil(contentLen / 35) * 20;
+    if (msg.reply_to_id) height += 52;
+    return Math.max(height, 72);
+  }, [filteredMessages, messagesWithLoadMore]);
+
   const handleMediaLoad = useCallback(() => {
-    messagesVirtualizer.measure();
-  }, [messagesVirtualizer]);
+    messagesVirtualizerRef.current?.measure();
+  }, []);
+
+  // Scroll to last message on first load — esconder lista até scroll estar no fim para não ver “descer”
 
   // Fechar menu ao clicar fora
   useEffect(() => {
@@ -2156,7 +2195,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     <div 
       className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans h-full"
     >
-      <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-300 ease-out gpu-accelerated ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-[350px]'}`}>
+      <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-300 ease-out gpu-accelerated ${isSidebarOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full md:translate-x-0 md:w-[350px] pointer-events-none md:pointer-events-auto'}`}>
         <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-gray-200 dark:border-[#0e1621] relative z-30">
           <div className="relative" ref={menuRef}>
             <button
@@ -2346,6 +2385,15 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       setMessageMenuId(null);
                       prevMessagesLengthRef.current = 0;
                       if (window.innerWidth < 768) setIsSidebarOpen(false);
+                      setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unreadCount: 0 } : c)));
+                      fetch(`/api/messages/read-by-chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chatId: chat.id }),
+                        cache: 'no-store',
+                      })
+                        .then(() => currentUser && fetchChats(currentUser.id))
+                        .catch(() => {});
                     }}
                     onMuteToggle={async () => {
                       if (!currentUser || !chat) return;
@@ -2384,7 +2432,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
       </aside>
 
       <main 
-        className="flex-1 flex flex-col relative bg-gray-50 dark:bg-[#0e1621] min-w-0 overflow-hidden"
+        className={`flex-1 flex flex-col min-h-0 relative bg-gray-50 dark:bg-[#0e1621] min-w-0 overflow-hidden ${selectedChat ? 'max-md:z-10' : ''}`}
         data-stealth-content="true"
         onContextMenu={(e) => {
           // Sugestão 6: Dificultar screenshot - aviso silencioso
@@ -2428,7 +2476,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             />
             <div
               ref={messagesScrollRef}
-              className="flex-1 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll gpu-accelerated overscroll-y-contain"
+              className="flex-1 min-h-0 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll scroll-touch overscroll-y-contain"
               data-stealth-content="true"
               data-sensitive="true"
               // Sugestão 23: Drag & drop de arquivos
@@ -2536,18 +2584,26 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhuma mensagem encontrada</p>
                     <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Tente outro termo na busca</p>
                   </div>
-                ) : (
-                  <div
-                    style={{ height: `${messagesVirtualizer.getTotalSize()}px`, position: 'relative' }}
-                    className="w-full"
+                ) : selectedChat && filteredMessages.length > 0 ? (
+                  <MessagesVirtualListWithInitialScroll
+                    key={selectedChat.id}
+                    scrollRef={messagesScrollRef}
+                    count={messagesVirtualizerCount}
+                    estimateSize={messagesEstimateSize}
+                    virtualizerRef={messagesVirtualizerRef}
                   >
-                    {messagesVirtualizer.getVirtualItems().map((virtualRow) => {
+                    {(virtualizer) => (
+                    <div
+                      style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}
+                      className="w-full"
+                    >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
                       if (virtualRow.index === 0 && messagesWithLoadMore) {
                         return (
                           <div
                             key="load-more"
                             ref={(el) => {
-                              messagesVirtualizer.measureElement(el!);
+                              virtualizer.measureElement(el!);
                               (loadMoreSentinelRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
                             }}
                             data-index={virtualRow.index}
@@ -2577,7 +2633,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                       return (
                     <div
                       key={msg.id}
-                      ref={messagesVirtualizer.measureElement}
+                      ref={virtualizer.measureElement}
                       data-index={virtualRow.index}
                       style={{
                         position: 'absolute',
@@ -2872,6 +2928,14 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     </div>
                       );
                     })}
+                    </div>
+                    )}
+                  </MessagesVirtualListWithInitialScroll>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Search className="w-12 h-12 text-gray-400 dark:text-[#708499] mb-3 opacity-50" />
+                    <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhuma mensagem encontrada</p>
+                    <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Tente outro termo na busca</p>
                   </div>
                 )}
                 <div ref={messagesEndRef} className="h-1" aria-hidden="true" />

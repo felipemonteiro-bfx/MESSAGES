@@ -13,28 +13,36 @@ export function useAuth() {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    // Verificar sessão inicial
+    // Verificar sessão inicial (evitar crash se Supabase não configurado)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       setUser(session?.user ?? null);
       setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-      setUser(session?.user ?? null);
+    }).catch(() => {
+      setUser(null);
       setLoading(false);
-      
-      if (session?.user) {
-        logger.info('User authenticated', { userId: session.user.id });
-      } else {
-        logger.info('User signed out');
-      }
     });
 
-    return () => subscription.unsubscribe();
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (_event: any, session: any) => {
+          setUser(session?.user ?? null);
+          setLoading(false);
+          if (session?.user) {
+            logger.info('User authenticated', { userId: session.user.id });
+          } else {
+            logger.info('User signed out');
+          }
+        }
+      );
+      subscription = data.subscription;
+    } catch {
+      setLoading(false);
+    }
+
+    return () => subscription?.unsubscribe?.();
   }, [supabase]);
 
   const signOut = useCallback(async () => {

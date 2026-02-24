@@ -20,6 +20,8 @@
     "android:build": "npm run build:mobile && cd android && ./gradlew assembleRelease",
     "ios:build": "npm run build:mobile && cd ios && xcodebuild -workspace App.xcworkspace -scheme App -configuration Release archive",
     "test:e2e": "playwright test",
+    "test:e2e:setup": "node -e \"const fs=require('fs'); if(!fs.existsSync('.env.test')&&fs.existsSync('.env.local')){fs.copyFileSync('.env.local','.env.test');console.log('.env.test criado');}else{console.log('.env.test ok');}\" && node scripts/create-test-users.mjs",
+    "test:e2e:mobile": "playwright test tests/e2e/mobile-responsive.spec.ts tests/e2e/messaging-ux.spec.ts --project=\"Mobile Chrome\" --workers=1",
     "test:e2e:stable": "playwright test --workers=1",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install"

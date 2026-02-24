@@ -155,6 +155,11 @@ select {
   overscroll-behavior-y: contain;
 }
 
+/* Momentum scrolling no iOS */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Prevenir scroll horizontal acidental e vazamento de tela */
 html, body {
   overflow-x: hidden;
@@ -256,11 +261,16 @@ body.keyboard-open {
 
 /* iOS input focus improvements */
 @supports (-webkit-touch-callout: none) {
+  html {
+    min-height: -webkit-fill-available;
+  }
+  body {
+    min-height: -webkit-fill-available;
+  }
   .chat-input-area input:focus,
   .chat-input-area textarea:focus {
     transform: translateZ(0);
   }
-  
   .chat-input-area {
     /* Prevent iOS Safari toolbar from overlapping */
     padding-bottom: env(safe-area-inset-bottom, 0px);

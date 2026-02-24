@@ -14,28 +14,27 @@ const envSchema = z.object({
 
 type Env = z.infer<typeof envSchema>;
 
-function getEnv(): Env {
-  try {
-    return envSchema.parse({
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? '',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '',
-      NEXT_PUBLIC_NEWS_API_KEY: process.env.NEXT_PUBLIC_NEWS_API_KEY,
-      NODE_ENV: process.env.NODE_ENV || 'development',
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const missingVars = error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join('\n');
-      throw new Error(
-        `❌ Variáveis de ambiente inválidas ou faltando:\n${missingVars}\n\n` +
-        `Por favor, verifique seu arquivo .env.local`
-      );
-    }
-    throw error;
-  }
-}
+const raw = {
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? '',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '',
+  NEXT_PUBLIC_NEWS_API_KEY: process.env.NEXT_PUBLIC_NEWS_API_KEY,
+  NODE_ENV: process.env.NODE_ENV || 'development',
+};
 
-// Export validated environment variables
-export const env = getEnv();
+const parsed = envSchema.safeParse(raw);
+
+/** true se NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY estão definidos e válidos */
+export const envValid = parsed.success;
+
+// Export validated environment variables (ou defaults para não quebrar o app no cliente)
+export const env: Env = parsed.success
+  ? parsed.data
+  : {
+      NEXT_PUBLIC_SUPABASE_URL: raw.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: raw.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
+      NEXT_PUBLIC_NEWS_API_KEY: raw.NEXT_PUBLIC_NEWS_API_KEY,
+      NODE_ENV: (raw.NODE_ENV as Env['NODE_ENV']) || 'development',
+    };
 
 // Helper to check if we're in production
 export const isProduction = env.NODE_ENV === 'production';

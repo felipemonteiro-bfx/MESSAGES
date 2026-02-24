@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { X } from 'lucide-react';
 import { getAutoLockTimeout, getAutoLockOnScreenLock } from '@/lib/settings';
 import { type AccessMode, clearAccessMode, getCurrentAccessMode } from '@/lib/pin';
+import { envValid } from '@/lib/env';
 
 interface StealthMessagingContextType {
   isStealthMode: boolean;
@@ -280,6 +281,26 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     return null;
   }
 
+  if (!envValid) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-[#0e1621] p-6 text-center">
+        <div className="max-w-md space-y-4">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Configuração necessária</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Configure as variáveis de ambiente no arquivo <code className="bg-gray-200 dark:bg-[#17212b] px-1.5 py-0.5 rounded">.env.local</code>:
+          </p>
+          <ul className="text-left text-sm text-gray-700 dark:text-gray-300 list-disc list-inside space-y-1">
+            <li><code>NEXT_PUBLIC_SUPABASE_URL</code></li>
+            <li><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></li>
+          </ul>
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            Depois reinicie o servidor (<code>yarn dev</code>).
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <StealthMessagingContext.Provider value={contextValue}>
       <AnimatePresence mode="wait">
@@ -347,7 +368,7 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="relative min-h-screen"
+            className="relative h-dvh overflow-hidden"
           >
             <ChatLayout accessMode={accessMode} />
           </motion.div>

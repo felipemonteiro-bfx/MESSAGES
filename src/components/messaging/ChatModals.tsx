@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { X as CloseIcon, Pencil, Trash2, Forward, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Message, ChatWithRecipient, User as UserType } from '@/types/messaging';
 import EditNicknameModal from '@/components/shared/EditNicknameModal';
 import SettingsModal from '@/components/shared/SettingsModal';
@@ -99,15 +100,29 @@ export default function ChatModals(props: ChatModalsProps) {
     showAdvancedSearch, onCloseAdvancedSearch, onSearchResultClick,
   } = props;
 
+  const addContactTrapRef = useFocusTrap(isAddContactOpen, () => onSetAddContactOpen(false));
+  const editMessageTrapRef = useFocusTrap(!!editingMessage, onCloseEditMessage);
+  const deleteChatTrapRef = useFocusTrap(!!deleteChatConfirm, () => onSetDeleteChatConfirm(null));
+  const deleteMsgTrapRef = useFocusTrap(!!deleteConfirmId, () => onSetDeleteConfirmId(null));
+
   return (
     <>
       {/* Add Contact Modal */}
       <AnimatePresence>
         {isAddContactOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-sm bg-[#17212b] rounded-2xl p-6 shadow-2xl border border-[#242f3d]">
+            <motion.div
+              ref={addContactTrapRef}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-contact-title"
+              className="w-full max-w-sm bg-[#17212b] rounded-2xl p-6 shadow-2xl border border-[#242f3d]"
+            >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white">Novo Contato</h3>
+                <h3 id="add-contact-title" className="text-xl font-bold text-white">Novo Contato</h3>
                 <button onClick={() => onSetAddContactOpen(false)} className="text-[#708499] hover:text-white transition-colors"><CloseIcon className="w-6 h-6" /></button>
               </div>
               <div className="space-y-4">
@@ -254,7 +269,7 @@ export default function ChatModals(props: ChatModalsProps) {
       <AnimatePresence>
         {deleteChatConfirm && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4" onClick={() => onSetDeleteChatConfirm(null)}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <motion.div ref={deleteChatTrapRef} initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Excluir conversa?</h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
                 Conversa com <span className="font-semibold text-gray-800 dark:text-gray-200">{deleteChatConfirm.recipient?.nickname || 'este contato'}</span>
@@ -275,7 +290,7 @@ export default function ChatModals(props: ChatModalsProps) {
       <AnimatePresence>
         {editingMessage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4" onClick={onCloseEditMessage}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-md w-full shadow-xl">
+            <motion.div ref={editMessageTrapRef} initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-md w-full shadow-xl">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2"><Pencil className="w-5 h-5" />Editar mensagem</h3>
               <textarea value={editContent} onChange={(e) => onSetEditContent(e.target.value)} className="w-full p-3 rounded-xl bg-gray-100 dark:bg-[#242f3d] text-base text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" rows={4} maxLength={10000} autoFocus />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">{editContent.length}/10000 caracteres</p>
@@ -292,7 +307,7 @@ export default function ChatModals(props: ChatModalsProps) {
       <AnimatePresence>
         {deleteConfirmId && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4" onClick={() => onSetDeleteConfirmId(null)}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <motion.div ref={deleteMsgTrapRef} initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="bg-white dark:bg-[#17212b] rounded-2xl p-6 max-w-sm w-full shadow-xl">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2"><Trash2 className="w-5 h-5 text-red-500" />Apagar mensagem?</h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Escolha como deseja apagar esta mensagem.</p>
               <div className="space-y-2">
