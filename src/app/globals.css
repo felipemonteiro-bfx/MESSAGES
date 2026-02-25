@@ -33,7 +33,6 @@
     @apply antialiased transition-colors duration-500;
     background-color: var(--bg-main);
     color: var(--text-main);
-    min-height: 100vh;
   }
 }
 
@@ -82,14 +81,6 @@
   
   .safe-area-top {
     padding-top: max(1rem, env(safe-area-inset-top));
-  }
-  
-  /* Safe area para iPhone com notch/Dynamic Island */
-  body {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
   }
   
   /* Header fixo com safe area */
@@ -249,24 +240,15 @@ img[loading="lazy"] {
   --keyboard-height: 0px;
 }
 
-body.keyboard-open {
-  overflow: hidden;
-}
-
-/* Smooth keyboard transition */
-.keyboard-aware {
-  transition: transform 0.2s ease-out;
-  will-change: transform;
+/* Bloquear seleção nativa em mensagens para evitar conflito com long-press */
+[data-message="true"] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* iOS input focus improvements */
 @supports (-webkit-touch-callout: none) {
-  html {
-    min-height: -webkit-fill-available;
-  }
-  body {
-    min-height: -webkit-fill-available;
-  }
   .chat-input-area input:focus,
   .chat-input-area textarea:focus {
     transform: translateZ(0);

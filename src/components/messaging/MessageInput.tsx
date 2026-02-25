@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
-import { Send, Paperclip, Mic, Camera, FileVideo, X as CloseIcon } from 'lucide-react';
+import { useRef, useCallback, useEffect } from 'react';
+import { Send, Paperclip, Mic, Camera, FileVideo, Image as ImageIcon, X as CloseIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Message, ChatWithRecipient } from '@/types/messaging';
 import { impactLight } from '@/lib/haptics';
@@ -49,9 +49,17 @@ export default function MessageInput({
   onFilePickerActive,
   recipientNickname,
 }: MessageInputProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const imageGalleryInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!inputText.trim() && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [inputText]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -61,7 +69,7 @@ export default function MessageInput({
   }, [onSend]);
 
   return (
-    <footer className="shrink-0 p-3 bg-white dark:bg-[#17212b] border-t border-gray-200 dark:border-[#0e1621] safe-area-inset-bottom chat-input-area keyboard-aware z-10">
+    <footer className="shrink-0 p-3 bg-white dark:bg-[#17212b] border-t border-gray-200 dark:border-[#0e1621] safe-area-inset-bottom chat-input-area z-10">
       <div className="max-w-3xl mx-auto">
         <AnimatePresence>
           {showMediaMenu && (
@@ -69,14 +77,28 @@ export default function MessageInput({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="mb-2 flex gap-2 p-2 bg-[#242f3d] rounded-xl"
+              className="mb-2 flex gap-2 p-2 bg-[#242f3d] rounded-xl flex-wrap"
             >
               <button
-                onClick={() => { onFilePickerActive(true); fileInputRef.current?.click(); }}
+                onClick={() => {
+                  onFilePickerActive(true);
+                  if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+                    cameraInputRef.current?.click();
+                  } else {
+                    imageGalleryInputRef.current?.click();
+                  }
+                }}
                 className="flex-1 flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] min-w-[44px] bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors touch-manipulation"
               >
                 <Camera className="w-5 h-5 text-[#4c94d5]" />
                 <span className="text-xs text-white">Foto</span>
+              </button>
+              <button
+                onClick={() => { onFilePickerActive(true); imageGalleryInputRef.current?.click(); }}
+                className="flex-1 flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] min-w-[44px] bg-[#17212b] rounded-lg hover:bg-[#2b5278] transition-colors touch-manipulation"
+              >
+                <ImageIcon className="w-5 h-5 text-[#4c94d5]" />
+                <span className="text-xs text-white">Galeria</span>
               </button>
               <button
                 onClick={() => { onFilePickerActive(true); videoInputRef.current?.click(); }}
@@ -118,7 +140,8 @@ export default function MessageInput({
           </div>
         )}
 
-        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onFileSelect(e, 'image')} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onFileSelect(e, 'image')} />
+        <input ref={imageGalleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onFileSelect(e, 'image')} />
         <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => onFileSelect(e, 'video')} />
         <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => onFileSelect(e, 'audio')} />
 
@@ -168,6 +191,7 @@ export default function MessageInput({
           </button>
           <div className="flex-1 bg-gray-100 dark:bg-[#17212b] rounded-2xl flex items-end p-2 px-4 gap-3 min-h-[44px] border border-gray-200 dark:border-[#242f3d]">
             <textarea
+              ref={textareaRef}
               rows={1}
               value={inputText}
               onChange={(e) => {
@@ -177,6 +201,7 @@ export default function MessageInput({
               }}
               onKeyDown={handleKeyDown}
               placeholder="Mensagem..."
+              enterKeyHint="send"
               className="flex-1 bg-transparent border-none focus:ring-0 text-base resize-none py-1 placeholder-gray-400 dark:placeholder-[#708499] text-gray-900 dark:text-white"
               disabled={isSending}
               data-testid="message-input"

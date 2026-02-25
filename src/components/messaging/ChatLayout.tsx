@@ -54,9 +54,9 @@ function MessagesVirtualListWithInitialScroll({
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scrollRef.current,
-    initialOffset: () => 999999999,
+    initialOffset: () => (count > 0 ? Math.max(0, count * 80 - 100) : 0),
     estimateSize,
-    overscan: 20,
+    overscan: typeof window !== 'undefined' && window.innerWidth < 768 ? 8 : 20,
     scrollMargin: 100,
     measureElement: typeof window !== 'undefined'
       ? (element: Element) => element?.getBoundingClientRect().height ?? undefined
@@ -481,6 +481,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
+  const [messageMenuPosition, setMessageMenuPosition] = useState<'top' | 'bottom'>('bottom');
   const [muteMenuOpen, setMuteMenuOpen] = useState(false);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [editContent, setEditContent] = useState('');
@@ -520,8 +521,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
   const readDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const markedChatAsReadOnOpenRef = useRef<string | null>(null);
   const messagesVirtualizerRef = useRef<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>> | null>(null);
+  const messagesVirtualizerCountRef = useRef(0);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const linkPreviewCacheRef = useRef<Record<string, { title?: string; description?: string; image?: string; domain?: string } | null>>({});
+  const keyboardScrollDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // iOS keyboard: atualizar --keyboard-height e body.keyboard-open via visualViewport
   useEffect(() => {
@@ -529,27 +532,35 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
 
     const vv = window.visualViewport;
 
+    const scrollToEnd = () => {
+      const v = messagesVirtualizerRef.current;
+      const count = messagesVirtualizerCountRef.current;
+      if (v && count > 0) {
+        v.scrollToIndex(count - 1, { align: 'end', behavior: 'smooth' });
+      }
+    };
+
     const onResize = () => {
       const kbHeight = Math.max(0, window.innerHeight - vv.height);
       document.documentElement.style.setProperty('--keyboard-height', `${kbHeight}px`);
 
       if (kbHeight > 100) {
         document.body.classList.add('keyboard-open');
-        // Scroll messages area to keep bottom visible when keyboard opens
-        const el = messagesScrollRef.current;
-        if (el) {
-          requestAnimationFrame(() => {
-            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-          });
-        }
+        if (keyboardScrollDebounceRef.current) clearTimeout(keyboardScrollDebounceRef.current);
+        keyboardScrollDebounceRef.current = setTimeout(scrollToEnd, 150);
       } else {
         document.body.classList.remove('keyboard-open');
+        if (keyboardScrollDebounceRef.current) {
+          clearTimeout(keyboardScrollDebounceRef.current);
+          keyboardScrollDebounceRef.current = null;
+        }
       }
     };
 
     vv.addEventListener('resize', onResize);
     return () => {
       vv.removeEventListener('resize', onResize);
+      if (keyboardScrollDebounceRef.current) clearTimeout(keyboardScrollDebounceRef.current);
       document.body.classList.remove('keyboard-open');
       document.documentElement.style.setProperty('--keyboard-height', '0px');
     };
@@ -1202,8 +1213,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     const threshold = 200;
     return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
   }, []);
-
-  const messagesVirtualizerCountRef = useRef(0);
 
   const scrollToBottom = useCallback((instant = false) => {
     const el = messagesScrollRef.current;
@@ -2228,6 +2237,19 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
     <div 
       className="flex bg-gray-50 dark:bg-[#0e1621] text-gray-900 dark:text-white overflow-hidden font-sans h-full"
     >
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 bg-black/30 z-10 md:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
       <aside className={`w-full md:w-[350px] border-r border-gray-200 dark:border-[#17212b] flex flex-col md:relative absolute inset-0 z-20 bg-white dark:bg-[#17212b] transition-transform duration-300 ease-out gpu-accelerated ${isSidebarOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full md:translate-x-0 md:w-[350px] pointer-events-none md:pointer-events-auto'}`}>
         <div className="p-2 sm:p-4 flex items-center gap-2 sm:gap-3 border-b border-gray-200 dark:border-[#0e1621] relative z-30">
           <div className="relative" ref={menuRef}>
@@ -2381,16 +2403,16 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-              <MessageSquare className="w-12 h-12 text-gray-400 dark:text-[#708499] mb-2" />
+              <UserPlus className="w-12 h-12 text-gray-400 dark:text-[#708499] mb-2" />
               <p className="text-gray-600 dark:text-[#708499] text-sm">
                 {searchQuery ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa ainda'}
               </p>
               {!searchQuery && (
                 <button 
                   onClick={() => setIsAddContactOpen(true)}
-                  className="mt-4 text-[#4c94d5] text-sm hover:underline"
+                  className="mt-4 px-4 py-2 bg-[#4c94d5] text-white text-sm font-medium rounded-lg hover:bg-[#346290] transition-colors touch-manipulation"
                 >
-                  Adicionar primeiro contato
+                  Adicionar contato
                 </button>
               )}
             </div>
@@ -2507,9 +2529,10 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 }
               }}
             />
+            <div className="flex-1 min-h-0 flex flex-col relative">
             <div
               ref={messagesScrollRef}
-              className="flex-1 min-h-0 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] relative smooth-scroll scroll-touch overscroll-y-contain"
+              className="flex-1 min-h-0 overflow-y-auto p-4 bg-white dark:bg-[#0e1621] smooth-scroll scroll-touch overscroll-y-contain"
               data-stealth-content="true"
               data-sensitive="true"
               // Sugestão 23: Drag & drop de arquivos
@@ -2608,8 +2631,8 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 ) : messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-12">
                     <MessageSquare className="w-16 h-16 text-gray-400 dark:text-[#708499] mb-4 opacity-50" />
-                    <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhum comentário ainda</p>
-                    <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Seja o primeiro a comentar!</p>
+                    <p className="text-gray-600 dark:text-[#708499] text-sm">Diga olá para {selectedChat?.recipient?.nickname || 'contato'}!</p>
+                    <p className="text-gray-500 dark:text-[#708499] text-xs mt-2">Suas mensagens são protegidas ponta a ponta</p>
                   </div>
                 ) : filteredMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12">
@@ -2694,8 +2717,21 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     >
                     <div
                       className={`flex gap-3 ${msg.sender_id === currentUser?.id ? 'flex-row-reverse' : 'flex-row'}`}
-                      onContextMenu={(e) => { e.preventDefault(); setMessageMenuId(msg.id); }}
-                      onTouchStart={() => { longPressRef.current = setTimeout(() => { setMessageMenuId(msg.id); impactMedium(); }, 500); }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setMessageMenuPosition(rect.bottom + 120 > window.innerHeight ? 'top' : 'bottom');
+                        setMessageMenuId(msg.id);
+                      }}
+                      onTouchStart={(e) => {
+                        const el = e.currentTarget as HTMLElement;
+                        longPressRef.current = setTimeout(() => {
+                          const rect = el.getBoundingClientRect();
+                          setMessageMenuPosition(rect.bottom + 120 > window.innerHeight ? 'top' : 'bottom');
+                          setMessageMenuId(msg.id);
+                          impactMedium();
+                        }, 300);
+                      }}
                       onTouchEnd={() => { if (longPressRef.current) clearTimeout(longPressRef.current); longPressRef.current = null; }}
                       onTouchMove={() => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } }}
                     >
@@ -2884,7 +2920,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                             Responder
                           </button>
                           {messageMenuId === msg.id && (
-                            <div className="absolute bottom-full left-0 mb-1 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[160px]">
+                            <div className={`absolute left-0 bg-white dark:bg-[#242f3d] rounded-lg shadow-lg border border-gray-200 dark:border-[#0e1621] z-50 min-w-[160px] ${messageMenuPosition === 'top' ? 'top-full mt-1' : 'bottom-full mb-1'}`}>
                               {/* Reaction Picker */}
                               {!msg.deleted_at && (
                                 <div className="flex gap-1 p-2 border-b border-gray-200 dark:border-[#0e1621]">
@@ -2973,6 +3009,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                 )}
                 <div ref={messagesEndRef} className="h-1" aria-hidden="true" />
               </div>
+            </div>
               <AnimatePresence>
                 {showScrollToBottom && (
                   <motion.button
@@ -2981,7 +3018,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={{ duration: 0.15 }}
                     onClick={() => { scrollToBottom(false); setNewMessagesWhileScrolled(0); }}
-                    className="absolute bottom-4 right-4 z-30 w-10 h-10 rounded-full bg-white dark:bg-[#242f3d] shadow-lg border border-gray-200 dark:border-[#17212b] flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2b5278] transition-colors"
+                    className="absolute bottom-14 right-4 z-30 w-10 h-10 rounded-full bg-white dark:bg-[#242f3d] shadow-lg border border-gray-200 dark:border-[#17212b] flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2b5278] transition-colors"
                     aria-label="Voltar ao final"
                   >
                     <ArrowDown className="w-5 h-5" />
@@ -2993,7 +3030,6 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
                   </motion.button>
                 )}
               </AnimatePresence>
-            </div>
             <MessageInput
               selectedChat={selectedChat}
               currentUserId={currentUser?.id}
@@ -3015,6 +3051,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               onFilePickerActive={setFilePickerActive}
               recipientNickname={selectedChat?.recipient?.nickname || ''}
             />
+            </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-[#708499] p-8">
