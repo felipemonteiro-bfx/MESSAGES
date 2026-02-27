@@ -5,7 +5,7 @@ on:
     branches: [ main, develop, staging ]
   pull_request:
     branches: [ main, develop, staging ]
-  workflow_dispatch: # Permite execução manual
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,16 +17,16 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: 20.x
-        cache: 'npm'
+        cache: 'yarn'
     
     - name: Install dependencies
-      run: npm ci
+      run: yarn install --frozen-lockfile
     
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps chromium
     
     - name: Build application
-      run: npm run build
+      run: yarn build
       env:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
@@ -35,7 +35,7 @@ jobs:
     
     - name: Start server
       run: |
-        npm start &
+        yarn start &
         echo $! > server.pid
       env:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
@@ -49,7 +49,7 @@ jobs:
         curl -f http://localhost:3005 || exit 1
     
     - name: Run Playwright tests
-      run: npm run test:e2e -- --project=chromium
+      run: yarn test:e2e -- --project=chromium
       env:
         CI: true
         PLAYWRIGHT_BASE_URL: http://localhost:3005
