@@ -52,6 +52,8 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
   const escapeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const escapePressCountRef = useRef(0);
   const filePickerActiveRef = useRef(false);
+  const [autoLockWarning, setAutoLockWarning] = useState(false);
+  const autoLockWarningRef = useRef<NodeJS.Timeout | null>(null);
 
   const setFilePickerActive = useCallback((active: boolean) => {
     filePickerActiveRef.current = active;
@@ -157,20 +159,45 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
       if (filePickerActiveRef.current) return;
       const timeoutSeconds = getAutoLockTimeout();
       if (timeoutSeconds === 0) return;
-      
-      visibilityTimeoutRef.current = setTimeout(() => {
-        if (filePickerActiveRef.current) return;
-        if (!document.hasFocus() && !isStealthMode) {
-          lockMessaging();
-          toast.info('Sistema bloqueado automaticamente', { duration: 2000 });
-        }
-      }, timeoutSeconds * 1000);
+
+      const warningTime = Math.max(0, (timeoutSeconds - 5)) * 1000;
+      const lockTime = timeoutSeconds * 1000;
+
+      if (timeoutSeconds > 5) {
+        visibilityTimeoutRef.current = setTimeout(() => {
+          if (filePickerActiveRef.current || document.hasFocus() || isStealthMode) return;
+          setAutoLockWarning(true);
+          autoLockWarningRef.current = setTimeout(() => {
+            if (filePickerActiveRef.current || document.hasFocus()) {
+              setAutoLockWarning(false);
+              return;
+            }
+            setAutoLockWarning(false);
+            if (!isStealthMode) {
+              lockMessaging();
+              toast.info('Sistema bloqueado automaticamente', { duration: 2000 });
+            }
+          }, 5000);
+        }, warningTime);
+      } else {
+        visibilityTimeoutRef.current = setTimeout(() => {
+          if (filePickerActiveRef.current) return;
+          if (!document.hasFocus() && !isStealthMode) {
+            lockMessaging();
+            toast.info('Sistema bloqueado automaticamente', { duration: 2000 });
+          }
+        }, lockTime);
+      }
     };
 
     const handleFocus = () => {
       if (visibilityTimeoutRef.current) {
         clearTimeout(visibilityTimeoutRef.current);
       }
+      if (autoLockWarningRef.current) {
+        clearTimeout(autoLockWarningRef.current);
+      }
+      setAutoLockWarning(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -250,24 +277,6 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
     unlockMessaging(mode);
   }, [unlockMessaging]);
 
-  const handleMessageNotification = useCallback((fakeNewsTitle: string) => {
-    // Toast discreto que parece uma notificação de notícia comum
-    // O ícone 📰 e o estilo são idênticos às notificações de notícias reais
-    toast('📰 Última Hora', {
-      duration: 5000,
-      description: fakeNewsTitle,
-      action: {
-        label: 'Ler mais',
-        onClick: () => handleUnlockRequest(),
-      },
-      style: {
-        background: '#FEF3C7',
-        border: '1px solid #F59E0B',
-        color: '#92400E',
-      },
-    });
-  }, [handleUnlockRequest]);
-
   const contextValue = useMemo(() => ({
     isStealthMode,
     accessMode,
@@ -303,6 +312,30 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
 
   return (
     <StealthMessagingContext.Provider value={contextValue}>
+      {/* Auto-lock warning */}
+      <AnimatePresence>
+        {autoLockWarning && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[500] bg-amber-500 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-2"
+          >
+            <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+            Bloqueio automático em 5s...
+            <button
+              onClick={() => {
+                setAutoLockWarning(false);
+                if (autoLockWarningRef.current) clearTimeout(autoLockWarningRef.current);
+              }}
+              className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs hover:bg-white/30 transition-colors"
+            >
+              Cancelar
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence mode="wait">
         {isStealthMode ? (
           <motion.div 
@@ -310,11 +343,11 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-white overflow-y-auto"
+            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            className="fixed inset-0 z-[100] bg-white dark:bg-[#0e1621] overflow-y-auto"
           >
             <StealthNews 
               onUnlockRequest={handleUnlockRequest}
-              onMessageNotification={handleMessageNotification}
             />
             {/* Modal de registro/login */}
             <AnimatePresence>
@@ -365,15 +398,16 @@ export default function StealthMessagingProvider({ children }: StealthMessagingP
         ) : showMessaging ? (
           <motion.div 
             key="messaging"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
             className="relative h-dvh overflow-hidden"
           >
             <ChatLayout accessMode={accessMode} />
           </motion.div>
         ) : (
-          <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
             {children}
           </motion.div>
         )}

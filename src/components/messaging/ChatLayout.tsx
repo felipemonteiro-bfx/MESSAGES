@@ -32,6 +32,9 @@ import { DEFAULT_AVATAR_URL } from '@/lib/constants';
 import ChatHeader from '@/components/messaging/ChatHeader';
 import MessageInput from '@/components/messaging/MessageInput';
 import ChatModals from '@/components/messaging/ChatModals';
+import ChatEmptyState from '@/components/messaging/ChatEmptyState';
+import TypingIndicator from '@/components/messaging/TypingIndicator';
+import ConnectionIndicator from '@/components/messaging/ConnectionIndicator';
 
 interface ChatLayoutProps {
   accessMode?: AccessMode;
@@ -2402,20 +2405,14 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
               ))}
             </div>
           ) : filteredChats.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-              <UserPlus className="w-12 h-12 text-gray-400 dark:text-[#708499] mb-2" />
-              <p className="text-gray-600 dark:text-[#708499] text-sm">
-                {searchQuery ? 'Nenhuma conversa encontrada' : 'Nenhuma conversa ainda'}
-              </p>
-              {!searchQuery && (
-                <button 
-                  onClick={() => setIsAddContactOpen(true)}
-                  className="mt-4 px-4 py-2 bg-[#4c94d5] text-white text-sm font-medium rounded-lg hover:bg-[#346290] transition-colors touch-manipulation"
-                >
-                  Adicionar contato
-                </button>
-              )}
-            </div>
+            searchQuery ? (
+              <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                <UserPlus className="w-12 h-12 text-gray-400 dark:text-[#708499] mb-2" />
+                <p className="text-gray-600 dark:text-[#708499] text-sm">Nenhuma conversa encontrada</p>
+              </div>
+            ) : (
+              <ChatEmptyState type="no-chats" onAddContact={() => setIsAddContactOpen(true)} />
+            )
           ) : (
             <div
               style={{ height: `${chatListVirtualizer.getTotalSize()}px`, position: 'relative' }}
@@ -3054,11 +3051,7 @@ export default function ChatLayout({ accessMode = 'main' }: ChatLayoutProps) {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-[#708499] p-8">
-            <MessageSquare className="w-20 h-20 mb-4 opacity-30" />
-            <p className="bg-black/20 px-4 py-2 rounded-full text-sm mb-2">Selecione uma conversa</p>
-            <p className="text-xs opacity-70">ou adicione um novo contato para começar</p>
-          </div>
+          <ChatEmptyState type="no-selection" />
         )}
       </main>
 

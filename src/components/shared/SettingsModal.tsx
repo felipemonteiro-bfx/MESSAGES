@@ -7,7 +7,7 @@ import { getAutoLockTimeout, setAutoLockTimeout, isIncognitoMode, setIncognitoMo
 import { isDecoyPinEnabled, isDecoyPinConfigured, setupDecoyPin, removeDecoyPin, setDecoyPinEnabled } from '@/lib/pin';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { isBiometricAvailable, isBiometricEnabled, setBiometricEnabled, getBiometryType, getBiometryLabel } from '@/lib/biometric';
+import { isBiometricAvailable, isBiometricEnabled, setBiometricEnabled, getBiometryType, getBiometryLabel, registerWebAuthnCredential, isNativePlatform } from '@/lib/biometric';
 import { DEFAULT_AVATAR_URL } from '@/lib/constants';
 
 const AVATAR_SYMBOLS = [
@@ -44,7 +44,37 @@ interface SettingsModalProps {
   onAvatarUpdate?: (newUrl: string) => void;
 }
 
+type SettingsTab = 'profile' | 'privacy' | 'security' | 'notifications';
+
+function SettingsTabs({ activeTab, onTabChange }: { activeTab: SettingsTab; onTabChange: (t: SettingsTab) => void }) {
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'profile', label: 'Perfil', icon: <User className="w-4 h-4" /> },
+    { id: 'privacy', label: 'Privacidade', icon: <EyeOff className="w-4 h-4" /> },
+    { id: 'security', label: 'Segurança', icon: <Shield className="w-4 h-4" /> },
+    { id: 'notifications', label: 'Alertas', icon: <Bell className="w-4 h-4" /> },
+  ];
+  return (
+    <div className="flex gap-1 shrink-0 overflow-x-auto hide-scrollbar">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          onClick={() => onTabChange(tab.id)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+            activeTab === tab.id
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+          }`}
+        >
+          {tab.icon}
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAvatarUpdate }: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [autoLockTimeout, setAutoLockTimeoutState] = useState<AutoLockTimeout>(10);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentAvatarUrl ?? null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -80,6 +110,9 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
   const [notificationVibration, setNotificationVibrationState] = useState(true);
   const [notificationPreview, setNotificationPreviewState] = useState<NotificationPreview>('when_unlocked');
   const [dndSchedule, setDNDScheduleState] = useState<DNDSchedule>({ enabled: false, startHour: 22, startMinute: 0, endHour: 7, endMinute: 0 });
+
+  // Custom input modals (replacing native prompt())
+  const [e2eModal, setE2EModal] = useState<{ mode: 'export' | 'import' | null; step: 'passphrase' | 'pin'; value: string; passphrase: string; importBundle?: string }>({ mode: null, step: 'passphrase', value: '', passphrase: '' });
 
   useEffect(() => {
     if (isOpen) {
@@ -197,8 +230,17 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
     setReadReceiptsState(newValue);
   };
 
-  const handleBiometricToggle = () => {
+  const handleBiometricToggle = async () => {
     const newValue = !biometricEnabledState;
+
+    if (newValue && !isNativePlatform()) {
+      const registered = await registerWebAuthnCredential();
+      if (!registered) {
+        toast.error('Não foi possível configurar a biometria. Verifique se seu dispositivo suporta Face ID / Touch ID.');
+        return;
+      }
+    }
+
     setBiometricEnabled(newValue);
     setBiometricEnabledState(newValue);
     if (newValue) {
@@ -359,6 +401,35 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
     }
   }, [onAvatarUpdate]);
 
+  const handleE2EAction = useCallback(async () => {
+    const { mode, passphrase, value: pin, importBundle } = e2eModal;
+    if (!pin) return;
+    try {
+      if (mode === 'export') {
+        const { exportKeys: exportKeysFn } = await import('@/lib/encryption');
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { toast.error('Faça login primeiro'); return; }
+        const bundle = await exportKeysFn(user.id, pin, passphrase);
+        const blob = new Blob([bundle], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `e2e-keys-backup-${new Date().toISOString().slice(0, 10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Chaves exportadas com sucesso!');
+      } else if (mode === 'import' && importBundle) {
+        const { importKeys: importKeysFn } = await import('@/lib/encryption');
+        await importKeysFn(importBundle, passphrase, pin);
+        toast.success('Chaves importadas com sucesso! Recarregue a página.');
+      }
+    } catch {
+      toast.error(mode === 'export' ? 'Erro ao exportar chaves. Verifique seu PIN.' : 'Erro ao importar. Verifique a frase-senha.');
+    }
+    setE2EModal({ mode: null, step: 'passphrase', value: '', passphrase: '' });
+  }, [e2eModal]);
+
   const handleExportData = useCallback(async () => {
     try {
       const supabase = createClient();
@@ -430,7 +501,7 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
             className="relative w-full max-w-md max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-6 shrink-0">
+            <div className="flex items-center justify-between mb-4 shrink-0">
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Configurações</h2>
               <button
                 onClick={onClose}
@@ -440,7 +511,10 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-1">
+            {/* Tabs */}
+            <SettingsTabs activeTab={activeTab} onTabChange={setActiveTab} />
+            <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-1 mt-4">
+                {activeTab === 'profile' && <>
                 {/* Avatar */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -588,7 +662,10 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   )}
                 </AnimatePresence>
 
-                {/* Sugestão 5: Auto-lock configurável */}
+                </>}
+
+                {activeTab === 'privacy' && <>
+                {/* Auto-lock configurável */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Lock className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -613,6 +690,9 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   </div>
                 </div>
 
+                </>}
+
+                {activeTab === 'security' && <>
                 {/* Biometria (Face ID / Touch ID) */}
                 {biometricAvailable && (
                   <div className="space-y-3">
@@ -891,8 +971,11 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   </p>
                 </div>
 
+                </>}
+
+                {activeTab === 'notifications' && <>
                 {/* Preferências de Notificação */}
-                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-slate-700">
+                <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Bell className="w-5 h-5 text-blue-500" />
                     <label className="font-semibold text-sm text-gray-900 dark:text-white">
@@ -1015,39 +1098,14 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                   </p>
                   <div className="flex gap-2">
                     <button
-                      onClick={async () => {
-                        const passphrase = prompt('Digite uma frase-senha forte para proteger o backup:');
-                        if (!passphrase || passphrase.length < 8) {
-                          toast.error('Frase-senha deve ter no mínimo 8 caracteres');
-                          return;
-                        }
-                        try {
-                          const { exportKeys: exportKeysFn } = await import('@/lib/encryption');
-                          const supabase = createClient();
-                          const { data: { user } } = await supabase.auth.getUser();
-                          if (!user) { toast.error('Faça login primeiro'); return; }
-                          const pin = prompt('Digite seu PIN atual:');
-                          if (!pin) return;
-                          const bundle = await exportKeysFn(user.id, pin, passphrase);
-                          const blob = new Blob([bundle], { type: 'text/plain' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `e2e-keys-backup-${new Date().toISOString().slice(0, 10)}.txt`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                          toast.success('Chaves exportadas com sucesso!');
-                        } catch {
-                          toast.error('Erro ao exportar chaves. Verifique seu PIN.');
-                        }
-                      }}
+                      onClick={() => setE2EModal({ mode: 'export', step: 'passphrase', value: '', passphrase: '' })}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors text-sm font-medium"
                     >
                       <Download className="w-4 h-4" />
                       Exportar chaves
                     </button>
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         const input = document.createElement('input');
                         input.type = 'file';
                         input.accept = '.txt';
@@ -1055,17 +1113,7 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                           const file = (e.target as HTMLInputElement).files?.[0];
                           if (!file) return;
                           const bundle = await file.text();
-                          const passphrase = prompt('Digite a frase-senha usada no backup:');
-                          if (!passphrase) return;
-                          const pin = prompt('Digite seu PIN atual:');
-                          if (!pin) return;
-                          try {
-                            const { importKeys: importKeysFn } = await import('@/lib/encryption');
-                            await importKeysFn(bundle, passphrase, pin);
-                            toast.success('Chaves importadas com sucesso! Recarregue a página.');
-                          } catch {
-                            toast.error('Erro ao importar. Verifique a frase-senha.');
-                          }
+                          setE2EModal({ mode: 'import', step: 'passphrase', value: '', passphrase: '', importBundle: bundle });
                         };
                         input.click();
                       }}
@@ -1075,6 +1123,71 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                       Importar chaves
                     </button>
                   </div>
+
+                  {/* Custom E2E Modal (replaces native prompt) */}
+                  <AnimatePresence>
+                    {e2eModal.mode && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 5 }}
+                        className="mt-3 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 space-y-3"
+                      >
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {e2eModal.mode === 'export' ? 'Exportar chaves' : 'Importar chaves'}
+                        </p>
+                        <label className="block text-xs text-gray-600 dark:text-gray-400">
+                          {e2eModal.step === 'passphrase' ? 'Frase-senha (mínimo 8 caracteres):' : 'Seu PIN atual:'}
+                        </label>
+                        <input
+                          autoFocus
+                          type={e2eModal.step === 'pin' ? 'password' : 'text'}
+                          value={e2eModal.value}
+                          onChange={(e) => setE2EModal(prev => ({ ...prev, value: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              if (e2eModal.step === 'passphrase') {
+                                if (e2eModal.value.length < 8) {
+                                  toast.error('Frase-senha deve ter no mínimo 8 caracteres');
+                                  return;
+                                }
+                                setE2EModal(prev => ({ ...prev, passphrase: prev.value, value: '', step: 'pin' }));
+                              } else {
+                                handleE2EAction();
+                              }
+                            }
+                            if (e.key === 'Escape') setE2EModal({ mode: null, step: 'passphrase', value: '', passphrase: '' });
+                          }}
+                          className="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder={e2eModal.step === 'passphrase' ? 'Ex: minha frase secreta forte' : '••••'}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              if (e2eModal.step === 'passphrase') {
+                                if (e2eModal.value.length < 8) {
+                                  toast.error('Frase-senha deve ter no mínimo 8 caracteres');
+                                  return;
+                                }
+                                setE2EModal(prev => ({ ...prev, passphrase: prev.value, value: '', step: 'pin' }));
+                              } else {
+                                handleE2EAction();
+                              }
+                            }}
+                            className="flex-1 py-2 px-3 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                          >
+                            {e2eModal.step === 'passphrase' ? 'Próximo' : 'Confirmar'}
+                          </button>
+                          <button
+                            onClick={() => setE2EModal({ mode: null, step: 'passphrase', value: '', passphrase: '' })}
+                            className="py-2 px-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* LGPD: Exportação de dados */}
@@ -1099,6 +1212,7 @@ export default function SettingsModal({ isOpen, onClose, currentAvatarUrl, onAva
                     Também salva cópia na nuvem automaticamente.
                   </p>
                 </div>
+                </>}
             </div>
           </motion.div>
         </motion.div>

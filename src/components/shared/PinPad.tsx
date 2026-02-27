@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Lock, Delete, X, RotateCcw, Fingerprint } from 'lucide-react';
+import { Lock, Delete, X, RotateCcw, Fingerprint, ScanFace } from 'lucide-react';
 import { 
   verifyPin, 
   isPinConfigured, 
@@ -24,7 +24,8 @@ import {
   isBiometricEnabled, 
   authenticateWithBiometric,
   getBiometryType,
-  getBiometryLabel
+  getBiometryLabel,
+  type BiometryType,
 } from '@/lib/biometric';
 
 interface PinPadProps {
@@ -45,6 +46,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
   const [locked, setLocked] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState('Biometria');
+  const [biometryType, setBiometryType] = useState<BiometryType>('none');
 
   useEffect(() => {
     setIsFirstTime(!isPinConfigured());
@@ -56,6 +58,7 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
       setBiometricAvailable(available);
       if (available) {
         const type = await getBiometryType();
+        setBiometryType(type);
         setBiometricLabel(getBiometryLabel(type));
       }
     };
@@ -386,7 +389,11 @@ export default function PinPad({ onSuccess, onClose }: PinPadProps) {
               aria-label={`Usar ${biometricLabel}`}
               title={biometricLabel}
             >
-              <Fingerprint className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+              {biometryType === 'faceId' || biometryType === 'faceAuthentication' ? (
+                <ScanFace className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+              ) : (
+                <Fingerprint className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+              )}
             </button>
           ) : (
             <div className="w-14 h-14 sm:w-16 sm:h-16" />

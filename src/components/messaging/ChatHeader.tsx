@@ -100,7 +100,21 @@ export default function ChatHeader({
                 )
               )}
               {otherUserTyping === selectedChat.recipient?.id && (
-                <span className="ml-2 text-blue-600 dark:text-blue-400 animate-pulse">digitando...</span>
+                <span className="ml-2 text-blue-600 dark:text-blue-400 inline-flex items-center gap-0.5">
+                  digitando
+                  <span className="inline-flex gap-[2px] ml-0.5">
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="w-1 h-1 rounded-full bg-blue-500 dark:bg-blue-400"
+                        style={{
+                          animation: 'typing-bounce 0.6s ease-in-out infinite',
+                          animationDelay: `${i * 0.15}s`,
+                        }}
+                      />
+                    ))}
+                  </span>
+                </span>
               )}
             </div>
           </div>

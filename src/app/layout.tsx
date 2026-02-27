@@ -31,12 +31,15 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t==null&&matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark');document.documentElement.style.colorScheme='dark'}else{document.documentElement.style.colorScheme='light'}}catch(e){}})()`;
+
   return (
-    <html lang="pt-BR" className="light" style={{ colorScheme: 'light' }}>
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <PrefetchRoutes />

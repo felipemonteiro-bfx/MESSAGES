@@ -22,19 +22,18 @@ export default function DisguiseProvider({ children }: { children: React.ReactNo
     
     if (isTestMode) {
       setIsDisguised(false);
-      document.title = "Warranty Tracker";
+      document.title = "Noticias24h - Brasil e Mundo";
       return;
     }
     
-    // Check saved state, default to true (disguised) if not found
     const saved = localStorage.getItem('disguise_mode');
     if (saved === null) {
       setIsDisguised(true);
-      document.title = "Daily Brief - Top Stories";
+      document.title = "Noticias24h - Brasil e Mundo";
     } else {
       const isHidden = saved === 'true';
       setIsDisguised(isHidden);
-      document.title = isHidden ? "Daily Brief - Top Stories" : "Warranty Tracker";
+      document.title = "Noticias24h - Brasil e Mundo";
     }
   }, []);
 
@@ -43,7 +42,7 @@ export default function DisguiseProvider({ children }: { children: React.ReactNo
     setIsDisguised(newState);
     setShowPinPad(false);
     localStorage.setItem('disguise_mode', newState.toString());
-    document.title = newState ? "Daily Brief - Top Stories" : "Warranty Tracker";
+    document.title = "Noticias24h - Brasil e Mundo";
   };
 
   const handleUnlockRequest = () => {
@@ -51,12 +50,11 @@ export default function DisguiseProvider({ children }: { children: React.ReactNo
   };
 
   const handlePinSuccess = () => {
-    // Unlock the app
     const newState = false;
     setIsDisguised(newState);
     setShowPinPad(false);
     localStorage.setItem('disguise_mode', newState.toString());
-    document.title = "Warranty Tracker";
+    document.title = "Noticias24h - Brasil e Mundo";
   };
 
   return (

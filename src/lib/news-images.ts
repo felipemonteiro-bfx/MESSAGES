@@ -4,6 +4,7 @@
 
 /** Cor de fundo por categoria (hex com #) — exportada para divs também */
 export const CATEGORY_COLORS: Record<string, string> = {
+  Amazonas: '#059669',
   Brasil: '#0f766e',
   Mundo: '#1e40af',
   Tecnologia: '#7c3aed',
@@ -19,6 +20,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
 
 /** Imagens reais do Unsplash por categoria - sempre carregam */
 export const CATEGORY_IMAGES: Record<string, string> = {
+  Amazonas: 'https://images.unsplash.com/photo-1516026672322-bc52d61a55d5?w=800&h=450&fit=crop&q=80',
   Brasil: 'https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=800&h=450&fit=crop&q=80',
   Mundo: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&h=450&fit=crop&q=80',
   Tecnologia: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&h=450&fit=crop&q=80',

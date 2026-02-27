@@ -9,6 +9,7 @@ import { usePushSubscription } from '@/hooks/usePushSubscription';
 import { createClient } from '@/lib/supabase/client';
 import { NewsCardSkeleton } from '@/components/ui/Skeleton';
 import { getImageByCategory, getImageForArticle, getCategoryImage, CATEGORY_COLORS } from '@/lib/news-images';
+import { useStealthOnboarding, DateHint } from '@/components/shared/StealthOnboarding';
 
 const SAVED_NEWS_KEY = 'n24h_saved_articles';
 type SavedItem = { id: string; title: string; url?: string; source: string; time: string };
@@ -49,10 +50,9 @@ interface NewsItem {
 
 interface StealthNewsProps {
   onUnlockRequest: () => void;
-  onMessageNotification?: (message: string) => void;
 }
 
-export default function StealthNews({ onUnlockRequest, onMessageNotification }: StealthNewsProps) {
+export default function StealthNews({ onUnlockRequest }: StealthNewsProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +79,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
     try { localStorage.setItem('n24h_date_filter', f); } catch {}
   }, []);
 
-  const categories = ['Top Stories', 'Brasil', 'Mundo', 'Tecnologia', 'Esportes', 'Saúde', 'Economia', 'Entretenimento', 'Política', 'Ciência'];
+  const categories = ['Top Stories', 'Amazonas', 'Brasil', 'Mundo', 'Tecnologia', 'Esportes', 'Saúde', 'Economia', 'Entretenimento', 'Política', 'Ciência'];
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullStartY, setPullStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
@@ -95,6 +95,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { registerAndSubscribe, isSupported, isSubscribed } = usePushSubscription();
+  const { showHint, dismiss: dismissHint } = useStealthOnboarding();
 
   useEffect(() => {
     setIsMounted(true);
@@ -186,11 +187,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
   // Clicar na "notícia" abre o modo mensagens
   // ============================================================
   const [messageAlerts, setMessageAlerts] = useState<NewsItem[]>([]);
-  const lastCheckedRef = useRef<string | null>(
-    typeof window !== 'undefined'
-      ? (() => { try { return sessionStorage.getItem('n24h_last_notified_msg'); } catch { return null; } })()
-      : null
-  );
 
   // Gerar notícia fake convincente a partir de uma mensagem real
   const generateFakeNewsFromMessage = useCallback((
@@ -268,13 +264,6 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 return generateFakeNewsFromMessage(msg.id, msg.senderNickname, msg.content, i);
               });
               setMessageAlerts(alerts);
-
-              // Notificar o provider (para toast sutil) — apenas na primeira vez que detecta nova msg
-              if (onMessageNotification && lastCheckedRef.current !== unread[0].id) {
-                lastCheckedRef.current = unread[0].id;
-                try { sessionStorage.setItem('n24h_last_notified_msg', unread[0].id); } catch {}
-                onMessageNotification(alerts[0].title);
-              }
             } else {
               setMessageAlerts([]);
             }
@@ -346,7 +335,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       mounted = false;
       cleanup?.then(fn => fn?.());
     };
-  }, [onMessageNotification, generateFakeNewsFromMessage]);
+  }, [generateFakeNewsFromMessage]);
 
 
   // Cache de notícias
@@ -505,11 +494,18 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       { id: '37', title: 'Criptomoedas: mercado reage a decisão regulatória', source: 'CoinTelegraph Brasil', time: '55min atrás', image: imgFor('Tecnologia'), category: 'Tecnologia', url: w('Criptomoeda'), description: 'Autoridades definem marco legal.' },
       { id: '38', title: 'TSE divulga calendário eleitoral', source: 'Jovem Pan News', time: '1h atrás', image: imgFor('Política'), category: 'Política', url: w('Tribunal_Superior_Eleitoral'), description: 'Datas das próximas eleições.' },
       { id: '39', title: 'NASA confirma missão à Lua em 2026', source: 'Space.com', time: '3h atrás', image: imgFor('Ciência'), category: 'Ciência', url: w('Programa_Artemis'), description: 'Programa Artemis segue no cronograma.' },
-      { id: '40', title: 'Terra: previsão do tempo para o fim de semana', source: 'Terra', time: '12min atrás', image: imgFor('40', 'Previsão tempo', 'Mundo'), category: 'Mundo', url: w('Previs%C3%A3o_do_tempo'), description: 'Frente fria avança pelo país.' }
+      { id: '40', title: 'Terra: previsão do tempo para o fim de semana', source: 'Terra', time: '12min atrás', image: imgFor('40', 'Previsão tempo', 'Mundo'), category: 'Mundo', url: w('Previs%C3%A3o_do_tempo'), description: 'Frente fria avança pelo país.' },
+      { id: '41', title: 'Nível do Rio Negro sobe e preocupa moradores da zona ribeirinha de Manaus', source: 'G1 Amazonas', time: '20min atrás', image: imgFor('41', 'Rio Negro Manaus', 'Amazonas'), category: 'Amazonas', url: w('Rio_Negro_(Amazonas)'), description: 'Defesa Civil monitora áreas de risco em Manaus.' },
+      { id: '42', title: 'Zona Franca de Manaus recebe novos investimentos em tecnologia', source: 'Portal Em Tempo', time: '1h atrás', image: imgFor('42', 'Zona Franca Manaus', 'Amazonas'), category: 'Amazonas', url: w('Zona_Franca_de_Manaus'), description: 'Empresas do PIM ampliam produção no polo industrial.' },
+      { id: '43', title: 'Festival de Parintins terá novidades para próxima edição', source: 'Amazonas1', time: '2h atrás', image: imgFor('43', 'Festival Parintins', 'Amazonas'), category: 'Amazonas', url: w('Festival_Folcl%C3%B3rico_de_Parintins'), description: 'Organização promete estrutura ampliada para o Bumbódromo.' },
+      { id: '44', title: 'Operação apreende embarcação com carga ilegal no Rio Solimões', source: 'Portal do Holanda', time: '3h atrás', image: imgFor('44', 'Rio Solimões operação', 'Amazonas'), category: 'Amazonas', url: w('Rio_Solim%C3%B5es'), description: 'Base Arpão intercepta transporte irregular no interior do Amazonas.' },
+      { id: '45', title: 'Prefeitura de Manaus anuncia obras de infraestrutura na Zona Norte', source: 'G1 Amazonas', time: '4h atrás', image: imgFor('45', 'Manaus infraestrutura', 'Amazonas'), category: 'Amazonas', url: w('Manaus'), description: 'Investimentos em pavimentação e drenagem nos bairros.' },
+      { id: '46', title: 'Pesquisadores do INPA descobrem nova espécie de planta na Amazônia', source: 'Portal Em Tempo', time: '5h atrás', image: imgFor('46', 'INPA Amazônia', 'Amazonas'), category: 'Amazonas', url: w('Instituto_Nacional_de_Pesquisas_da_Amaz%C3%B4nia'), description: 'Espécie foi encontrada em reserva florestal no interior do estado.' },
     ];
 
     if (category === 'Top Stories') return baseNews;
     return baseNews.filter(n => {
+      if (category === 'Amazonas') return n.category === 'Amazonas';
       if (category === 'Brasil') return n.source.includes('Brasil') || n.source.includes('G1') || n.source.includes('Folha') || n.source.includes('ESPN') || n.source.includes('UOL') || n.source.includes('Globo') || n.source.includes('Gazeta') || n.source.includes('Correio') || n.source.includes('Lance') || n.source.includes('GE') || n.source.includes('Jovem Pan') || n.source.includes('Agência Brasil') || n.source.includes('R7') || n.source.includes('Estadão') || n.source.includes('Valor') || n.source.includes('InfoMoney') || n.source.includes('Exame') || n.source.includes('TecMundo') || n.source.includes('CNN Brasil') || n.source.includes('Bloomberg Brasil') || n.source.includes('Rolling Stone Brasil') || n.source.includes('CoinTelegraph Brasil');
       if (category === 'Mundo') return n.category === 'Mundo';
       return n.category === category;
@@ -605,7 +601,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
   return (
     <div 
-      className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-gray-900 font-sans pb-20 safe-area-top"
+      className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-[#0e1621] dark:to-[#0e1621] text-gray-900 dark:text-gray-100 font-sans pb-20 safe-area-top"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -630,20 +626,20 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'tween', duration: 0.2 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] md:w-[320px] max-w-[85vw] bg-white shadow-xl z-[160] flex flex-col border-r border-gray-200"
+              className="fixed left-0 top-0 bottom-0 w-[280px] md:w-[320px] max-w-[85vw] bg-white dark:bg-[#17212b] shadow-xl z-[160] flex flex-col border-r border-gray-200 dark:border-gray-700"
             >
-              <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                <span className="font-bold text-gray-900">Menu</span>
-                <button onClick={() => setMenuOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Fechar menu">
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
+                <span className="font-bold text-gray-900 dark:text-white">Menu</span>
+                <button onClick={() => setMenuOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" aria-label="Fechar menu">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <nav className="p-2 flex flex-col gap-1">
                 <button
                   onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium"
                 >
-                  <Home className="w-5 h-5 text-gray-500" />
+                  <Home className="w-5 h-5 text-gray-500 dark:text-gray-400" />
                   Início
                 </button>
                 {isSupported && (
@@ -652,9 +648,9 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                       setMenuOpen(false);
                       await handleEnablePush();
                     }}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 text-gray-700 font-medium"
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium"
                   >
-                    <Bell className="w-5 h-5 text-gray-500" />
+                    <Bell className="w-5 h-5 text-gray-500 dark:text-gray-400" />
                     {isSubscribed ? 'Alertas ativados' : 'Receber alertas de notícias'}
                   </button>
                 )}
@@ -686,7 +682,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
       )}
       
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 md:px-8 py-3 shadow-sm safe-area-top">
+      <header className="sticky top-0 z-10 bg-white/95 dark:bg-[#17212b]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-4 md:px-8 py-3 shadow-sm safe-area-top">
         <div className="flex items-center justify-between gap-2 max-w-6xl mx-auto">
           {searchOpen ? (
             <>
@@ -708,20 +704,23 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 <Menu className="w-6 h-6 text-gray-600" />
               </button>
               <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold tracking-tight text-gray-900 truncate">Noticias24h</h1>
+                <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white truncate">Noticias24h</h1>
                 <p className="text-[10px] text-gray-400 font-medium">Atualizado 24h • Brasil e Mundo</p>
               </div>
               <button onClick={() => setSearchOpen(true)} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Buscar">
                 <Search className="w-5 h-5 text-gray-600" />
               </button>
-              <div
-                className="flex items-center gap-1 text-sm text-gray-500 font-medium cursor-pointer select-none hover:text-gray-700 transition-colors shrink-0"
-                onClick={handleSecretButton}
-                title="Data e Hora"
-                suppressHydrationWarning
-              >
-                <Clock className="w-4 h-4" />
-                <span className="capitalize hidden sm:inline" suppressHydrationWarning>{currentDate}</span>
+              <div className="relative shrink-0">
+                <div
+                  className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 font-medium cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                  onClick={handleSecretButton}
+                  title="Data e Hora"
+                  suppressHydrationWarning
+                >
+                  <Clock className="w-4 h-4" />
+                  <span className="capitalize hidden sm:inline" suppressHydrationWarning>{currentDate}</span>
+                </div>
+                <DateHint show={showHint} onDismiss={dismissHint} />
               </div>
             </>
           )}
@@ -768,7 +767,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       {/* Filtros de Data */}
       {!showSaved && (
-      <div className="px-4 md:px-8 py-2 border-b border-gray-100 bg-gray-50/80 max-w-6xl mx-auto" suppressHydrationWarning>
+      <div className="px-4 md:px-8 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-[#0e1621]/80 max-w-6xl mx-auto" suppressHydrationWarning>
         <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar" suppressHydrationWarning>
           <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
           {(['today', 'week', 'month', 'all'] as const).map((filter) => (
@@ -778,7 +777,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
                 dateFilter === filter
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               {filter === 'today' ? 'Hoje' : filter === 'week' ? 'Esta Semana' : filter === 'month' ? 'Este Mês' : 'Tudo'}
@@ -790,15 +789,15 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       {/* Categories */}
       {!showSaved && (
-      <nav className="overflow-x-auto whitespace-nowrap px-4 md:px-8 py-3 border-b border-gray-100 hide-scrollbar max-w-6xl mx-auto">
+      <nav className="overflow-x-auto whitespace-nowrap px-4 md:px-8 py-3 border-b border-gray-100 dark:border-gray-700 hide-scrollbar max-w-6xl mx-auto">
         {categories.map((cat) => (
           <button 
             key={cat} 
             onClick={() => setSelectedCategory(cat)}
             className={`mr-6 text-sm font-medium transition-colors ${
               selectedCategory === cat 
-                ? 'text-blue-600 border-b-2 border-blue-600 pb-2' 
-                : 'text-gray-500 hover:text-gray-900'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 pb-2' 
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
             {cat}
@@ -855,7 +854,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
                 const isSaved = savedIds.has(item.id);
                 const menuOpen = articleMenuId === item.id;
                 return (
-                  <article key={item.id} className="group relative bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300 overflow-hidden">
+                  <article key={item.id} className="group relative bg-white dark:bg-[#17212b] rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-lg hover:border-gray-200 dark:hover:border-gray-600 transition-all duration-300 overflow-hidden">
                     <div
                       className="cursor-pointer"
                       onClick={() => {
@@ -959,7 +958,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
 
       {/* Bottom Nav - 100% funcional */}
       {!readingArticle && (
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 md:px-8 py-2 flex justify-around md:justify-center md:gap-12 lg:gap-16 items-center text-xs font-medium text-gray-500 safe-area-inset-bottom z-30 max-w-6xl mx-auto">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#17212b]/95 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 px-4 md:px-8 py-2 flex justify-around md:justify-center md:gap-12 lg:gap-16 items-center text-xs font-medium text-gray-500 dark:text-gray-400 safe-area-inset-bottom z-30 max-w-6xl mx-auto">
         <button onClick={scrollToTop} className="flex flex-col items-center gap-1 text-blue-600 hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
             <Home className="w-4 h-4 text-blue-600" />
@@ -1000,9 +999,9 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
-            className="fixed inset-0 z-50 bg-white flex flex-col"
+            className="fixed inset-0 z-50 bg-white dark:bg-[#0e1621] flex flex-col"
           >
-            <header className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-white safe-area-inset-top shrink-0">
+            <header className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#17212b] safe-area-inset-top shrink-0">
               <button
                 onClick={() => setReadingArticle(null)}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1063,7 +1062,7 @@ export default function StealthNews({ onUnlockRequest, onMessageNotification }: 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden"
+              className="bg-white dark:bg-[#17212b] rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-4 border-b border-gray-100">

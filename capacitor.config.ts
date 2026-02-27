@@ -5,7 +5,7 @@ const config: CapacitorConfig & { plugins?: Record<string, unknown> } = {
   appName: 'Noticias24h',
   webDir: 'out',
   server: {
-    url: 'https://notices24h.vercel.app',
+    url: 'https://noticias24h.vercel.app',
     androidScheme: 'https',
     iosScheme: 'https',
   },

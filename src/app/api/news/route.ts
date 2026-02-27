@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getImageByCategory, getImageForArticle } from '@/lib/news-images';
 
-export const dynamic = 'force-static';
+export const dynamic = 'force-dynamic';
 export const revalidate = 300;
 
 // ============================================================
@@ -74,6 +74,12 @@ const RSS_FEEDS: RSSFeed[] = [
   // === POLÍTICA ===
   { name: 'Poder360', url: 'https://www.poder360.com.br/feed/', category: 'Política', language: 'pt' },
   { name: 'Congresso em Foco', url: 'https://congressoemfoco.uol.com.br/feed/', category: 'Política', language: 'pt' },
+
+  // === AMAZONAS / REGIONAL ===
+  { name: 'G1 Amazonas', url: 'https://g1.globo.com/dynamo/am/amazonas/rss2.xml', category: 'Amazonas', language: 'pt' },
+  { name: 'Portal Em Tempo', url: 'https://emtempo.com.br/feed/', category: 'Amazonas', language: 'pt' },
+  { name: 'Portal do Holanda', url: 'https://www.portaldoholanda.com.br/feed', category: 'Amazonas', language: 'pt' },
+  { name: 'Amazonas1', url: 'https://amazonas1.com.br/feed/', category: 'Amazonas', language: 'pt' },
 ];
 
 // ============================================================
@@ -88,7 +94,7 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutos (mais cache = resposta mais ráp
 const newsCache = new Map<string, CacheEntry>();
 
 // Feeds prioritários para "Top Stories" — menos feeds = carregamento mais rápido
-const TOP_STORIES_FEED_NAMES = ['G1', 'UOL Notícias', 'Folha de S.Paulo', 'BBC News', 'Reuters World', 'TechCrunch'];
+const TOP_STORIES_FEED_NAMES = ['G1 Amazonas', 'G1', 'UOL Notícias', 'Folha de S.Paulo', 'BBC News', 'Reuters World', 'TechCrunch'];
 
 // ============================================================
 // Parser de RSS simples (sem dependências externas)
@@ -332,6 +338,7 @@ async function fetchAllNews(category?: string): Promise<NewsArticle[]> {
     if (feeds.length < 4) feeds = RSS_FEEDS.slice(0, 8);
   } else if (category) {
     const categoryMap: Record<string, string[]> = {
+      'Amazonas': ['Amazonas'],
       'Brasil': ['Brasil'],
       'Mundo': ['Mundo'],
       'Tecnologia': ['Tecnologia'],
