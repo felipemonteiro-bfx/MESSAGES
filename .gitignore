@@ -71,3 +71,6 @@ APPLY_THIS_FIX.sql
 
 # Claude worktrees
 .claude/
+
+# AI text demo (separate project)
+/ai-text-demo/
